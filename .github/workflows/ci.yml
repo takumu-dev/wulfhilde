@@ -77,16 +77,8 @@ jobs:
     needs: image
     runs-on: ubuntu-26.04
     timeout-minutes: 60
-    permissions:
-      contents: read
-      packages: read
-    # The package is public, but GitHub makes a newly pushed one private until someone changes
-    # that, so the jobs log in rather than depend on it.
-    container:
-      image: ${{ needs.image.outputs.image }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    # The package is public, as the repository is, so pulling the image needs no login.
+    container: ${{ needs.image.outputs.image }}
     strategy:
       fail-fast: false
       matrix:
