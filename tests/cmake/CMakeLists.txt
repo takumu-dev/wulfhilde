@@ -311,9 +311,10 @@ wulfhilde_add_license_check_test("${writing}" "" ""
     "-DWRITE_NOTICES=${written}"
 )
 set_tests_properties("build: ${writing}" PROPERTIES FIXTURES_SETUP wulfhilde_written_notices)
+# file(WRITE) ends lines as the platform does, and git ends them with LF in what it commits.
 set(comparing "build: the notices written are those checked")
 add_test(NAME "${comparing}"
-    COMMAND "${CMAKE_COMMAND}" -E compare_files
+    COMMAND "${CMAKE_COMMAND}" -E compare_files --ignore-eol
         "${written}" "${WULFHILDE_NOTICES_FIXTURE}/THIRD_PARTY_NOTICES.md"
 )
 set_tests_properties("${comparing}"
