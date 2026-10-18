@@ -52,7 +52,7 @@ expect_program() {
     done
 }
 
-work=$(mktemp -d)
+work=$(mktemp -d) || exit 1
 trap 'rm -rf "$work"' EXIT
 
 # The floor compilers, under their plain names, since the presets name them so.
@@ -66,12 +66,12 @@ expect "clang-format is LLVM 23's" 'clang-format version 23\.' clang-format --ve
 
 # Each standard library, built against and loaded at run time. Clang must take GCC 16's
 # libstdc++, not the distro's older one.
-cat > "$work/program.cpp" << 'EOF'
+cat > "$work/program.cpp" << 'EOF' || exit 1
 #include <print>
 #include <version>
 
 #if defined(EXPECT_LIBCXX)
-static_assert(_LIBCPP_VERSION >= 230000, "libc++ is LLVM 23's");
+static_assert(_LIBCPP_VERSION / 10000 == 23, "libc++ is LLVM 23's");
 #else
 static_assert(_GLIBCXX_RELEASE == 16, "libstdc++ is GCC 16's");
 #endif

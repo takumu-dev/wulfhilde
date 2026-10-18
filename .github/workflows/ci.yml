@@ -54,17 +54,23 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
-      # A pull request from a fork can't push, so one that changes ci/linux/ fails here.
+      # A missing tag reads "manifest unknown", and a package never pushed reads "denied". Any
+      # other failure, such as a timeout, stops the job rather than rebuild a tag that may exist. A
+      # pull request from a fork can't push, so one that changes ci/linux/ fails here.
       - name: Build and push the image, unless it exists
         env:
           IMAGE: ${{ steps.name.outputs.image }}
         run: |
-          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+          if output=$(docker manifest inspect "$IMAGE" 2>&1); then
             echo "$IMAGE exists"
-          else
-            docker build --tag "$IMAGE" ci/linux
-            docker push "$IMAGE"
+            exit 0
           fi
+          case $output in
+            *"manifest unknown"* | *denied*) ;;
+            *) echo "$output" >&2; exit 1 ;;
+          esac
+          docker build --tag "$IMAGE" ci/linux
+          docker push "$IMAGE"
 
   linux:
     name: ${{ matrix.preset }}
@@ -102,29 +108,29 @@ jobs:
           "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
 
-      # Every job on one triplet builds the same binaries, since vcpkg builds the ports with the
-      # image's default compiler whatever the preset uses.
+      # Every job on one triplet builds the same binaries: the triplet, not the preset, chooses the
+      # compiler that builds the ports.
       - name: Restore the vcpkg binary cache
         id: cache
         if: matrix.triplet
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: /opt/vcpkg-cache
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: vcpkg-${{ matrix.triplet }}-${{ needs.image.outputs.tag }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
           restore-keys: vcpkg-${{ matrix.triplet }}-${{ needs.image.outputs.tag }}-
 
       - name: Configure, build and test
         run: cmake --workflow --preset ${{ matrix.preset }}
 
-      # Only develop saves a cache, which pull requests into it then restore. The ports built
-      # before a failure are still good.
+      # Only develop saves a cache, which pull requests into it then restore. A key is saved once,
+      # so a failed job saves nothing, or a cache missing ports would stand until the key changed.
       - name: Save the vcpkg binary cache
         if: >-
-          !cancelled() && matrix.triplet && github.ref == 'refs/heads/develop'
+          success() && matrix.triplet && github.ref == 'refs/heads/develop'
           && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: /opt/vcpkg-cache
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ steps.cache.outputs.cache-primary-key }}
 
       - name: Keep the logs of a failed job
@@ -136,7 +142,7 @@ jobs:
             build/${{ matrix.preset }}/Testing/Temporary/
             build/${{ matrix.preset }}/junit.xml
             build/${{ matrix.preset }}/vcpkg-manifest-install.log
-            /opt/vcpkg/buildtrees/*/*.log
+            ${{ env.VCPKG_ROOT }}/buildtrees/*/*.log
           if-no-files-found: ignore
           retention-days: 14
 
