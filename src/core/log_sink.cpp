@@ -15,7 +15,7 @@ namespace {
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): a process-wide hook
 constinit std::atomic<LogSink*> current_sink{nullptr};
 
-std::string_view name(LogSeverity severity) noexcept {
+std::string_view severity_name(LogSeverity severity) noexcept {
     switch (severity) {
     case LogSeverity::trace:
         return "trace";
@@ -34,7 +34,7 @@ std::string_view name(LogSeverity severity) noexcept {
 // The default sink. Each message goes out in one write, so that lines logged from several
 // threads at once don't interleave.
 void write_to_stderr(LogSeverity severity, std::string_view message) {
-    const std::string line = std::format("{}: {}\n", name(severity), message);
+    const std::string line = std::format("{}: {}\n", severity_name(severity), message);
     std::fwrite(line.data(), 1, line.size(), stderr);
 }
 

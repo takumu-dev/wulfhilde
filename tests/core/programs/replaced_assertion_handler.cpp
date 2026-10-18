@@ -14,20 +14,17 @@
 
 namespace {
 
-// What the handler checks. A handler is a plain function and can't capture, so it lives here.
-struct Check {
-    std::uint_least32_t failing_line = 0;
-    std::vector<std::string> logged_errors;
-};
-
+// A handler is a plain function and can't capture, so what it compares lives here.
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): the handler reads it.
-Check check;
+std::uint_least32_t failing_line = 0;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): the handler reads it.
+std::vector<std::string> logged_errors;
 
 class ErrorSink final : public wulfhilde::LogSink {
   public:
     void write(wulfhilde::LogSeverity severity, std::string_view message) override {
         if (severity == wulfhilde::LogSeverity::error) {
-            check.logged_errors.emplace_back(message);
+            logged_errors.emplace_back(message);
         }
     }
 };
@@ -36,15 +33,15 @@ class ErrorSink final : public wulfhilde::LogSink {
     const std::string_view file = std::source_location::current().file_name();
     const std::vector<std::string> expected_errors{
         std::format("{}:{}: assertion failed: a square has four sides (sides == 4)", file,
-                    check.failing_line),
+                    failing_line),
     };
     const bool as_written =
         failure.expression == "sides == 4" && failure.message == "a square has four sides" &&
-        failure.location.file_name() == file && failure.location.line() == check.failing_line;
-    if (!as_written || check.logged_errors != expected_errors) {
+        failure.location.file_name() == file && failure.location.line() == failing_line;
+    if (!as_written || logged_errors != expected_errors) {
         std::println(stderr, "received: {} ({}) at {}:{}", failure.message, failure.expression,
                      failure.location.file_name(), failure.location.line());
-        std::println(stderr, "logged: {}", check.logged_errors);
+        std::println(stderr, "logged: {}", logged_errors);
         std::_Exit(EXIT_FAILURE);
     }
     std::_Exit(EXIT_SUCCESS);
@@ -59,7 +56,7 @@ int main() {
     wulfhilde::set_assertion_handler(check_failure);
 
     const int sides = 3;
-    check.failing_line = std::source_location::current().line() + 1;
+    failing_line = std::source_location::current().line() + 1;
     WULFHILDE_ASSERT(sides == 4, "a square has four sides");
 
     std::println(stderr, "the check didn't fail");

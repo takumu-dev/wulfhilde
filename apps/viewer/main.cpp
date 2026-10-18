@@ -17,8 +17,7 @@ int main(int argc, char** argv) {
 
     const auto command_line = viewer::parse_command_line(arguments);
     if (!command_line) {
-        std::print(stderr, "wulfhilde-viewer: {}\n\n{}", command_line.error().message,
-                   viewer::usage());
+        std::print(stderr, "wulfhilde-viewer: {}\n\n{}", command_line.error(), viewer::usage());
         return EXIT_FAILURE;
     }
 

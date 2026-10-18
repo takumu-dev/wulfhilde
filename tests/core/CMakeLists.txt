@@ -12,6 +12,13 @@ wulfhilde_add_program_test(core "the default log sink writes each message to std
     LIBRARIES wulfhilde::core
     EXPECTED_STDERR programs/default_log_sink.stderr
 )
+find_package(Threads REQUIRED)
+wulfhilde_add_program_test(core
+    "lines logged to the default sink from several threads at once arrive whole"
+    SOURCE programs/concurrent_default_log_sink.cpp
+    LIBRARIES wulfhilde::core Threads::Threads
+    ARGUMENTS "${CMAKE_CURRENT_BINARY_DIR}/concurrent_default_log_sink.stderr"
+)
 wulfhilde_add_program_test(core "a null log sink restores the default"
     SOURCE programs/restored_log_sink.cpp
     LIBRARIES wulfhilde::core

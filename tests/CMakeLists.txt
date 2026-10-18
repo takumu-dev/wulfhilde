@@ -1,6 +1,7 @@
 # The engine's tests. Each one carries one CTest label: `unit` (CPU only), `gpu` (a Vulkan device)
 # or `image` (compared with a reference image). Each test's name begins with the module it tests,
-# matching the tag on its Catch2 test case.
+# matching the tag on its Catch2 test case, or with the part of the build it tests: `build` for
+# the configuration and `consumers` for the package.
 
 find_package(Catch2 3 CONFIG REQUIRED)
 include(Catch)
@@ -75,10 +76,8 @@ wulfhilde_target_warnings(wulfhilde_precondition_main)
 # program of its own, which CTest expects to fail. The source defines break_precondition() from
 # support/precondition_test.hpp.
 function(wulfhilde_add_precondition_test module name)
-    cmake_parse_arguments(PARSE_ARGV 2 arg "" "SOURCE" "LIBRARIES")
-    wulfhilde_add_test_program(target ${module} ${arg_SOURCE}
-        wulfhilde_precondition_main ${arg_LIBRARIES}
-    )
+    cmake_parse_arguments(PARSE_ARGV 2 arg "" "SOURCE" "")
+    wulfhilde_add_test_program(target ${module} ${arg_SOURCE} wulfhilde_precondition_main)
     set(test_name "${module}: ${name}")
     add_test(NAME "${test_name}" COMMAND ${target})
     set_tests_properties("${test_name}" PROPERTIES LABELS unit WILL_FAIL TRUE)

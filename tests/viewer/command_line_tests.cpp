@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <format>
 #include <string_view>
 
 TEST_CASE("the --help option asks for the usage", "[viewer]") {
@@ -20,5 +21,6 @@ TEST_CASE("an unknown argument is a usage error that names it", "[viewer]") {
     const auto command_line = viewer::parse_command_line(arguments);
 
     REQUIRE_FALSE(command_line.has_value());
-    CHECK(command_line.error().message == "unknown argument: --fly");
+    CHECK(command_line.error().code == viewer::UsageErrorCode::unknown_argument);
+    CHECK(std::format("{}", command_line.error()) == "unknown argument: --fly");
 }

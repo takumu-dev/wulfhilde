@@ -23,8 +23,10 @@ parse_command_line(std::span<const std::string_view> arguments) {
         if (argument == "--help") {
             command_line.help = true;
         } else {
-            return std::unexpected(
-                UsageError{.message = std::format("unknown argument: {}", argument)});
+            return std::unexpected(UsageError{
+                .code = UsageErrorCode::unknown_argument,
+                .message = std::format("unknown argument: {}", argument),
+            });
         }
     }
     return command_line;

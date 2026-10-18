@@ -3,8 +3,8 @@
 
 include_guard(GLOBAL)
 
-# Stops the configuration unless the C++ compiler with this CMake compiler id and version is one
-# wulfhilde supports, at its floor or newer.
+# Stops the configuration if the C++ compiler with this CMake compiler id and version is one
+# wulfhilde supports, but older than its floor. Any other compiler gets a warning.
 function(wulfhilde_check_compiler_floor id version)
     if(id STREQUAL "GNU")
         set(floor 16)
@@ -20,9 +20,12 @@ function(wulfhilde_check_compiler_floor id version)
         set(needed "MSVC 14.52 (cl 19.52)")
         set(found "cl ${version}")
     else()
-        message(FATAL_ERROR
-            "wulfhilde supports GCC, Clang and MSVC; this compiler is ${id} ${version}."
+        # Nothing is known about other compilers, so they may try.
+        message(WARNING
+            "wulfhilde supports GCC, Clang and MSVC; ${id} ${version} is untested, and the build "
+            "may fail."
         )
+        return()
     endif()
 
     if(version VERSION_LESS floor)

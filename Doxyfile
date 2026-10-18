@@ -10,7 +10,6 @@ RECURSIVE              = YES
 FILE_PATTERNS          = *.hpp
 STRIP_FROM_PATH        = src/core/include
 STRIP_FROM_INC_PATH    = src/core/include
-EXCLUDE_SYMBOLS        = detail wulfhilde::detail
 
 JAVADOC_AUTOBRIEF      = YES
 MARKDOWN_SUPPORT       = YES
