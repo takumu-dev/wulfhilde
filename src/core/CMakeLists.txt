@@ -1,8 +1,18 @@
 wulfhilde_add_module(core
     HEADERS
+        include/wulfhilde/core/angle.hpp
         include/wulfhilde/core/assertion.hpp
+        include/wulfhilde/core/color.hpp
+        include/wulfhilde/core/id.hpp
         include/wulfhilde/core/log_sink.hpp
+        include/wulfhilde/core/matrix4.hpp
         include/wulfhilde/core/narrow.hpp
+        include/wulfhilde/core/plane.hpp
+        include/wulfhilde/core/rigid_transform.hpp
+        include/wulfhilde/core/rotation.hpp
+        include/wulfhilde/core/vector2.hpp
+        include/wulfhilde/core/vector3.hpp
+        include/wulfhilde/core/vector4.hpp
     SOURCES
         assertion.cpp
         log_sink.cpp

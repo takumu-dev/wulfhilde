@@ -4,6 +4,7 @@
 # the configuration and `consumers` for the package.
 
 find_package(Catch2 3 CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
 include(Catch)
 
 set(WULFHILDE_TEST_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/support")
@@ -14,6 +15,7 @@ function(wulfhilde_add_tests module)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;LIBRARIES")
     set(target wulfhilde_${module}_tests)
     add_executable(${target} ${arg_SOURCES})
+    target_include_directories(${target} PRIVATE "${WULFHILDE_TEST_SUPPORT_DIR}")
     target_link_libraries(${target} PRIVATE ${arg_LIBRARIES} Catch2::Catch2WithMain)
     wulfhilde_target_warnings(${target})
     catch_discover_tests(${target}

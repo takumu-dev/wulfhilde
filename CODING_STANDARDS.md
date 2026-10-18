@@ -200,6 +200,13 @@ departs from them, it says so.
   - `wulfhilde_add_precondition_test` adds a program that breaks one precondition, which CTest
     expects to fail. It fails through a replaced handler rather than aborting, since CTest counts
     an abort as a crash even then. These are used sparingly.
+- The math types are pinned by known values, which hold the conventions, and by properties over
+  random inputs. Those inputs come from a fixed seed through `tests/core/random_inputs.hpp`, the
+  same on every standard library, and the generic operations are compared with GLM, computed in
+  double. GLM is a test-only dependency, and no GLM name appears outside the tests.
+- A test file whose checks or captures hold a math type includes `math_printing.hpp` from
+  `tests/support/`. One that didn't would print it as `{?}`, and its copy of Catch2's printing
+  could replace the right one in every other file of the program.
 
 ## Commits and branches
 
