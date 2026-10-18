@@ -1,11 +1,25 @@
 wulfhilde_add_tests(core
     SOURCES
+        angle_tests.cpp
         assertion_tests.cpp
+        color_tests.cpp
+        id_tests.cpp
         log_sink_tests.cpp
+        matrix4_tests.cpp
         narrow_tests.cpp
+        plane_tests.cpp
+        rigid_transform_tests.cpp
+        rotation_tests.cpp
+        vector2_tests.cpp
+        vector3_tests.cpp
+        vector4_tests.cpp
     LIBRARIES
         wulfhilde::core
+        glm::glm
 )
+# GLM's vectors then hold plain x, y, z and w, rather than unions with the colour and texture
+# coordinate names.
+target_compile_definitions(wulfhilde_core_tests PRIVATE GLM_FORCE_XYZW_ONLY)
 
 wulfhilde_add_program_test(core "the default log sink writes each message to stderr with its severity"
     SOURCE programs/default_log_sink.cpp
@@ -50,4 +64,15 @@ wulfhilde_add_precondition_test(core "narrowing a value too large for its type f
 wulfhilde_add_precondition_test(core
     "narrowing a negative value to an unsigned type fires its precondition"
     SOURCE programs/narrow_negative_to_unsigned.cpp
+)
+wulfhilde_add_precondition_test(core "normalising a zero vector fires its precondition"
+    SOURCE programs/normalize_zero_vector.cpp
+)
+wulfhilde_add_precondition_test(core
+    "a rotation about an axis that isn't of unit length fires its precondition"
+    SOURCE programs/rotation_about_non_unit_axis.cpp
+)
+wulfhilde_add_precondition_test(core
+    "the colour of a temperature outside 1,000 to 40,000 K fires its precondition"
+    SOURCE programs/temperature_out_of_range.cpp
 )

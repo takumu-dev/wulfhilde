@@ -11,7 +11,7 @@ It is at an early stage. Today it holds `core`, the package a game builds agains
 
 | Module | Links | Holds |
 |---|---|---|
-| `core` | | checks of preconditions and their handler, the log sink, and the checked `narrow` |
+| `core` | | checks of preconditions and their handler, the log sink, the checked `narrow`, typed IDs, and the math types: vectors, matrices, rotations, rigid transforms, angles, colours and planes |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
 `<wulfhilde/<module>/...>`. The umbrella target `wulfhilde::wulfhilde` links them all.
