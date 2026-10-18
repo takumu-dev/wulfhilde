@@ -33,6 +33,19 @@ option(WULFHILDE_EXCEPTIONS
     "Build the engine and the viewer with exceptions enabled. The engine never throws, so it builds either way."
     ON
 )
+option(WULFHILDE_CHECK_NOTICES
+    "Test that THIRD_PARTY_NOTICES.md lists the ports that ship, as this build installs them."
+    OFF
+)
+
+# The engine's own builds take their dependencies from the vcpkg manifest, and check their licences.
+if(PROJECT_IS_TOP_LEVEL AND VCPKG_MANIFEST_MODE)
+    include(WulfhildeLicenses)
+elseif(WULFHILDE_CHECK_NOTICES)
+    message(FATAL_ERROR
+        "WULFHILDE_CHECK_NOTICES needs the engine's own build, with vcpkg in manifest mode."
+    )
+endif()
 
 add_subdirectory(src)
 

@@ -1,0 +1,10 @@
+{
+  "allowed": ["Zlib"],
+  "overrides": [
+    {
+      "port": "lodepng",
+      "license": "Zlib",
+      "reason": "The port declares no licence, and the LICENSE file of lodepng is the zlib licence."
+    }
+  ]
+}

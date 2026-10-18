@@ -111,14 +111,15 @@ jobs:
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
 
       # Every job on one triplet builds the same binaries: the triplet, not the preset, chooses the
-      # compiler that builds the ports.
+      # compiler that builds the ports. The presets choose the build tools' triplet, which every
+      # port's binaries depend on, so they are part of the key.
       - name: Restore the vcpkg binary cache
         id: cache
         if: matrix.triplet
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-${{ matrix.triplet }}-${{ needs.image.outputs.tag }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          key: vcpkg-${{ matrix.triplet }}-${{ needs.image.outputs.tag }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**', 'CMakePresets.json') }}
           restore-keys: vcpkg-${{ matrix.triplet }}-${{ needs.image.outputs.tag }}-
 
       - name: Configure, build and test
@@ -231,7 +232,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-${{ matrix.triplet }}-${{ steps.msvc.outputs.toolset }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          key: vcpkg-${{ matrix.triplet }}-${{ steps.msvc.outputs.toolset }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**', 'CMakePresets.json') }}
           restore-keys: vcpkg-${{ matrix.triplet }}-${{ steps.msvc.outputs.toolset }}-
 
       - name: Configure, build and test

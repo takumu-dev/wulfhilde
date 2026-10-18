@@ -29,7 +29,9 @@
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       },
+      "$comment": "Build tools get a triplet of their own, built for release only, so that vcpkg records which ports are build tools and the notices leave them out.",
       "cacheVariables": {
+        "VCPKG_HOST_TRIPLET": "x64-linux-release",
         "VCPKG_TARGET_TRIPLET": "x64-linux"
       }
     },
@@ -63,7 +65,7 @@
       "name": "msvc",
       "hidden": true,
       "inherits": "base",
-      "$comment": "Run from a developer command prompt for MSVC 14.52 or newer, which puts cl on the PATH.",
+      "$comment": "Run from a developer command prompt for MSVC 14.52 or newer, which puts cl on the PATH. Build tools get vcpkg's default triplet, named here for the notices.",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -75,6 +77,7 @@
       },
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "cl",
+        "VCPKG_HOST_TRIPLET": "x64-windows",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
       }
     },
@@ -101,8 +104,9 @@
       "name": "gcc-release",
       "inherits": ["gcc", "release"],
       "displayName": "GCC, release, engine without exceptions",
-      "description": "The engine and the viewer build with exceptions disabled, as a game might build them. The tests keep exceptions for Catch2.",
+      "description": "The engine and the viewer build with exceptions disabled, as a game might build them. The tests keep exceptions for Catch2. THIRD_PARTY_NOTICES.md lists the ports this build ships.",
       "cacheVariables": {
+        "WULFHILDE_CHECK_NOTICES": true,
         "WULFHILDE_EXCEPTIONS": false
       }
     },

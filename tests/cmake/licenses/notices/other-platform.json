@@ -1,0 +1,39 @@
+{
+  "name": "notices-fixture",
+  "version": "1.0.0",
+  "default-features": [
+    "audio"
+  ],
+  "dependencies": [
+    {
+      "name": "pngish",
+      "features": [
+        "apng"
+      ]
+    },
+    "headerish",
+    {
+      "name": "shader-tool",
+      "host": true
+    },
+    {
+      "name": "windows-only",
+      "platform": "windows"
+    }
+  ],
+  "features": {
+    "audio": {
+      "description": "Sound, on by default",
+      "dependencies": [
+        "soundish"
+      ]
+    },
+    "tests": {
+      "description": "What the tests need, which links the shader tool's library too",
+      "dependencies": [
+        "test-framework",
+        "shader-tool"
+      ]
+    }
+  }
+}
