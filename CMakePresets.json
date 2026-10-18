@@ -211,7 +211,8 @@
       "name": "test",
       "hidden": true,
       "output": {
-        "outputOnFailure": true
+        "outputOnFailure": true,
+        "outputJUnitFile": "junit.xml"
       },
       "execution": {
         "jobs": "",

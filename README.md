@@ -93,6 +93,11 @@ until a game installs its own with `wulfhilde::set_log_sink`.
 - Tests come first, through the public interfaces only, under `tests/`, which mirrors `src/` and
   `apps/`. `tests/consumers/` builds a small game against the installed package and as a
   subproject.
+- Every pull request runs each Linux preset in CI, inside the image that `ci/linux/` defines: GCC
+  16.2, Clang 23 with libc++, CMake 4.4 and lavapipe, with the distro's packages as they stood on
+  a fixed date. The image is public, as `ghcr.io/takumu-dev/wulfhilde-ci`, tagged with the hash
+  that `ci/image-tag.sh` prints, so CI's compilers and Vulkan driver are one `docker pull` away.
+- The jobs fan into one check, `ci`, which `develop` and `main` require.
 
 ## Licence
 
