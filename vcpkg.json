@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "wulfhilde",
+  "version-semver": "0.1.0",
+  "description": "A library for games built from sectors joined by portals",
+  "homepage": "https://github.com/takumu-dev/wulfhilde",
+  "license": "Zlib",
+  "builtin-baseline": "bf19794383e8fb95eba5aa553235bc8ec2271688",
+  "dependencies": [],
+  "features": {
+    "tests": {
+      "description": "What the engine's tests need, and nothing a game ships",
+      "dependencies": [
+        {
+          "name": "catch2",
+          "version>=": "3.0.1"
+        }
+      ]
+    }
+  }
+}

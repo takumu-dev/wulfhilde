@@ -1,0 +1,45 @@
+# The wulfhilde package. `find_package(wulfhilde)` loads every module and the umbrella target
+# wulfhilde::wulfhilde; `find_package(wulfhilde COMPONENTS ...)` loads only the modules named, as
+# wulfhilde::<module>, with the modules they link.
+
+@PACKAGE_INIT@
+
+set(_wulfhilde_modules @WULFHILDE_MODULES@)
+@WULFHILDE_MODULE_DEPENDENCIES@
+# Loads a module's targets after those of the modules it links, which they refer to.
+function(_wulfhilde_load module)
+    if(TARGET wulfhilde::${module})
+        return()
+    endif()
+    foreach(dependency IN LISTS _wulfhilde_${module}_dependencies)
+        _wulfhilde_load(${dependency})
+    endforeach()
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/wulfhilde-${module}-targets.cmake")
+endfunction()
+
+if(wulfhilde_FIND_COMPONENTS)
+    set(_wulfhilde_wanted ${wulfhilde_FIND_COMPONENTS})
+else()
+    set(_wulfhilde_wanted ${_wulfhilde_modules})
+endif()
+
+foreach(_wulfhilde_module IN LISTS _wulfhilde_wanted)
+    if(_wulfhilde_module IN_LIST _wulfhilde_modules)
+        _wulfhilde_load(${_wulfhilde_module})
+        set(wulfhilde_${_wulfhilde_module}_FOUND TRUE)
+    else()
+        set(wulfhilde_${_wulfhilde_module}_FOUND FALSE)
+        if(wulfhilde_FIND_REQUIRED_${_wulfhilde_module})
+            list(JOIN _wulfhilde_modules ", " _wulfhilde_names)
+            set(wulfhilde_NOT_FOUND_MESSAGE
+                "wulfhilde has no module named ${_wulfhilde_module}; its modules are: ${_wulfhilde_names}"
+            )
+        endif()
+    endif()
+endforeach()
+
+if(NOT wulfhilde_FIND_COMPONENTS AND NOT TARGET wulfhilde::wulfhilde)
+    include("${CMAKE_CURRENT_LIST_DIR}/wulfhilde-targets.cmake")
+endif()
+
+check_required_components(wulfhilde)

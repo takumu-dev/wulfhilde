@@ -1,0 +1,335 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Kitware/CMake/master/Help/manual/presets/schema.json",
+  "version": 12,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 4,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "$comment": "Every preset builds with Ninja and takes its dependencies from vcpkg, found through VCPKG_ROOT.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_COMPILE_WARNING_AS_ERROR": true,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "VCPKG_MANIFEST_FEATURES": "tests"
+      }
+    },
+    {
+      "name": "linux",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-linux"
+      }
+    },
+    {
+      "name": "gcc",
+      "hidden": true,
+      "inherits": "linux",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "clang",
+      "hidden": true,
+      "inherits": "linux",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "libcxx",
+      "hidden": true,
+      "inherits": "clang",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-stdlib=libc++",
+        "CMAKE_EXE_LINKER_FLAGS": "-stdlib=libc++",
+        "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx"
+      }
+    },
+    {
+      "name": "msvc",
+      "hidden": true,
+      "inherits": "base",
+      "$comment": "Run from a developer command prompt for MSVC 14.52 or newer, which puts cl on the PATH.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "cl",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+      }
+    },
+    {
+      "name": "debug",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "gcc-debug",
+      "inherits": ["gcc", "debug"],
+      "displayName": "GCC, debug"
+    },
+    {
+      "name": "gcc-release",
+      "inherits": ["gcc", "release"],
+      "displayName": "GCC, release, engine without exceptions",
+      "description": "The engine and the viewer build with exceptions disabled, as a game might build them. The tests keep exceptions for Catch2.",
+      "cacheVariables": {
+        "WULFHILDE_EXCEPTIONS": false
+      }
+    },
+    {
+      "name": "clang-debug",
+      "inherits": ["clang", "debug"],
+      "displayName": "Clang with libstdc++, debug"
+    },
+    {
+      "name": "clang-release",
+      "inherits": ["clang", "release"],
+      "displayName": "Clang with libstdc++, release"
+    },
+    {
+      "name": "libcxx-debug",
+      "inherits": ["libcxx", "debug"],
+      "displayName": "Clang with libc++, debug"
+    },
+    {
+      "name": "libcxx-release",
+      "inherits": ["libcxx", "release"],
+      "displayName": "Clang with libc++, release"
+    },
+    {
+      "name": "sanitize",
+      "inherits": ["clang", "debug"],
+      "displayName": "Clang, debug, AddressSanitizer and UndefinedBehaviorSanitizer",
+      "description": "The engine, the viewer and the tests are instrumented. The dependencies aren't, which AddressSanitizer on Linux doesn't need.",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    },
+    {
+      "name": "tidy",
+      "inherits": ["clang", "debug"],
+      "displayName": "clang-tidy",
+      "description": "Builds the engine, the viewer and the tests with clang-tidy run on every source.",
+      "cacheVariables": {
+        "CMAKE_CXX_CLANG_TIDY": "clang-tidy"
+      }
+    },
+    {
+      "name": "lint",
+      "inherits": ["gcc", "debug"],
+      "displayName": "Formatting and documentation",
+      "description": "Checks the formatting with clang-format and the documentation with Doxygen, building nothing else.",
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "",
+        "WULFHILDE_BUILD_TESTS": false
+      }
+    },
+    {
+      "name": "msvc-debug",
+      "inherits": ["msvc", "debug"],
+      "displayName": "MSVC, debug"
+    },
+    {
+      "name": "msvc-release",
+      "inherits": ["msvc", "release"],
+      "displayName": "MSVC, release"
+    },
+    {
+      "name": "msvc-asan",
+      "inherits": "msvc",
+      "displayName": "MSVC, AddressSanitizer",
+      "description": "Optimised against the release CRT, as the instrumented dependencies are, with debug assertions kept on.",
+      "environment": {
+        "CXXFLAGS": "/fsanitize=address"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "/O2 /Ob1",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-asan"
+      }
+    },
+    {
+      "name": "msvc-noexcept",
+      "inherits": ["msvc", "release"],
+      "displayName": "MSVC, release, without exceptions",
+      "description": "Builds the engine and the viewer with exceptions disabled. Nothing built so is mixed with Catch2, since _HAS_EXCEPTIONS=0 may change the standard library's layout.",
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "",
+        "WULFHILDE_BUILD_TESTS": false,
+        "WULFHILDE_EXCEPTIONS": false
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "gcc-debug", "configurePreset": "gcc-debug" },
+    { "name": "gcc-release", "configurePreset": "gcc-release" },
+    { "name": "clang-debug", "configurePreset": "clang-debug" },
+    { "name": "clang-release", "configurePreset": "clang-release" },
+    { "name": "libcxx-debug", "configurePreset": "libcxx-debug" },
+    { "name": "libcxx-release", "configurePreset": "libcxx-release" },
+    { "name": "sanitize", "configurePreset": "sanitize" },
+    { "name": "tidy", "configurePreset": "tidy" },
+    { "name": "lint", "configurePreset": "lint", "targets": ["check-format", "docs"] },
+    { "name": "msvc-debug", "configurePreset": "msvc-debug" },
+    { "name": "msvc-release", "configurePreset": "msvc-release" },
+    { "name": "msvc-asan", "configurePreset": "msvc-asan" },
+    { "name": "msvc-noexcept", "configurePreset": "msvc-noexcept" }
+  ],
+  "testPresets": [
+    {
+      "name": "test",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": "",
+        "noTestsAction": "error"
+      }
+    },
+    { "name": "gcc-debug", "inherits": "test", "configurePreset": "gcc-debug" },
+    { "name": "gcc-release", "inherits": "test", "configurePreset": "gcc-release" },
+    { "name": "clang-debug", "inherits": "test", "configurePreset": "clang-debug" },
+    { "name": "clang-release", "inherits": "test", "configurePreset": "clang-release" },
+    { "name": "libcxx-debug", "inherits": "test", "configurePreset": "libcxx-debug" },
+    { "name": "libcxx-release", "inherits": "test", "configurePreset": "libcxx-release" },
+    { "name": "sanitize", "inherits": "test", "configurePreset": "sanitize" },
+    { "name": "msvc-debug", "inherits": "test", "configurePreset": "msvc-debug" },
+    { "name": "msvc-release", "inherits": "test", "configurePreset": "msvc-release" },
+    { "name": "msvc-asan", "inherits": "test", "configurePreset": "msvc-asan" }
+  ],
+  "workflowPresets": [
+    {
+      "name": "gcc-debug",
+      "steps": [
+        { "type": "configure", "name": "gcc-debug" },
+        { "type": "build", "name": "gcc-debug" },
+        { "type": "test", "name": "gcc-debug" }
+      ]
+    },
+    {
+      "name": "gcc-release",
+      "steps": [
+        { "type": "configure", "name": "gcc-release" },
+        { "type": "build", "name": "gcc-release" },
+        { "type": "test", "name": "gcc-release" }
+      ]
+    },
+    {
+      "name": "clang-debug",
+      "steps": [
+        { "type": "configure", "name": "clang-debug" },
+        { "type": "build", "name": "clang-debug" },
+        { "type": "test", "name": "clang-debug" }
+      ]
+    },
+    {
+      "name": "clang-release",
+      "steps": [
+        { "type": "configure", "name": "clang-release" },
+        { "type": "build", "name": "clang-release" },
+        { "type": "test", "name": "clang-release" }
+      ]
+    },
+    {
+      "name": "libcxx-debug",
+      "steps": [
+        { "type": "configure", "name": "libcxx-debug" },
+        { "type": "build", "name": "libcxx-debug" },
+        { "type": "test", "name": "libcxx-debug" }
+      ]
+    },
+    {
+      "name": "libcxx-release",
+      "steps": [
+        { "type": "configure", "name": "libcxx-release" },
+        { "type": "build", "name": "libcxx-release" },
+        { "type": "test", "name": "libcxx-release" }
+      ]
+    },
+    {
+      "name": "sanitize",
+      "steps": [
+        { "type": "configure", "name": "sanitize" },
+        { "type": "build", "name": "sanitize" },
+        { "type": "test", "name": "sanitize" }
+      ]
+    },
+    {
+      "name": "tidy",
+      "steps": [
+        { "type": "configure", "name": "tidy" },
+        { "type": "build", "name": "tidy" }
+      ]
+    },
+    {
+      "name": "lint",
+      "steps": [
+        { "type": "configure", "name": "lint" },
+        { "type": "build", "name": "lint" }
+      ]
+    },
+    {
+      "name": "msvc-debug",
+      "steps": [
+        { "type": "configure", "name": "msvc-debug" },
+        { "type": "build", "name": "msvc-debug" },
+        { "type": "test", "name": "msvc-debug" }
+      ]
+    },
+    {
+      "name": "msvc-release",
+      "steps": [
+        { "type": "configure", "name": "msvc-release" },
+        { "type": "build", "name": "msvc-release" },
+        { "type": "test", "name": "msvc-release" }
+      ]
+    },
+    {
+      "name": "msvc-asan",
+      "steps": [
+        { "type": "configure", "name": "msvc-asan" },
+        { "type": "build", "name": "msvc-asan" },
+        { "type": "test", "name": "msvc-asan" }
+      ]
+    },
+    {
+      "name": "msvc-noexcept",
+      "steps": [
+        { "type": "configure", "name": "msvc-noexcept" },
+        { "type": "build", "name": "msvc-noexcept" }
+      ]
+    }
+  ]
+}
