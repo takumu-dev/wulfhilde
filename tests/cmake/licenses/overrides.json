@@ -1,0 +1,17 @@
+{
+  "allowed": ["Zlib", "MIT"],
+  "overrides": [
+    {
+      "port": "lodepng",
+      "version": "2021-12-04#1",
+      "license": "Zlib",
+      "reason": "The port declares no licence, and the LICENSE file of lodepng is the zlib licence."
+    },
+    {
+      "port": "relicensed",
+      "version": "1.0",
+      "license": "GPL-3.0-only",
+      "reason": "The port declares MIT, but its sources are under the GPL."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/spdx/spdx-spec/v2.3/schemas/spdx-schema.json",
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "soundish:x64-linux@4.0.0",
+  "packages": [
+    {
+      "name": "soundish",
+      "SPDXID": "SPDXRef-port",
+      "versionInfo": "4.0.0",
+      "homepage": "https://example.com/soundish",
+      "licenseConcluded": "ISC",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "soundish:x64-linux",
+      "SPDXID": "SPDXRef-binary",
+      "licenseConcluded": "ISC",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

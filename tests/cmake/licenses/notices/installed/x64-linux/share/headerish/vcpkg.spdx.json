@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/spdx/spdx-spec/v2.3/schemas/spdx-schema.json",
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "headerish:x64-linux@2.1.0",
+  "packages": [
+    {
+      "name": "headerish",
+      "SPDXID": "SPDXRef-port",
+      "versionInfo": "2.1.0",
+      "licenseConcluded": "BSL-1.0",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "headerish:x64-linux",
+      "SPDXID": "SPDXRef-binary",
+      "licenseConcluded": "BSL-1.0",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "allowed": [
+    "Zlib",
+    "MIT",
+    "BSL-1.0",
+    "ISC",
+    "Apache-2.0 WITH LLVM-exception"
+  ],
+  "overrides": [
+    {
+      "port": "zlibish",
+      "version": "1.3.2#2",
+      "license": "Zlib OR MIT",
+      "reason": "Its sources offer either licence, though the port declares only Zlib."
+    }
+  ]
+}

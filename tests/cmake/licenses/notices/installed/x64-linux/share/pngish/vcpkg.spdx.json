@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/spdx/spdx-spec/v2.3/schemas/spdx-schema.json",
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "pngish:x64-linux@1.6.59",
+  "packages": [
+    {
+      "name": "pngish",
+      "SPDXID": "SPDXRef-port",
+      "versionInfo": "1.6.59",
+      "homepage": "https://example.com/pngish",
+      "licenseConcluded": "Zlib",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "pngish:x64-linux",
+      "SPDXID": "SPDXRef-binary",
+      "licenseConcluded": "Zlib",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

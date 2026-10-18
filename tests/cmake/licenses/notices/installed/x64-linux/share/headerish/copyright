@@ -1,0 +1,10 @@
+
+
+Copyright (c) 2023 The headerish contributors   
+
+Use it as you like. A file using it begins:
+
+```cpp
+#include <headerish.hpp>
+```
+

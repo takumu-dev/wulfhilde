@@ -1,9 +1,10 @@
 # Coding standards
 
 How code in wulfhilde is written. Where a tool can hold a rule, it does: `.clang-format`,
-`.clang-tidy`, the warning flags in `cmake/WulfhildeConventions.cmake` and the `Doxyfile` are the
-record of those rules. This document covers the rest, and says why. Anything it leaves open follows
-the [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines); where it
+`.clang-tidy`, the warning flags in `cmake/WulfhildeConventions.cmake`, the `Doxyfile` and the
+allowed licences in `cmake/licenses.json` are the record of those rules. This document covers the
+rest, and says why. Anything it leaves open follows the
+[C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines); where it
 departs from them, it says so.
 
 ## Language and build
@@ -21,7 +22,13 @@ departs from them, it says so.
   vcpkg manifest, with test-only ports in its `tests` feature.
 - A dependency must be under one of these licences: Zlib, MIT, BSD-2-Clause, BSD-3-Clause, BSL-1.0,
   ISC, Apache-2.0 with or without the LLVM exception, CC0-1.0 or Unlicense. A game can then ship
-  under any terms.
+  under any terms. Build tools are held to the list too, though nothing of them ships.
+- Configuring checks every port vcpkg installs against the allowlist in `cmake/licenses.json`.
+  vcpkg's licence data is a best guess, so a port that declares no licence, or the wrong one, takes
+  an override there once someone has read its licence: the port, the version read, the licence and
+  why. When the port's version changes, its override fails the check until it is read again.
+- `THIRD_PARTY_NOTICES.md` is generated, never edited. Build the `notices` target of the
+  `gcc-release` preset whenever the dependencies change, and commit the result with the change.
 
 ## Modules
 

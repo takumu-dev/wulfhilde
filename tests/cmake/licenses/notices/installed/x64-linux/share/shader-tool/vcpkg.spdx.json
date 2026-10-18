@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/spdx/spdx-spec/v2.3/schemas/spdx-schema.json",
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "shader-tool:x64-linux@2026.19",
+  "packages": [
+    {
+      "name": "shader-tool",
+      "SPDXID": "SPDXRef-port",
+      "versionInfo": "2026.19",
+      "homepage": "https://example.com/shader-tool",
+      "licenseConcluded": "Apache-2.0 WITH LLVM-exception",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "shader-tool:x64-linux",
+      "SPDXID": "SPDXRef-binary",
+      "licenseConcluded": "Apache-2.0 WITH LLVM-exception",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

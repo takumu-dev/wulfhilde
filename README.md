@@ -101,7 +101,17 @@ until a game installs its own with `wulfhilde::set_log_sink`.
   which the scripts in `ci/windows/` set up with MSVC 14.52, the Vulkan loader and a pinned build
   of lavapipe.
 - The jobs fan into one check, `ci`, which `develop` and `main` require.
+- Configuring checks the licence of every port vcpkg installs, build tools included, against the
+  allowlist in `cmake/licenses.json`, and stops on any it doesn't cover. A port whose licence vcpkg
+  doesn't know takes an override there, pinned to the version reviewed, so that an update to the
+  port stops the configuration until its licence is reviewed again.
+- `THIRD_PARTY_NOTICES.md` lists the ports that ship with the engine: the manifest's default
+  dependencies and what they depend on, without build tools or the tests' dependencies. After a
+  change to them, build the `notices` target of the `gcc-release` preset to write it again; that
+  preset's tests fail while it is out of date.
 
 ## Licence
 
-wulfhilde is released under the zlib licence. See `LICENSE`.
+wulfhilde is released under the zlib licence. See `LICENSE`. The libraries it is built with are
+listed in `THIRD_PARTY_NOTICES.md`, with the notices their licences ask a game to pass on. The
+package installs both.

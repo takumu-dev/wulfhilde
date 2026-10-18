@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/spdx/spdx-spec/v2.3/schemas/spdx-schema.json",
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "zlibish:x64-linux@1.3.2#2",
+  "packages": [
+    {
+      "name": "zlibish",
+      "SPDXID": "SPDXRef-port",
+      "versionInfo": "1.3.2#2",
+      "homepage": "https://example.com/zlibish",
+      "licenseConcluded": "Zlib",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "zlibish:x64-linux",
+      "SPDXID": "SPDXRef-binary",
+      "licenseConcluded": "Zlib",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

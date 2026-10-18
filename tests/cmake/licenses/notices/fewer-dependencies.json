@@ -1,0 +1,29 @@
+{
+  "name": "notices-fixture",
+  "version": "1.0.0",
+  "default-features": [
+    "audio"
+  ],
+  "dependencies": [
+    "headerish",
+    {
+      "name": "shader-tool",
+      "host": true
+    }
+  ],
+  "features": {
+    "audio": {
+      "description": "Sound, on by default",
+      "dependencies": [
+        "soundish"
+      ]
+    },
+    "tests": {
+      "description": "What the tests need, which links the shader tool's library too",
+      "dependencies": [
+        "test-framework",
+        "shader-tool"
+      ]
+    }
+  }
+}
