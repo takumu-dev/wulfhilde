@@ -86,6 +86,7 @@ until a game installs its own with `wulfhilde::set_log_sink`.
 
 ## Working on the engine
 
+- `CODING_STANDARDS.md` says how the code is written, tested and committed.
 - `cmake --workflow --preset lint` checks the formatting with `clang-format` and the documentation
   with Doxygen. Building the `format` target reformats every source.
 - Every public declaration has a Doxygen comment. Doxygen writes the reference to `build/docs`.
