@@ -89,9 +89,12 @@ expect "CMake is 4.4" '^cmake version 4\.4\.' cmake --version
 expect "Doxygen is 1.15" '^1\.15\.' doxygen --version
 expect_command ninja check-jsonschema git curl tar zip unzip xz zstd pkg-config python3 jq
 
-# Lavapipe is the only device, with its CPU features capped at AVX2 and its vectors 256 bits wide
-# on every host.
+# Lavapipe is the only device, using no AVX-512 and vectors 256 bits wide on every host. The cap
+# lives in the environment, so it reaches every host; Mesa's dump shows lavapipe honours it on this
+# one.
 expect "lavapipe's CPU features are capped" '^avx$' printenv GALLIUM_OVERRIDE_CPU_CAPS
+expect "lavapipe uses no AVX-512" '^util_cpu_caps\.has_avx512f = 0$' \
+    env GALLIUM_DUMP_CPU=true vulkaninfo --summary
 if ! summary=$(vulkaninfo --summary 2>&1); then
     fail "\`vulkaninfo --summary\` failed: $summary"
 else

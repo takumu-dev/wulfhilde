@@ -54,9 +54,9 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
-      # A missing tag reads "manifest unknown", and a package never pushed reads "denied". Any
-      # other failure, such as a timeout, stops the job rather than rebuild a tag that may exist. A
-      # pull request from a fork can't push, so one that changes ci/linux/ fails here.
+      # A missing tag reads "manifest unknown", and a package never pushed reads "denied" or "name
+      # unknown". Any other failure, such as a timeout, stops the job rather than rebuild a tag that
+      # may exist. A pull request from a fork can't push, so one that changes ci/linux/ fails here.
       - name: Build and push the image, unless it exists
         env:
           IMAGE: ${{ steps.name.outputs.image }}
@@ -66,7 +66,7 @@ jobs:
             exit 0
           fi
           case $output in
-            *"manifest unknown"* | *denied*) ;;
+            *"manifest unknown"* | *"name unknown"* | *denied*) ;;
             *) echo "$output" >&2; exit 1 ;;
           esac
           docker build --tag "$IMAGE" ci/linux
@@ -77,7 +77,16 @@ jobs:
     needs: image
     runs-on: ubuntu-26.04
     timeout-minutes: 60
-    container: ${{ needs.image.outputs.image }}
+    permissions:
+      contents: read
+      packages: read
+    # The package is public, but GitHub makes a newly pushed one private until someone changes
+    # that, so the jobs log in rather than depend on it.
+    container:
+      image: ${{ needs.image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -122,12 +131,14 @@ jobs:
       - name: Configure, build and test
         run: cmake --workflow --preset ${{ matrix.preset }}
 
-      # Only develop saves a cache, which pull requests into it then restore. A key is saved once,
-      # so a failed job saves nothing, or a cache missing ports would stand until the key changed.
+      # Only pushes to develop and scheduled runs save a cache, which pull requests then restore. A
+      # key is saved once, so a failed job saves nothing, or a cache missing ports would stand until
+      # the key changed.
       - name: Save the vcpkg binary cache
         if: >-
-          success() && matrix.triplet && github.ref == 'refs/heads/develop'
-          && steps.cache.outputs.cache-hit != 'true'
+          success() && matrix.triplet && steps.cache.outputs.cache-hit != 'true'
+          && (github.event_name == 'schedule'
+            || (github.event_name == 'push' && github.ref == 'refs/heads/develop'))
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}

@@ -105,8 +105,9 @@ ENV PATH=/opt/gcc-16/bin:/opt/cmake/bin:/usr/lib/llvm-23/bin:/usr/local/sbin:/us
 ENV LANG=C.UTF-8
 
 # Lavapipe compiles shaders for the CPU it runs on, and GitHub's runners mix Intel and AMD
-# processors, some with AVX-512. Capping the CPU features at AVX2 and fixing the vector width makes
-# every runner render with the same generated code. Lavapipe is the only driver the loader sees.
+# processors, some with AVX-512. Taking AVX-512 away leaves the AVX2 and FMA that every runner has,
+# and with the vector width fixed too, every runner renders with the same generated code. Lavapipe
+# is the only driver the loader sees.
 ENV GALLIUM_OVERRIDE_CPU_CAPS=avx
 ENV LP_NATIVE_VECTOR_WIDTH=256
 ENV VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json
