@@ -23,3 +23,6 @@ QUIET                  = YES
 OUTPUT_DIRECTORY       = build/docs
 GENERATE_HTML          = YES
 GENERATE_LATEX         = NO
+
+# No diagrams, so the check needs no Graphviz.
+HAVE_DOT               = NO
