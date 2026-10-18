@@ -1,0 +1,153 @@
+# Builds and tests the engine on every pull request into develop or main, on every push to them,
+# and twice a week, which catches drift in what the jobs download and keeps the caches from being
+# evicted. The `ci` job is the one check that branch protection requires, and it passes only when
+# every other job has.
+#
+# Every Linux job runs in the image built from ci/linux/, which the first job builds and pushes
+# when its tag is missing.
+name: ci
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  schedule:
+    - cron: "30 4 * * 1,4"
+  workflow_dispatch:
+
+# A newer run for the same branch or pull request makes an older one pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  image:
+    name: image
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+      tag: ${{ steps.name.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Name the image after ci/linux/
+        id: name
+        run: |
+          tag=$(ci/image-tag.sh)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/takumu-dev/wulfhilde-ci:$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the container registry
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      # A pull request from a fork can't push, so one that changes ci/linux/ fails here.
+      - name: Build and push the image, unless it exists
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+        run: |
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "$IMAGE exists"
+          else
+            docker build --tag "$IMAGE" ci/linux
+            docker push "$IMAGE"
+          fi
+
+  linux:
+    name: ${{ matrix.preset }}
+    needs: image
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    container: ${{ needs.image.outputs.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { preset: gcc-debug, triplet: x64-linux }
+          - { preset: gcc-release, triplet: x64-linux }
+          - { preset: clang-debug, triplet: x64-linux }
+          - { preset: clang-release, triplet: x64-linux }
+          - { preset: libcxx-debug, triplet: x64-linux-libcxx }
+          - { preset: libcxx-release, triplet: x64-linux-libcxx }
+          - { preset: sanitize, triplet: x64-linux }
+          - { preset: tidy, triplet: x64-linux }
+          # Lint installs no ports, so it has no binary cache to keep.
+          - { preset: lint }
+    env:
+      VCPKG_ROOT: /opt/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: /opt/vcpkg-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # vcpkg reads the ports at the versions the manifest names from the registry's history, so a
+      # shallow clone won't do. A blobless one fetches only the files vcpkg reads.
+      - name: Set up vcpkg at the manifest's baseline
+        run: |
+          baseline=$(jq --raw-output '."builtin-baseline"' vcpkg.json)
+          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+
+      # Every job on one triplet builds the same binaries, since vcpkg builds the ports with the
+      # image's default compiler whatever the preset uses.
+      - name: Restore the vcpkg binary cache
+        id: cache
+        if: matrix.triplet
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /opt/vcpkg-cache
+          key: vcpkg-${{ matrix.triplet }}-${{ needs.image.outputs.tag }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          restore-keys: vcpkg-${{ matrix.triplet }}-${{ needs.image.outputs.tag }}-
+
+      - name: Configure, build and test
+        run: cmake --workflow --preset ${{ matrix.preset }}
+
+      # Only develop saves a cache, which pull requests into it then restore. The ports built
+      # before a failure are still good.
+      - name: Save the vcpkg binary cache
+        if: >-
+          !cancelled() && matrix.triplet && github.ref == 'refs/heads/develop'
+          && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /opt/vcpkg-cache
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Keep the logs of a failed job
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-${{ matrix.preset }}
+          path: |
+            build/${{ matrix.preset }}/Testing/Temporary/
+            build/${{ matrix.preset }}/junit.xml
+            build/${{ matrix.preset }}/vcpkg-manifest-install.log
+            /opt/vcpkg/buildtrees/*/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  ci:
+    name: ci
+    if: always()
+    needs: [image, linux]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Check that every job passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: echo "$RESULTS" | jq --exit-status 'all(. == "success")'

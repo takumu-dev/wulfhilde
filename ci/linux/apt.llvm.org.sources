@@ -1,0 +1,9 @@
+# Clang 23 and its tools from apt.llvm.org, signed with the key beside this file (fingerprint
+# 6084 F3CF 814B 57C1 CF12 EFD5 15CF 4D18 AF4F 7421). apt.llvm.org keeps no snapshots, so it is
+# read as it stands when the image is built.
+Types: deb
+URIs: https://apt.llvm.org/resolute/
+Suites: llvm-toolchain-resolute-23
+Components: main
+Signed-By: /etc/apt/keyrings/apt.llvm.org.asc
+Snapshot: no
