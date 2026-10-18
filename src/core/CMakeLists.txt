@@ -1,0 +1,9 @@
+wulfhilde_add_module(core
+    HEADERS
+        include/wulfhilde/core/assertion.hpp
+        include/wulfhilde/core/log_sink.hpp
+        include/wulfhilde/core/narrow.hpp
+    SOURCES
+        assertion.cpp
+        log_sink.cpp
+)
