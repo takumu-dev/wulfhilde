@@ -29,6 +29,9 @@ function(wulfhilde_target_warnings target)
             /w14905 /w14906 # a string literal cast to the wrong kind of string
             /w14928 # more than one user-defined conversion
         )
+        # MSVC deprecates standard C functions such as freopen in favour of its own _s variants,
+        # which the other standard libraries lack.
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
     else()
         target_compile_options(${target} PRIVATE
             -Wall

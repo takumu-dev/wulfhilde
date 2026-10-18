@@ -97,6 +97,9 @@ until a game installs its own with `wulfhilde::set_log_sink`.
   16.2, Clang 23 with libc++, CMake 4.4 and lavapipe, with the distro's packages as they stood on
   a fixed date. The image is public, as `ghcr.io/takumu-dev/wulfhilde-ci`, tagged with the hash
   that `ci/image-tag.sh` prints, so CI's compilers and Vulkan driver are one `docker pull` away.
+- It also runs each MSVC preset on GitHub's Windows Server 2025 image with Visual Studio 2026,
+  which the scripts in `ci/windows/` set up with MSVC 14.52, the Vulkan loader and a pinned build
+  of lavapipe.
 - The jobs fan into one check, `ci`, which `develop` and `main` require.
 
 ## Licence

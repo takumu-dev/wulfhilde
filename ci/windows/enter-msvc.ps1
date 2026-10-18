@@ -1,0 +1,52 @@
+# Sets up the job's later steps as a developer command prompt for one MSVC toolset would be: runs
+# vcvarsall.bat for x64 at that toolset, and writes the variables it sets or changes to GITHUB_ENV,
+# all but VCPKG_ROOT. The toolset's full version goes to the step's outputs as `toolset`.
+param(
+    # The MSVC toolset to set up, such as 14.52.
+    [Parameter(Mandatory)]
+    [string] $Version
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+$vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $vs) {
+    throw 'enter-msvc: no Visual Studio with the C++ tools is installed'
+}
+$vcvarsall = Join-Path $vs 'VC\Auxiliary\Build\vcvarsall.bat'
+
+$before = @{}
+Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+
+$lines = cmd /c "`"$vcvarsall`" x64 -vcvars_ver=$Version && set"
+if ($LASTEXITCODE -ne 0) {
+    $lines | Write-Output
+    throw "enter-msvc: vcvarsall.bat couldn't set up MSVC $Version"
+}
+
+$toolset = $null
+foreach ($line in $lines) {
+    if ($line -notmatch '^([^=]+)=(.*)$') {
+        continue
+    }
+    $name, $value = $Matches[1], $Matches[2]
+    if ($name -eq 'VCToolsVersion') {
+        $toolset = $value
+    }
+    # vcvarsall.bat points VCPKG_ROOT at the vcpkg Visual Studio bundles, over the job's own.
+    if ($name -eq 'VCPKG_ROOT') {
+        continue
+    }
+    # The names of environment variables don't depend on case on Windows, and neither does
+    # this table's lookup.
+    if (-not $before.ContainsKey($name) -or $before[$name] -cne $value) {
+        Add-Content -Path $env:GITHUB_ENV -Value "$name=$value"
+    }
+}
+if (-not $toolset) {
+    throw "enter-msvc: vcvarsall.bat set up no MSVC toolset for $Version"
+}
+Add-Content -Path $env:GITHUB_OUTPUT -Value "toolset=$toolset"
+Write-Output "enter-msvc: MSVC $toolset, from $vs"

@@ -4,7 +4,8 @@
 # every other job has.
 #
 # Every Linux job runs in the image built from ci/linux/, which the first job builds and pushes
-# when its tag is missing.
+# when its tag is missing. Every Windows job runs on GitHub's own image, which the scripts in
+# ci/windows/ set up with MSVC and lavapipe.
 name: ci
 
 on:
@@ -149,10 +150,129 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  windows:
+    name: ${{ matrix.preset }}
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { preset: msvc-debug, triplet: x64-windows-static-md }
+          - { preset: msvc-release, triplet: x64-windows-static-md }
+          - { preset: msvc-asan, triplet: x64-windows-asan }
+          # Without the tests feature, it installs only ports that msvc-debug and msvc-release
+          # install too, so it restores their cache but never saves one.
+          - { preset: msvc-noexcept, triplet: x64-windows-static-md, restore-only: true }
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      MSVC_VERSION: "14.52"
+      # The image's own clone of vcpkg, which the job moves to the manifest's baseline.
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # MSVC 14.52 goes stable with Visual Studio 18.12 in November 2026. Until the image carries
+      # it, the job installs the preview toolset beside the image's own. Once it does, this step
+      # warns that it can be deleted.
+      - name: Install the MSVC preview toolset
+        run: |
+          $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
+          $vs = & "$installer\vswhere.exe" -latest -property installationPath
+          if (-not $vs) {
+            throw 'No Visual Studio is installed'
+          }
+          if (Test-Path "$vs\VC\Tools\MSVC\$env:MSVC_VERSION.*") {
+            echo "::warning::The image carries MSVC $env:MSVC_VERSION, so the preview toolset's step can go."
+            exit 0
+          }
+          $arguments = @(
+            'modify', '--installPath', "`"$vs`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.Preview.Tools.x86.x64',
+            '--quiet', '--norestart', '--nocache'
+          )
+          $setup = Start-Process -FilePath "$installer\vs_installer.exe" -ArgumentList $arguments -Wait -PassThru
+          if ($setup.ExitCode -notin 0, 3010) {
+            throw "The Visual Studio installer failed with $($setup.ExitCode)"
+          }
+
+      - name: Install the Vulkan loader and lavapipe
+        run: ci/windows/install-vulkan.ps1
+
+      - name: Set up MSVC ${{ env.MSVC_VERSION }}
+        id: msvc
+        run: ci/windows/enter-msvc.ps1 -Version $env:MSVC_VERSION
+
+      - name: Check that the runner keeps the promises the build relies on
+        run: ci/windows/check-runner.ps1 -MsvcVersion $env:MSVC_VERSION
+
+      # vcpkg reads each port's version with git in an environment of its own, which on Windows
+      # holds nothing else, so git can't reach the network for a blob a partial clone lacks. The
+      # image's clone is a full one, and fetching brings in a baseline newer than the image.
+      - name: Set up vcpkg at the manifest's baseline
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $baseline = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'builtin-baseline'
+          if (-not $baseline) {
+            throw 'vcpkg.json names no builtin-baseline'
+          }
+          git -C $env:VCPKG_ROOT fetch --quiet origin
+          git -C $env:VCPKG_ROOT checkout --quiet $baseline
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+
+      # As on Linux, the triplet chooses how the ports are built, and here the toolset builds them,
+      # so a new toolset starts a new cache.
+      - name: Restore the vcpkg binary cache
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ matrix.triplet }}-${{ steps.msvc.outputs.toolset }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          restore-keys: vcpkg-${{ matrix.triplet }}-${{ steps.msvc.outputs.toolset }}-
+
+      - name: Configure, build and test
+        run: cmake --workflow --preset ${{ matrix.preset }}
+
+      - name: Save the vcpkg binary cache
+        if: >-
+          success() && !matrix.restore-only && steps.cache.outputs.cache-hit != 'true'
+          && (github.event_name == 'schedule'
+            || (github.event_name == 'push' && github.ref == 'refs/heads/develop'))
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Keep the logs of a failed job
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-${{ matrix.preset }}
+          path: |
+            build/${{ matrix.preset }}/Testing/Temporary/
+            build/${{ matrix.preset }}/junit.xml
+            build/${{ matrix.preset }}/vcpkg-manifest-install.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # The files of one artifact must share a root, and vcpkg's are on another drive.
+      - name: Keep vcpkg's logs of a failed job
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vcpkg-logs-${{ matrix.preset }}
+          path: ${{ env.VCPKG_ROOT }}/buildtrees/*/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+
   ci:
     name: ci
     if: always()
-    needs: [image, linux]
+    needs: [image, linux, windows]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
