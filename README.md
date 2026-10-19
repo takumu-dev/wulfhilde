@@ -9,14 +9,16 @@ wulfhilde is a library for games built from sectors joined by portals, in the ma
 engine: stacked sectors, sectors that share the same space, and spaces bigger inside than out. A
 game links the modules it needs and keeps `main` and its frame loop to itself.
 
-It is at an early stage. Today it holds `core`, the package a game builds against, and
-`wulfhilde-viewer`, the map-preview tool, which so far only prints its usage.
+It is at an early stage. Today it holds two modules, `core` and `world`, which a game builds
+against as a package or a subproject, and `wulfhilde-viewer`, the map-preview tool, which so far
+only prints its usage.
 
 ## Modules
 
 | Module | Links | Holds |
 |---|---|---|
 | `core` | | checks of preconditions and their handler, the log sink, the checked `narrow`, typed IDs, and the math types: vectors, matrices, rotations, rigid transforms, angles, colours and planes |
+| `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, and asked whether a location is in its sector, the heights there and where a trace stops. It opens no files |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
 `<wulfhilde/<module>/...>`. The umbrella target `wulfhilde::wulfhilde` links them all.

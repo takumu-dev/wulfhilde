@@ -77,9 +77,14 @@ wulfhilde_target_warnings(wulfhilde_precondition_main)
 # Adds a test that a precondition fires. A failed check ends the process, so each such test is a
 # program of its own, which CTest expects to fail. The source defines break_precondition() from
 # support/precondition_test.hpp.
+#
+#   SOURCE     the program's one source file
+#   LIBRARIES  what the program links besides core
 function(wulfhilde_add_precondition_test module name)
-    cmake_parse_arguments(PARSE_ARGV 2 arg "" "SOURCE" "")
-    wulfhilde_add_test_program(target ${module} ${arg_SOURCE} wulfhilde_precondition_main)
+    cmake_parse_arguments(PARSE_ARGV 2 arg "" "SOURCE" "LIBRARIES")
+    wulfhilde_add_test_program(target ${module} ${arg_SOURCE}
+        wulfhilde_precondition_main ${arg_LIBRARIES}
+    )
     set(test_name "${module}: ${name}")
     add_test(NAME "${test_name}" COMMAND ${target})
     set_tests_properties("${test_name}" PROPERTIES LABELS unit WILL_FAIL TRUE)
@@ -88,6 +93,7 @@ endfunction()
 add_subdirectory(cmake)
 add_subdirectory(consumers)
 add_subdirectory(core)
+add_subdirectory(world)
 
 if(WULFHILDE_BUILD_VIEWER)
     add_subdirectory(viewer)
