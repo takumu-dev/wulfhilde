@@ -1,0 +1,2 @@
+unknown_member_twice.map.json:7:31: a floor has no member "rotaton" (/sectors/0/floor/rotaton)
+unknown_member_twice.map.json:7:46: the floor has "rotaton" already, on line 7 (/sectors/0/floor/rotaton)

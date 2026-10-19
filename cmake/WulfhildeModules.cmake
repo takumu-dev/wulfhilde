@@ -6,14 +6,17 @@ include_guard(GLOBAL)
 
 # Adds the module `name` as the static library wulfhilde::<name>.
 #
-#   HEADERS  its public headers, under include/wulfhilde/<name>/
-#   SOURCES  its sources and private headers
-#   DEPENDS  the other modules it links, by name
+#   HEADERS   its public headers, under include/wulfhilde/<name>/
+#   SOURCES   its sources and private headers
+#   DEPENDS   the other modules it links, by name, each added before it
+#   PACKAGES  the third-party packages it links privately, which the module links itself, and which
+#             the installed package finds before it loads the module, since a static library's
+#             users link them too
 #
 # A module includes only the headers of the modules it links, since each public include tree comes
 # only with its library.
 function(wulfhilde_add_module name)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "HEADERS;SOURCES;DEPENDS")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "HEADERS;SOURCES;DEPENDS;PACKAGES")
     set(target wulfhilde_${name})
 
     add_library(${target} STATIC)
@@ -24,6 +27,9 @@ function(wulfhilde_add_module name)
     )
     target_compile_features(${target} PUBLIC cxx_std_23)
     foreach(dependency IN LISTS arg_DEPENDS)
+        if(NOT TARGET wulfhilde::${dependency})
+            message(FATAL_ERROR "The ${name} module links ${dependency}, which isn't added yet.")
+        endif()
         target_link_libraries(${target} PUBLIC wulfhilde::${dependency})
     endforeach()
     set_target_properties(${target} PROPERTIES EXPORT_NAME ${name})
@@ -32,4 +38,5 @@ function(wulfhilde_add_module name)
     target_link_libraries(wulfhilde INTERFACE ${target})
     set_property(GLOBAL APPEND PROPERTY WULFHILDE_MODULES ${name})
     set_property(GLOBAL PROPERTY WULFHILDE_${name}_DEPENDS ${arg_DEPENDS})
+    set_property(GLOBAL PROPERTY WULFHILDE_${name}_PACKAGES ${arg_PACKAGES})
 endfunction()

@@ -1,18 +1,33 @@
 # The wulfhilde package. `find_package(wulfhilde)` loads every module and the umbrella target
 # wulfhilde::wulfhilde; `find_package(wulfhilde COMPONENTS ...)` loads only the modules named, as
-# wulfhilde::<module>, with the modules they link.
+# wulfhilde::<module>, with the modules they link. A module that links a third-party package, as
+# assets links pedantjson, finds that package first, through its own package config.
 
 @PACKAGE_INIT@
 
 set(_wulfhilde_modules @WULFHILDE_MODULES@)
 @WULFHILDE_MODULE_DEPENDENCIES@
-# Loads a module's targets after those of the modules it links, which they refer to.
+# Loads a module's targets after those of the modules and the packages it links, which they refer
+# to. A module whose package can't be found isn't loaded, and neither is any module that links it;
+# the package is named in the global property _wulfhilde_missing.
 function(_wulfhilde_load module)
     if(TARGET wulfhilde::${module})
         return()
     endif()
     foreach(dependency IN LISTS _wulfhilde_${module}_dependencies)
         _wulfhilde_load(${dependency})
+        if(NOT TARGET wulfhilde::${dependency})
+            return()
+        endif()
+    endforeach()
+    foreach(package IN LISTS _wulfhilde_${module}_packages)
+        find_package(${package} CONFIG QUIET)
+        if(NOT ${package}_FOUND)
+            set_property(GLOBAL APPEND PROPERTY _wulfhilde_missing
+                "the ${module} module links ${package}, which wasn't found"
+            )
+            return()
+        endif()
     endforeach()
     include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/wulfhilde-${module}-targets.cmake")
 endfunction()
@@ -26,7 +41,13 @@ endif()
 foreach(_wulfhilde_module IN LISTS _wulfhilde_wanted)
     if(_wulfhilde_module IN_LIST _wulfhilde_modules)
         _wulfhilde_load(${_wulfhilde_module})
-        set(wulfhilde_${_wulfhilde_module}_FOUND TRUE)
+        if(TARGET wulfhilde::${_wulfhilde_module})
+            set(wulfhilde_${_wulfhilde_module}_FOUND TRUE)
+        else()
+            set(wulfhilde_${_wulfhilde_module}_FOUND FALSE)
+            get_property(_wulfhilde_missing GLOBAL PROPERTY _wulfhilde_missing)
+            list(JOIN _wulfhilde_missing "; " wulfhilde_NOT_FOUND_MESSAGE)
+        endif()
     else()
         set(wulfhilde_${_wulfhilde_module}_FOUND FALSE)
         if(wulfhilde_FIND_REQUIRED_${_wulfhilde_module})
@@ -38,8 +59,16 @@ foreach(_wulfhilde_module IN LISTS _wulfhilde_wanted)
     endif()
 endforeach()
 
-if(NOT wulfhilde_FIND_COMPONENTS AND NOT TARGET wulfhilde::wulfhilde)
-    include("${CMAKE_CURRENT_LIST_DIR}/wulfhilde-targets.cmake")
+# The umbrella target links every module, so it needs every one of them loaded.
+if(NOT wulfhilde_FIND_COMPONENTS)
+    get_property(_wulfhilde_missing GLOBAL PROPERTY _wulfhilde_missing)
+    if(_wulfhilde_missing)
+        set(wulfhilde_FOUND FALSE)
+        return()
+    endif()
+    if(NOT TARGET wulfhilde::wulfhilde)
+        include("${CMAKE_CURRENT_LIST_DIR}/wulfhilde-targets.cmake")
+    endif()
 endif()
 
 check_required_components(wulfhilde)

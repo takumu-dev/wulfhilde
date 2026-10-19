@@ -94,6 +94,7 @@ add_subdirectory(cmake)
 add_subdirectory(consumers)
 add_subdirectory(core)
 add_subdirectory(world)
+add_subdirectory(assets)
 
 if(WULFHILDE_BUILD_VIEWER)
     add_subdirectory(viewer)

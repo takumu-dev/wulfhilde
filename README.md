@@ -9,9 +9,9 @@ wulfhilde is a library for games built from sectors joined by portals, in the ma
 engine: stacked sectors, sectors that share the same space, and spaces bigger inside than out. A
 game links the modules it needs and keeps `main` and its frame loop to itself.
 
-It is at an early stage. Today it holds two modules, `core` and `world`, which a game builds
-against as a package or a subproject, and `wulfhilde-viewer`, the map-preview tool, which so far
-only prints its usage.
+It is at an early stage. Today it holds three modules, `core`, `world` and `assets`, which a game
+builds against as a package or a subproject, and `wulfhilde-viewer`, the map-preview tool, which so
+far loads a map and reports every problem in it.
 
 ## Modules
 
@@ -19,9 +19,31 @@ only prints its usage.
 |---|---|---|
 | `core` | | checks of preconditions and their handler, the log sink, the checked `narrow`, typed IDs, and the math types: vectors, matrices, rotations, rigid transforms, angles, colours and planes |
 | `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, and asked whether a location is in its sector, the heights there and where a trace stops. It opens no files |
+| `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file, with every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
 `<wulfhilde/<module>/...>`. The umbrella target `wulfhilde::wulfhilde` links them all.
+
+## Writing maps
+
+A map is a strict JSON file ending `.map.json`, written by hand, in a content root: a directory
+that holds the map and the assets it uses, which asset paths name relative to it, without their
+extensions. `schema/map.schema.json` is the map's JSON Schema, installed under
+`share/wulfhilde/schema/`, so an editor can check and complete a map as it is written. Point the
+map's `$schema` at it, as the maps in `tests/content/` do, or tell the editor to use it for every
+`*.map.json`.
+
+The viewer opens a map's file, with the content root defaulting to the file's own directory:
+
+```sh
+wulfhilde-viewer tests/content/sectors.map.json
+wulfhilde-viewer content/maps/e1m1.map.json --content content
+```
+
+A map with mistakes in it has every problem of the first phase that finds any reported, each as
+`file:line:column: message (pointer)`, a form that terminals and editors link to. The phases are
+the file's syntax, then its structure, then the map's own rules, so no problem is a knock-on of
+another.
 
 ## Requirements
 
@@ -46,7 +68,7 @@ cmake --workflow --preset gcc-debug
 | `libcxx-debug`, `libcxx-release` | Clang with libc++ |
 | `sanitize` | Clang with AddressSanitizer and UndefinedBehaviorSanitizer |
 | `tidy` | Clang, with `clang-tidy` run on every source |
-| `lint` | the formatting and documentation checks |
+| `lint` | the formatting, documentation and map schema checks |
 | `msvc-debug`, `msvc-release`, `msvc-asan`, `msvc-noexcept` | MSVC, from a developer command prompt |
 
 Warnings are errors in every preset. Machine-specific settings, such as a compiler under another
@@ -58,7 +80,9 @@ use for example `ctest --preset gcc-debug -L unit`.
 ## Using the engine in a game
 
 The engine's build only finds its dependencies with `find_package`, and never downloads anything,
-so a game can supply them through vcpkg, Conan, system packages or builds of its own.
+so a game can supply them through vcpkg, Conan, system packages or builds of its own. So far there
+is one, [pedantjson](https://github.com/takumu-dev/pedantjson), which the `assets` module links and
+finds with `find_package(pedantjson CONFIG)`.
 
 As an installed package, for every module and the umbrella target:
 
@@ -94,8 +118,9 @@ until a game installs its own with `wulfhilde::set_log_sink`.
 ## Working on the engine
 
 - `CODING_STANDARDS.md` says how the code is written, tested and committed.
-- `cmake --workflow --preset lint` checks the formatting with `clang-format` and the documentation
-  with Doxygen. Building the `format` target reformats every source.
+- `cmake --workflow --preset lint` checks the formatting with `clang-format`, the documentation
+  with Doxygen, and the map schema with `check-jsonschema` against the maps of the tests. Building
+  the `format` target reformats every source.
 - Every public declaration has a Doxygen comment. Doxygen writes the reference to `build/docs`.
 - Tests come first, through the public interfaces only, under `tests/`, which mirrors `src/` and
   `apps/`. `tests/consumers/` builds a small game against the installed package and as a
@@ -112,6 +137,9 @@ until a game installs its own with `wulfhilde::set_log_sink`.
   allowlist in `cmake/licenses.json`, and stops on any it doesn't cover. A port whose licence vcpkg
   doesn't know takes an override there, pinned to the version reviewed, so that an update to the
   port stops the configuration until its licence is reviewed again.
+- pedantjson, the strict JSON reader that reads maps, comes from the overlay port in
+  `ports/pedantjson/`, a copy of the port in [pedantjson's repository](https://github.com/takumu-dev/pedantjson),
+  until vcpkg's registry has it.
 - `THIRD_PARTY_NOTICES.md` lists the ports that ship with the engine: the manifest's default
   dependencies and what they depend on, without build tools or the tests' dependencies. After a
   change to them, build the `notices` target of the `gcc-release` preset to write it again; that

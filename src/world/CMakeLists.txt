@@ -1,6 +1,7 @@
 wulfhilde_add_module(world
     HEADERS
         include/wulfhilde/world/ambient_light.hpp
+        include/wulfhilde/world/asset_path.hpp
         include/wulfhilde/world/ids.hpp
         include/wulfhilde/world/location.hpp
         include/wulfhilde/world/map.hpp
@@ -11,9 +12,11 @@ wulfhilde_add_module(world
         include/wulfhilde/world/start_position.hpp
         include/wulfhilde/world/surface.hpp
         include/wulfhilde/world/surface_ref.hpp
+        include/wulfhilde/world/text_position.hpp
         include/wulfhilde/world/trace.hpp
         include/wulfhilde/world/wall.hpp
     SOURCES
+        asset_path.cpp
         map.cpp
         map_checks.cpp
         map_checks.hpp

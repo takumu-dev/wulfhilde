@@ -125,13 +125,17 @@ TEST_CASE("a sector's ambient light is its own, or else the map's, or else black
     CHECK(make_map(description).sector(SectorId{1}).ambient == candlelight);
 }
 
-TEST_CASE("the map and its sectors keep their properties, which the engine ignores", "[world]") {
+TEST_CASE("the map, its sectors and its walls keep their properties, which the engine ignores",
+          "[world]") {
     auto description = hall_map();
     description.properties = R"({"music": "calm", "par": [3, 45]})";
     description.sectors.at(0).properties = R"({"secret": true})";
+    description.sectors.at(0).loops.at(0).at(2).properties = R"({"switch": "lights"})";
     const auto map = make_map(description);
     CHECK(map.properties() == R"({"music": "calm", "par": [3, 45]})");
     CHECK(map.sector(SectorId{0}).properties == R"({"secret": true})");
+    CHECK(map.wall(WallId{2}).properties == R"({"switch": "lights"})");
+    CHECK(map.wall(WallId{1}).properties.empty());
 
     CHECK(make_map(hall_map()).properties().empty());
 }

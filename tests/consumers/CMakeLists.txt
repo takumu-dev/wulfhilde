@@ -23,16 +23,32 @@ set_tests_properties("consumers: the installed README's images are installed bes
     LABELS unit
 )
 
+add_test(NAME "consumers: the map schema is installed, for the editors of those who write maps"
+    COMMAND "${CMAKE_COMMAND}" -E compare_files
+        "${PROJECT_SOURCE_DIR}/schema/map.schema.json"
+        "${prefix}/${CMAKE_INSTALL_DATADIR}/wulfhilde/schema/map.schema.json"
+)
+set_tests_properties("consumers: the map schema is installed, for the editors of those who write maps"
+    PROPERTIES
+        FIXTURES_REQUIRED wulfhilde_installed
+        LABELS unit
+)
+
 # Adds a test that builds the consumer project in `source_dir` and runs the program it builds.
+# The consumer finds the third-party packages the engine links where this build found them.
 #
 #   OPTIONS            more cache settings for the consumer
 #   INSTALLED          the consumer needs the installed engine
+#   WITHOUT_PACKAGES   the consumer isn't told where the third-party packages are
 #   FAILS_MATCHING     the consumer must fail to configure, with output matching this
 function(wulfhilde_add_consumer_test name source_dir)
-    cmake_parse_arguments(PARSE_ARGV 2 arg "INSTALLED" "FAILS_MATCHING" "OPTIONS")
+    cmake_parse_arguments(PARSE_ARGV 2 arg "INSTALLED;WITHOUT_PACKAGES" "FAILS_MATCHING" "OPTIONS")
     set(test_name "consumers: ${name}")
     if(arg_INSTALLED)
         list(APPEND arg_OPTIONS "-DCMAKE_PREFIX_PATH=${prefix}")
+    endif()
+    if(NOT arg_WITHOUT_PACKAGES)
+        list(APPEND arg_OPTIONS "-Dpedantjson_DIR=${pedantjson_DIR}")
     endif()
     string(MAKE_C_IDENTIFIER "${name}" binary_dir)
     add_test(NAME "${test_name}"
@@ -62,15 +78,26 @@ endfunction()
 wulfhilde_add_consumer_test("a game links the installed engine through the umbrella target" installed
     INSTALLED
 )
-# world is a subset that needs core, which comes with it.
+# assets is a subset that needs world and core, which come with it, and pedantjson.
 wulfhilde_add_consumer_test("a game links a subset of the installed engine's modules" installed
     INSTALLED
-    OPTIONS -DWULFHILDE_COMPONENTS=world
+    OPTIONS -DWULFHILDE_COMPONENTS=assets
 )
 wulfhilde_add_consumer_test("a game asking for a module the engine lacks is told so" installed
     INSTALLED
     OPTIONS -DWULFHILDE_COMPONENTS=core$<SEMICOLON>flight
-    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world"
+    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world, assets"
+)
+wulfhilde_add_consumer_test("a game without a package that a module links is told which" installed
+    INSTALLED
+    WITHOUT_PACKAGES
+    OPTIONS -DWULFHILDE_COMPONENTS=assets
+    FAILS_MATCHING "the assets module links pedantjson, which wasn't found"
+)
+wulfhilde_add_consumer_test("a game without a package that a module links can't have the whole engine" installed
+    INSTALLED
+    WITHOUT_PACKAGES
+    FAILS_MATCHING "the assets module links pedantjson, which wasn't found"
 )
 wulfhilde_add_consumer_test("a game builds the engine as a subproject" subproject
     OPTIONS "-DWULFHILDE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"

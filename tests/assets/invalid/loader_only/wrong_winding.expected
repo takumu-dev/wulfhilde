@@ -1,0 +1,1 @@
+loader_only/wrong_winding.map.json:10:9: the outer loop runs clockwise seen from above, but must run anticlockwise (/sectors/0/loops/0)

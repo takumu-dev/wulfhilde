@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <filesystem>
 #include <format>
 #include <span>
 #include <string>
@@ -13,11 +14,26 @@ namespace viewer {
 struct CommandLine {
     /// Whether to print the usage and exit.
     bool help = false;
+
+    /// The map's file, as the command line names it.
+    std::filesystem::path map{};
+
+    /// The content root that holds the map: the directory `--content` names, or else the map
+    /// file's own.
+    std::filesystem::path content{};
+
+    /// The map's asset path in its content root.
+    std::string map_asset_path{};
 };
 
 /// What kind of mistake makes a command line one the viewer can't follow.
 enum class UsageErrorCode : std::uint8_t {
-    unknown_argument, ///< An argument the viewer doesn't know.
+    unknown_argument,    ///< An argument the viewer doesn't know.
+    missing_value,       ///< An option without the value that must follow it.
+    missing_map,         ///< No map file to open.
+    extra_argument,      ///< A second map file, or a second content root.
+    not_a_map_file,      ///< A map file whose name doesn't end in `.map.json`.
+    map_outside_content, ///< A map file that isn't in its content root.
 };
 
 /// A command line the viewer can't follow.
@@ -33,6 +49,10 @@ struct UsageError {
 [[nodiscard]] std::string_view usage() noexcept;
 
 /// Reads the arguments that follow the program's name.
+///
+/// The map file must lie in its content root, which this works out from the two paths alone,
+/// without looking at the filesystem, so a path through a symbolic link counts as the path it is
+/// written as.
 ///
 /// \param arguments The arguments, in order.
 /// \return What they ask for, or what is wrong with them.

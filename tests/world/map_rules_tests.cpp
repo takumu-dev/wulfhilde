@@ -1,6 +1,7 @@
 // Each rule a map's description must keep, broken once in a valid description.
 #include "descriptions.hpp"
 #include "world_printing.hpp" // IWYU pragma: keep
+#include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
@@ -13,6 +14,7 @@
 #include <string>
 #include <vector>
 
+using wulfhilde::AmbientLight;
 using wulfhilde::MapDescription;
 using wulfhilde::MapProblemCode;
 
@@ -336,4 +338,51 @@ TEST_CASE("every problem in a description is found at once, sector by sector", "
               {MapProblemCode::unknown_sector, "/start/sector"},
               {MapProblemCode::coordinate_out_of_range, "/start/point/2"},
           });
+}
+
+TEST_CASE("an ambient light's colour is a problem at each component outside 0 to 1", "[world]") {
+    auto description = hall_map();
+    description.ambient = AmbientLight{.color = {.r = 1.5F, .g = 0.5F, .b = -0.25F}, .lux = 10.0F};
+    description.sectors.at(0).ambient = AmbientLight{
+        .color = {.r = 0.0F, .g = std::numeric_limits<float>::quiet_NaN(), .b = 1.0F},
+        .lux = 10.0F,
+    };
+
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{
+              {MapProblemCode::color_out_of_range, "/ambient/color/0"},
+              {MapProblemCode::color_out_of_range, "/ambient/color/2"},
+              {MapProblemCode::color_out_of_range, "/sectors/0/ambient/color/1"},
+          });
+    description.sectors.at(0).ambient.reset();
+    description.ambient->color.b = 1.0F;
+    CHECK(only_problem_in(description).message ==
+          "1.5 is outside a colour component's range, 0 to 1");
+}
+
+TEST_CASE("an ambient light's lux is a problem below 0, or if it isn't a finite number",
+          "[world]") {
+    for (const float lux :
+         {-0.5F, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+        CAPTURE(lux);
+        auto description = hall_map();
+        description.sectors.at(0).ambient = AmbientLight{.color = {.r = 1.0F}, .lux = lux};
+
+        CHECK(problems_in(description) ==
+              std::vector<Problem>{
+                  {MapProblemCode::light_level_out_of_range, "/sectors/0/ambient/lux"},
+              });
+    }
+    auto description = hall_map();
+    description.ambient = AmbientLight{.color = {.r = 1.0F}, .lux = -0.5F};
+    CHECK(only_problem_in(description).message ==
+          "-0.5 lux isn't a light level, which is 0 or more");
+}
+
+TEST_CASE("an ambient light may be black, white, and of no lux at all", "[world]") {
+    auto description = hall_map();
+    description.ambient = AmbientLight{.color = {.r = 1.0F, .g = 1.0F, .b = 1.0F}, .lux = 0.0F};
+    description.sectors.at(0).ambient = AmbientLight{.lux = 1e5F};
+
+    CHECK(problems_in(description).empty());
 }

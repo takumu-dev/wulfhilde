@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wulfhilde map",
+  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, sector ids that repeat, and references to sectors that don't exist.",
+  "type": "object",
+  "required": ["format", "version", "sectors", "start"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "description": "The schema that an editor checks the file against. The engine ignores it.",
+      "type": "string"
+    },
+    "format": {
+      "description": "What the file is: a wulfhilde map.",
+      "const": "wulfhilde-map"
+    },
+    "version": {
+      "description": "The version of the map format the file is written in. This version of the engine reads version 1 only.",
+      "const": 1
+    },
+    "ambient": {
+      "description": "The ambient light of every sector that doesn't set its own. Without it, ambient light is black.",
+      "$ref": "#/$defs/ambientLight"
+    },
+    "sectors": {
+      "description": "The map's sectors.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/sector" }
+    },
+    "start": {
+      "description": "Where the player is placed when the map loads, and which way they face.",
+      "$ref": "#/$defs/startPosition"
+    },
+    "properties": { "$ref": "#/$defs/properties" }
+  },
+  "$defs": {
+    "number": {
+      "description": "A number within the range the engine reads numbers in, that of a single-precision float.",
+      "type": "number",
+      "exclusiveMinimum": -3.4028235677973366e38,
+      "exclusiveMaximum": 3.4028235677973366e38
+    },
+    "coordinate": {
+      "description": "A coordinate, in metres.",
+      "type": "number",
+      "minimum": -4096,
+      "maximum": 4096
+    },
+    "angle": {
+      "description": "An angle, in degrees.",
+      "$ref": "#/$defs/number"
+    },
+    "planPoint": {
+      "description": "A point seen from above, [x, y], in metres.",
+      "type": "array",
+      "prefixItems": [{ "$ref": "#/$defs/coordinate" }, { "$ref": "#/$defs/coordinate" }],
+      "items": false,
+      "minItems": 2
+    },
+    "point": {
+      "description": "A point, [x, y, z], in metres.",
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/coordinate" },
+        { "$ref": "#/$defs/coordinate" },
+        { "$ref": "#/$defs/coordinate" }
+      ],
+      "items": false,
+      "minItems": 3
+    },
+    "pair": {
+      "type": "array",
+      "prefixItems": [{ "$ref": "#/$defs/number" }, { "$ref": "#/$defs/number" }],
+      "items": false,
+      "minItems": 2
+    },
+    "assetPath": {
+      "description": "The asset path of an asset: its file's path under the content root, in /-separated segments of a-z, 0-9, _ and -, without the extension that the kind of asset supplies.",
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+(/[a-z0-9_-]+)*$"
+    },
+    "color": {
+      "description": "A colour in linear Rec.709, [r, g, b], each component from 0 to 1.",
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 }
+      ],
+      "items": false,
+      "minItems": 3
+    },
+    "properties": {
+      "description": "Game-defined data, which the engine keeps and ignores.",
+      "type": "object"
+    },
+    "ambientLight": {
+      "description": "Light that arrives equally from every direction, the same everywhere in a sector, on top of any lights.",
+      "type": "object",
+      "required": ["color", "lux"],
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "description": "The light's colour, which filters white.",
+          "$ref": "#/$defs/color"
+        },
+        "lux": {
+          "description": "The illuminance the light gives a surface facing any way, in lux.",
+          "$ref": "#/$defs/number",
+          "minimum": 0
+        }
+      }
+    },
+    "materialPath": {
+      "description": "The asset path of the material that covers the surface, a file ending .material.json under the content root.",
+      "$ref": "#/$defs/assetPath"
+    },
+    "offset": {
+      "description": "How far the material is moved along u and v, in metres. Defaults to [0, 0].",
+      "$ref": "#/$defs/pair"
+    },
+    "scale": {
+      "description": "What the material's real-world size is multiplied by, along u and v. Defaults to [1, 1].",
+      "$ref": "#/$defs/pair"
+    },
+    "rotation": {
+      "description": "How far the material is turned in the surface's plane, in degrees. Defaults to 0.",
+      "$ref": "#/$defs/angle"
+    },
+    "surface": {
+      "description": "The material that covers a wall, and how it lies on it: u runs along the wall from its start, and v is height.",
+      "type": "object",
+      "required": ["material"],
+      "additionalProperties": false,
+      "properties": {
+        "material": { "$ref": "#/$defs/materialPath" },
+        "offset": { "$ref": "#/$defs/offset" },
+        "scale": { "$ref": "#/$defs/scale" },
+        "rotation": { "$ref": "#/$defs/rotation" }
+      }
+    },
+    "floorOrCeiling": {
+      "description": "A sector's floor or ceiling: the height it lies at, and the material that covers it, with u and v along X and Y.",
+      "type": "object",
+      "required": ["height", "material"],
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "description": "The height it lies at, in metres.",
+          "$ref": "#/$defs/coordinate"
+        },
+        "material": { "$ref": "#/$defs/materialPath" },
+        "offset": { "$ref": "#/$defs/offset" },
+        "scale": { "$ref": "#/$defs/scale" },
+        "rotation": { "$ref": "#/$defs/rotation" }
+      }
+    },
+    "wall": {
+      "description": "A wall, which runs from its own start to the start of the next wall in its loop, the last wall to the first, and stands from the sector's floor to its ceiling.",
+      "type": "object",
+      "required": ["start", "surface"],
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "description": "Where the wall starts, seen from above.",
+          "$ref": "#/$defs/planPoint"
+        },
+        "surface": { "$ref": "#/$defs/surface" },
+        "properties": { "$ref": "#/$defs/properties" }
+      }
+    },
+    "sector": {
+      "description": "A region bounded by a loop of walls, with a floor below and a ceiling above. Sectors may share the same space.",
+      "type": "object",
+      "required": ["id", "floor", "ceiling", "loops"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "The sector's name, unique in the map, by which the start position refers to it.",
+          "type": "string"
+        },
+        "floor": { "$ref": "#/$defs/floorOrCeiling" },
+        "ceiling": { "$ref": "#/$defs/floorOrCeiling" },
+        "ambient": {
+          "description": "The sector's own ambient light, in place of the map's.",
+          "$ref": "#/$defs/ambientLight"
+        },
+        "loops": {
+          "description": "The sector's loops of walls. This version of the engine takes one, the outer loop, which runs anticlockwise seen from above and doesn't cross itself. It may be concave.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/wall" },
+            "minItems": 3
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "properties": { "$ref": "#/$defs/properties" }
+      }
+    },
+    "startPosition": {
+      "type": "object",
+      "required": ["sector", "point", "yaw"],
+      "additionalProperties": false,
+      "properties": {
+        "sector": {
+          "description": "The id of the sector the player starts in.",
+          "type": "string"
+        },
+        "point": {
+          "description": "Where the player's feet are, in the sector's coordinates.",
+          "$ref": "#/$defs/point"
+        },
+        "yaw": {
+          "description": "How far the player's facing turns left from +X, anticlockwise seen from above, in degrees.",
+          "$ref": "#/$defs/angle"
+        },
+        "pitch": {
+          "description": "How far the player's facing tilts up from the horizontal, in degrees. Defaults to 0.",
+          "$ref": "#/$defs/angle"
+        }
+      }
+    }
+  }
+}

@@ -10,8 +10,9 @@ namespace wulfhilde::detail {
 /// Checks a description against every rule a map must keep.
 ///
 /// \param description The description.
-/// \return Every problem in it, sector by sector in the description's order and then the start
-///         position's, or nothing if a map can be made from it.
+/// \return Every problem in it, the map's ambient light's first, then sector by sector in the
+///         description's order, and then the start position's, or nothing if a map can be made
+///         from it.
 [[nodiscard]] std::vector<MapProblem> find_problems(const MapDescription& description);
 
 } // namespace wulfhilde::detail

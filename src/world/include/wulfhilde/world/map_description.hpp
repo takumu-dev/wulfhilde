@@ -41,6 +41,10 @@ struct WallDescription {
 
     /// The wall's surface, from the sector's floor to its ceiling.
     SurfaceDescription surface{};
+
+    /// Game-defined data that the engine keeps and ignores: the JSON text of an object, or empty
+    /// for none.
+    std::string properties{};
 };
 
 /// A sector's floor or ceiling: the height it lies at, and what covers it.

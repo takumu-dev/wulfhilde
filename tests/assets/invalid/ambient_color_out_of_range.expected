@@ -1,0 +1,1 @@
+ambient_color_out_of_range.map.json:4:29: 1.25 is outside a colour component's range, 0 to 1 (/ambient/color/1)

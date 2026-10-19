@@ -152,8 +152,8 @@
     {
       "name": "lint",
       "inherits": ["gcc", "debug"],
-      "displayName": "Formatting and documentation",
-      "description": "Checks the formatting with clang-format and the documentation with Doxygen, building nothing else.",
+      "displayName": "Formatting, documentation and the map schema",
+      "description": "Checks the formatting with clang-format, the documentation with Doxygen and the map schema with check-jsonschema, building nothing else.",
       "cacheVariables": {
         "VCPKG_MANIFEST_FEATURES": "",
         "WULFHILDE_BUILD_TESTS": false
@@ -204,7 +204,7 @@
     { "name": "libcxx-release", "configurePreset": "libcxx-release" },
     { "name": "sanitize", "configurePreset": "sanitize" },
     { "name": "tidy", "configurePreset": "tidy" },
-    { "name": "lint", "configurePreset": "lint", "targets": ["check-format", "docs"] },
+    { "name": "lint", "configurePreset": "lint", "targets": ["check-format", "docs", "check-schema"] },
     { "name": "msvc-debug", "configurePreset": "msvc-debug" },
     { "name": "msvc-release", "configurePreset": "msvc-release" },
     { "name": "msvc-asan", "configurePreset": "msvc-asan" },

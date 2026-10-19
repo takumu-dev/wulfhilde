@@ -1,0 +1,4 @@
+several_problems.map.json:4:12: the start position has no "yaw", which it must have (/start)
+several_problems.map.json:9:18: the ceiling has no "height", which it must have (/sectors/0/ceiling)
+several_problems.map.json:9:20: a ceiling has no member "hieght" (/sectors/0/ceiling/hieght)
+several_problems.map.json:12:22: expected an array, not a string (/sectors/0/loops/0/0/start)

@@ -1,0 +1,1 @@
+loader_only/self_intersecting_loop.map.json:13:11: the wall crosses or touches /sectors/0/loops/0/0, another wall of its loop (/sectors/0/loops/0/2)

@@ -6,7 +6,9 @@
   "homepage": "https://github.com/takumu-dev/wulfhilde",
   "license": "Zlib",
   "builtin-baseline": "bf19794383e8fb95eba5aa553235bc8ec2271688",
-  "dependencies": [],
+  "dependencies": [
+    "pedantjson"
+  ],
   "features": {
     "tests": {
       "description": "What the engine's tests need, and nothing a game ships",

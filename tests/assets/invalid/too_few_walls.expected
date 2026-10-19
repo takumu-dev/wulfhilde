@@ -1,0 +1,1 @@
+too_few_walls.map.json:10:9: the loop has 2 walls, but a loop needs at least 3 (/sectors/0/loops/0)
