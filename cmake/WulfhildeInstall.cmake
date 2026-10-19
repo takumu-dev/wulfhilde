@@ -52,3 +52,11 @@ install(FILES
 )
 
 install(FILES LICENSE README.md THIRD_PARTY_NOTICES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+# The logo, at the path the README shows it from, so that the installed copy shows it too.
+install(FILES
+    branding/wulfhilde-logo.svg
+    branding/wulfhilde-logo-dark.svg
+    branding/wulfhilde-mark.svg
+    branding/wulfhilde-mark-dark.svg
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}/branding"
+)
