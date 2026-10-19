@@ -62,14 +62,15 @@ endfunction()
 wulfhilde_add_consumer_test("a game links the installed engine through the umbrella target" installed
     INSTALLED
 )
+# world is a subset that needs core, which comes with it.
 wulfhilde_add_consumer_test("a game links a subset of the installed engine's modules" installed
     INSTALLED
-    OPTIONS -DWULFHILDE_COMPONENTS=core
+    OPTIONS -DWULFHILDE_COMPONENTS=world
 )
 wulfhilde_add_consumer_test("a game asking for a module the engine lacks is told so" installed
     INSTALLED
     OPTIONS -DWULFHILDE_COMPONENTS=core$<SEMICOLON>flight
-    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core"
+    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world"
 )
 wulfhilde_add_consumer_test("a game builds the engine as a subproject" subproject
     OPTIONS "-DWULFHILDE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"

@@ -1,5 +1,6 @@
 // A game's smallest use of the engine, built by each consumer project: a checked narrowing, a
-// message to the default log sink, and the math types, which live wholly in their headers.
+// message to the default log sink, the math types, which live wholly in their headers, and a map
+// built in code.
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/id.hpp>
 #include <wulfhilde/core/log_sink.hpp>
@@ -7,6 +8,7 @@
 #include <wulfhilde/core/plane.hpp>
 #include <wulfhilde/core/rigid_transform.hpp>
 #include <wulfhilde/core/vector2.hpp>
+#include <wulfhilde/world/map.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -29,5 +31,22 @@ int main() {
                         wulfhilde::signed_distance(far_side, facing) > 0.0F &&
                         wulfhilde::perp_dot({.x = 1.0F}, {.x = facing.x, .y = facing.y}) > 0.0F;
 
-    return sector.index() == 12 && turned && warm.r > 1.0F ? EXIT_SUCCESS : EXIT_FAILURE;
+    // A triangular sector, where the player starts on the floor, below a ceiling 3 m up.
+    const auto map = wulfhilde::Map::create({
+        .sectors = {{
+            .id = "hall",
+            .floor = {.height = 0.0F, .material = "stone"},
+            .ceiling = {.height = 3.0F, .material = "plaster"},
+            .loops = {{
+                {.start = {.x = 0.0F, .y = 0.0F}, .surface = {.material = "brick"}},
+                {.start = {.x = 4.0F, .y = 0.0F}, .surface = {.material = "brick"}},
+                {.start = {.x = 0.0F, .y = 4.0F}, .surface = {.material = "brick"}},
+            }},
+        }},
+        .start = {.sector = "hall", .point = {.x = 1.0F, .y = 1.0F}},
+    });
+    const bool built = map && map->contains(map->start().location) &&
+                       map->trace(map->start().location, {.z = 5.0F}).end.point.z == 3.0F;
+
+    return sector.index() == 12 && turned && warm.r > 1.0F && built ? EXIT_SUCCESS : EXIT_FAILURE;
 }

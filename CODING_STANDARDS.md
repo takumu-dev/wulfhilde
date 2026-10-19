@@ -148,6 +148,9 @@ departs from them, it says so.
 
 ## Ownership and types
 
+- A plain struct that a game fills in with a designated initialiser, such as a map's description,
+  gives each member an initialiser, `{}` for a class, so that any member may be left out without
+  GCC's `-Wmissing-field-initializers`.
 - Values first, and `std::unique_ptr` for a single owner. No `std::shared_ptr` without a comment
   saying why, and no bare `new` or `delete`.
 - `T*` and `T&` never own. `T*` appears only where null means something, such as "restore the
@@ -205,8 +208,9 @@ departs from them, it says so.
   same on every standard library, and the generic operations are compared with GLM, computed in
   double. GLM is a test-only dependency, and no GLM name appears outside the tests.
 - A test file whose checks or captures hold a math type includes `math_printing.hpp` from
-  `tests/support/`. One that didn't would print it as `{?}`, and its copy of Catch2's printing
-  could replace the right one in every other file of the program.
+  `tests/support/`, and one that holds a type of the world's, such as an ID or a location,
+  includes `world_printing.hpp`. One that didn't would print it as `{?}`, and its copy of Catch2's
+  printing could replace the right one in every other file of the program.
 
 ## Commits and branches
 

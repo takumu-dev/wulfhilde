@@ -5,11 +5,18 @@ PROJECT_NAME           = wulfhilde
 PROJECT_BRIEF          = "A library for games built from sectors joined by portals"
 
 # Each module's public include tree.
-INPUT                  = src/core/include
+INPUT                  = src/core/include \
+                         src/world/include
 RECURSIVE              = YES
 FILE_PATTERNS          = *.hpp
-STRIP_FROM_PATH        = src/core/include
-STRIP_FROM_INC_PATH    = src/core/include
+STRIP_FROM_PATH        = src/core/include \
+                         src/world/include
+STRIP_FROM_INC_PATH    = src/core/include \
+                         src/world/include
+
+# Knows the standard library's classes, so that a specialisation such as std::formatter has a
+# scope to be documented in.
+BUILTIN_STL_SUPPORT    = YES
 
 JAVADOC_AUTOBRIEF      = YES
 MARKDOWN_SUPPORT       = YES

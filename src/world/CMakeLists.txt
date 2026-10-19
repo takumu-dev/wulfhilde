@@ -1,0 +1,23 @@
+wulfhilde_add_module(world
+    HEADERS
+        include/wulfhilde/world/ambient_light.hpp
+        include/wulfhilde/world/ids.hpp
+        include/wulfhilde/world/location.hpp
+        include/wulfhilde/world/map.hpp
+        include/wulfhilde/world/map_description.hpp
+        include/wulfhilde/world/map_load_error.hpp
+        include/wulfhilde/world/map_problem.hpp
+        include/wulfhilde/world/sector.hpp
+        include/wulfhilde/world/start_position.hpp
+        include/wulfhilde/world/surface.hpp
+        include/wulfhilde/world/surface_ref.hpp
+        include/wulfhilde/world/trace.hpp
+        include/wulfhilde/world/wall.hpp
+    SOURCES
+        map.cpp
+        map_checks.cpp
+        map_checks.hpp
+        plan_geometry.hpp
+    DEPENDS
+        core
+)
