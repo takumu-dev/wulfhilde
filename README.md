@@ -1,4 +1,9 @@
-# wulfhilde
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="branding/wulfhilde-logo-dark.svg">
+    <img src="branding/wulfhilde-logo.svg" alt="wulfhilde" width="320">
+  </picture>
+</h1>
 
 wulfhilde is a library for games built from sectors joined by portals, in the manner of the Build
 engine: stacked sectors, sectors that share the same space, and spaces bigger inside than out. A
@@ -109,6 +114,11 @@ until a game installs its own with `wulfhilde::set_log_sink`.
   dependencies and what they depend on, without build tools or the tests' dependencies. After a
   change to them, build the `notices` target of the `gcc-release` preset to write it again; that
   preset's tests fail while it is out of date.
+
+## Acknowledgements
+
+The logo's wordmark and the social preview's tagline are drawn from
+[Chakra Petch](https://fonts.google.com/specimen/Chakra+Petch), under the SIL Open Font License.
 
 ## Licence
 

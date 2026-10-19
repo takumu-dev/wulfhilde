@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+<title id="title">wulfhilde</title>
+<g fill="none" stroke="#16181D" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round">
+<path d="M18 5L23 16L27 4L33 17L38 20L54 27L61 30L59 33L46 36L42 40L36 48L34 60L14 60L8 44L12 22Z"/>
+<path d="M23 16L26 30L33 17M26 30L42 40M26 30L8 44M26 30L34 60"/>
+<path d="M38 20L46 36" stroke="#D63B30"/>
+</g>
+<path d="M32 23.5L38 23.5L34.5 26.5Z" fill="#16181D"/>
+</svg>
