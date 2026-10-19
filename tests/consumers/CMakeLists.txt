@@ -11,6 +11,18 @@ set_tests_properties("consumers: the engine installs" PROPERTIES
     LABELS unit
 )
 
+# The install rules come after the tests, so the install directories are named here as well.
+include(GNUInstallDirs)
+add_test(NAME "consumers: the installed README's images are installed beside it"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DREADME=${prefix}/${CMAKE_INSTALL_DOCDIR}/README.md"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_readme_images.cmake"
+)
+set_tests_properties("consumers: the installed README's images are installed beside it" PROPERTIES
+    FIXTURES_REQUIRED wulfhilde_installed
+    LABELS unit
+)
+
 # Adds a test that builds the consumer project in `source_dir` and runs the program it builds.
 #
 #   OPTIONS            more cache settings for the consumer
