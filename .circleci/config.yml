@@ -1,0 +1,324 @@
+# Builds and tests the engine on every pull request into develop or main, on every push to them,
+# and twice a week, which catches drift in what the jobs download and keeps the caches from
+# expiring. The `ci` job is the one check that branch protection requires, as the status
+# `ci/circleci: ci`, and it runs only once every other job has passed.
+#
+# Every Linux job runs in the image built from ci/linux/, which the first job builds and pushes
+# when its tag is missing. The Windows job runs on CircleCI's Windows Server image, at a dated tag,
+# which the scripts in ci/windows/ set up with MSVC and lavapipe.
+#
+# The Windows job costs far more to run than the Linux ones, so it runs on pull requests and on
+# Monday's schedule, and doesn't repeat when a branch that passed it merges into main or develop.
+version: 2.1
+
+parameters:
+  # What ci/image-tag.sh prints. CircleCI needs a job's image before the job can run anything, so
+  # the tag is written here, and the image job fails when it is out of step with ci/linux/.
+  image-tag:
+    type: string
+    default: a6c6a73f0e62ad570cfdc7d4e57cb879d6406d49
+  windows:
+    description: Runs the Windows job on develop, for Monday's schedule.
+    type: boolean
+    default: false
+
+commands:
+  # Every job on one triplet builds the same binaries: the triplet, not the preset, chooses the
+  # compiler that builds the ports. The presets choose the build tools' triplet, which every port's
+  # binaries depend on, so they are part of the key, as are the engine's own ports.
+  restore-vcpkg-cache:
+    parameters:
+      triplet:
+        type: string
+    steps:
+      - run:
+          name: Hash what vcpkg builds the ports from
+          command: |
+            git ls-files -z vcpkg.json vcpkg-configuration.json ports triplets CMakePresets.json |
+              sort -z | xargs -0 cat > /tmp/vcpkg-inputs
+      - restore_cache:
+          name: Restore the vcpkg binary cache
+          keys:
+            - vcpkg-<< parameters.triplet >>-<< pipeline.parameters.image-tag >>-{{ checksum "/tmp/vcpkg-inputs" }}
+            - vcpkg-<< parameters.triplet >>-<< pipeline.parameters.image-tag >>-
+
+  # Builds and tests one preset. It runs even after an earlier preset has failed, so that one job
+  # reports every preset that fails.
+  windows-preset:
+    parameters:
+      preset:
+        type: string
+    steps:
+      - run:
+          name: Build and test << parameters.preset >>
+          when: always
+          command: >-
+            pwsh -NoProfile -File ci/windows/build.ps1
+            -MsvcVersion $env:MSVC_VERSION -Preset << parameters.preset >>;
+            exit $LASTEXITCODE
+
+jobs:
+  image:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: large
+    environment:
+      IMAGE: ghcr.io/takumu-dev/wulfhilde-ci:<< pipeline.parameters.image-tag >>
+    steps:
+      - checkout
+      - run:
+          name: Check that the config names the image of ci/linux/
+          command: |
+            tag=$(ci/image-tag.sh)
+            if [ "$tag" != "<< pipeline.parameters.image-tag >>" ]; then
+              echo "ci/linux/ is now $tag: set image-tag in .circleci/config.yml to that" >&2
+              exit 1
+            fi
+      # A missing tag reads "manifest unknown", and a package never pushed reads "denied" or "name
+      # unknown". Any other failure, such as a timeout, stops the job rather than rebuild a tag
+      # that may exist.
+      - run:
+          name: Build and push the image, unless it exists
+          no_output_timeout: 30m
+          command: |
+            if output=$(docker manifest inspect "$IMAGE" 2>&1); then
+              echo "$IMAGE exists"
+              exit 0
+            fi
+            case $output in
+              *"manifest unknown"* | *"name unknown"* | *denied*) ;;
+              *) echo "$output" >&2; exit 1 ;;
+            esac
+            echo "$GHCR_TOKEN" | docker login ghcr.io --username takumu-dev --password-stdin
+            docker build --tag "$IMAGE" ci/linux
+            docker push "$IMAGE"
+
+  linux:
+    parameters:
+      preset:
+        type: string
+      triplet:
+        type: string
+      restore-only:
+        description: Restores the binary cache but never saves one.
+        type: boolean
+        default: false
+    # The package is public, as the repository is, so pulling the image needs no login.
+    docker:
+      - image: ghcr.io/takumu-dev/wulfhilde-ci:<< pipeline.parameters.image-tag >>
+    resource_class: large
+    environment:
+      VCPKG_ROOT: /opt/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: /opt/vcpkg-cache
+      # The container can see more of the host's CPUs than it may use.
+      CMAKE_BUILD_PARALLEL_LEVEL: "4"
+      VCPKG_MAX_CONCURRENCY: "4"
+    steps:
+      - checkout
+      # vcpkg reads the ports at the versions the manifest names from the registry's history, so a
+      # shallow clone won't do. A blobless one fetches only the files vcpkg reads.
+      - run:
+          name: Set up vcpkg at the manifest's baseline
+          command: |
+            baseline=$(jq --raw-output '."builtin-baseline"' vcpkg.json)
+            git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+            git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
+            "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+            mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+      - restore-vcpkg-cache:
+          triplet: << parameters.triplet >>
+      - run:
+          name: Configure, build and test
+          command: cmake --workflow --preset << parameters.preset >>
+      # Only develop saves a cache, which pull requests then restore. A key is saved once, and a
+      # failed job saves nothing, or a cache missing ports would stand until the key changed.
+      - when:
+          condition:
+            and:
+              - equal: [develop, << pipeline.git.branch >>]
+              - not: << parameters.restore-only >>
+          steps:
+            - save_cache:
+                name: Save the vcpkg binary cache
+                key: vcpkg-<< parameters.triplet >>-<< pipeline.parameters.image-tag >>-{{ checksum "/tmp/vcpkg-inputs" }}
+                paths:
+                  - /opt/vcpkg-cache
+      - run:
+          name: Gather the logs of a failed job
+          when: on_fail
+          command: ci/gather-logs.sh logs
+      - store_artifacts:
+          path: logs
+
+  windows:
+    machine:
+      image: windows-server-2025-gui:2026.10.1
+      shell: powershell.exe -ExecutionPolicy Bypass
+    resource_class: windows.medium
+    environment:
+      MSVC_VERSION: "14.52"
+      CI_TOOLS: C:\ci\tools
+      VCPKG_ROOT: C:\ci\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: C:\ci\vcpkg-cache
+    # Each step runs in Windows PowerShell, which hands its script to PowerShell 7 and passes on how
+    # it exited.
+    steps:
+      - checkout
+      - run:
+          name: Install CMake and Ninja
+          command: >-
+            pwsh -NoProfile -File ci/windows/install-tools.ps1 -CMake 4.4.4 -Ninja 1.13.2;
+            exit $LASTEXITCODE
+      - run:
+          name: Install the Vulkan loader and lavapipe
+          command: pwsh -NoProfile -File ci/windows/install-vulkan.ps1; exit $LASTEXITCODE
+      - run:
+          name: Check that the machine keeps the promises the build relies on
+          command: pwsh -NoProfile -File ci/windows/check-runner.ps1 -MsvcVersion $env:MSVC_VERSION; exit $LASTEXITCODE
+      - run:
+          name: Set up vcpkg at the manifest's baseline
+          command: pwsh -NoProfile -File ci/windows/setup-vcpkg.ps1; exit $LASTEXITCODE
+      - run:
+          name: Hash what vcpkg builds the ports from
+          command: |
+            git ls-files vcpkg.json vcpkg-configuration.json ports triplets CMakePresets.json |
+              Sort-Object | ForEach-Object { Get-Content $_ } | Set-Content C:\ci\vcpkg-inputs
+      - restore_cache:
+          name: Restore the vcpkg binary cache
+          keys:
+            - vcpkg-windows-{{ checksum "C:/ci/vcpkg-inputs" }}
+            - vcpkg-windows-
+      - windows-preset:
+          preset: msvc-debug
+      - windows-preset:
+          preset: msvc-release
+      - windows-preset:
+          preset: msvc-asan
+      - windows-preset:
+          preset: msvc-noexcept
+      # The job doesn't run on most pushes to develop, so it saves from any branch once every
+      # preset has passed.
+      - save_cache:
+          name: Save the vcpkg binary cache
+          key: vcpkg-windows-{{ checksum "C:/ci/vcpkg-inputs" }}
+          paths:
+            - C:\ci\vcpkg-cache
+      - run:
+          name: Gather the logs of a failed job
+          when: on_fail
+          command: pwsh -NoProfile -File ci/windows/gather-logs.ps1 logs; exit $LASTEXITCODE
+      - store_artifacts:
+          path: logs
+
+  ci:
+    docker:
+      - image: ubuntu:26.04
+    resource_class: small
+    steps:
+      - run:
+          name: Every other job passed
+          command: "true"
+
+workflows:
+  full:
+    when:
+      or:
+        - << pipeline.parameters.windows >>
+        - not: &merged
+            or:
+              - equal: [main, << pipeline.git.branch >>]
+              - equal: [develop, << pipeline.git.branch >>]
+    jobs:
+      - image: &image
+          context: ghcr
+      - linux: &gcc-debug
+          name: gcc-debug
+          preset: gcc-debug
+          triplet: x64-linux
+          requires: [image]
+      - linux: &gcc-release
+          name: gcc-release
+          preset: gcc-release
+          triplet: x64-linux
+          requires: [image]
+      - linux: &clang-debug
+          name: clang-debug
+          preset: clang-debug
+          triplet: x64-linux
+          requires: [image]
+      - linux: &clang-release
+          name: clang-release
+          preset: clang-release
+          triplet: x64-linux
+          requires: [image]
+      - linux: &libcxx-debug
+          name: libcxx-debug
+          preset: libcxx-debug
+          triplet: x64-linux-libcxx
+          requires: [image]
+      - linux: &libcxx-release
+          name: libcxx-release
+          preset: libcxx-release
+          triplet: x64-linux-libcxx
+          requires: [image]
+      - linux: &sanitize
+          name: sanitize
+          preset: sanitize
+          triplet: x64-linux
+          requires: [image]
+      - linux: &tidy
+          name: tidy
+          preset: tidy
+          triplet: x64-linux
+          requires: [image]
+      # Without the tests feature, it installs only ports that the other x64-linux jobs install
+      # too, so it restores their cache but never saves one.
+      - linux: &lint
+          name: lint
+          preset: lint
+          triplet: x64-linux
+          restore-only: true
+          requires: [image]
+      - windows
+      - ci:
+          requires:
+            - image
+            - gcc-debug
+            - gcc-release
+            - clang-debug
+            - clang-release
+            - libcxx-debug
+            - libcxx-release
+            - sanitize
+            - tidy
+            - lint
+            - windows
+
+  merged:
+    when:
+      and:
+        - not: << pipeline.parameters.windows >>
+        - *merged
+    jobs:
+      - image: *image
+      - linux: *gcc-debug
+      - linux: *gcc-release
+      - linux: *clang-debug
+      - linux: *clang-release
+      - linux: *libcxx-debug
+      - linux: *libcxx-release
+      - linux: *sanitize
+      - linux: *tidy
+      - linux: *lint
+      - ci:
+          requires:
+            - image
+            - gcc-debug
+            - gcc-release
+            - clang-debug
+            - clang-release
+            - libcxx-debug
+            - libcxx-release
+            - sanitize
+            - tidy
+            - lint

@@ -1,4 +1,4 @@
-# Checks that a Windows runner keeps the promises CI relies on, once the job has set it up: the
+# Checks that a Windows machine keeps the promises CI relies on, once the job has set it up: the
 # MSVC toolset the job names, building C++23 programs that run with and without AddressSanitizer;
 # the CMake and Ninja the presets call; and lavapipe as the only Vulkan device. It reports every
 # broken promise, not just the first.
@@ -11,6 +11,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+& (Join-Path $PSScriptRoot 'enter-msvc.ps1') -Version $MsvcVersion
+# Ahead of the CMake and Ninja that Visual Studio's own tools put on the PATH.
+$env:PATH = "$(Join-Path $env:CI_TOOLS 'Scripts');$env:PATH"
 
 $failures = 0
 
@@ -74,7 +78,7 @@ int main() { std::println("{}", 42); }
 Expect-Program "MSVC $MsvcVersion" @()
 Expect-Program "MSVC $MsvcVersion with AddressSanitizer" @('/fsanitize=address')
 
-# The build tools the presets name. The image's CMake must come first, ahead of any older one.
+# The build tools the presets name. The job's CMake must come first, ahead of any older one.
 $cmake = Invoke-Program 'CMake is 4.4 or newer' 'cmake' @('--version')
 if ($null -ne $cmake) {
     if (($cmake -join "`n") -notmatch '^cmake version (\d+\.\d+)') {
@@ -85,7 +89,7 @@ if ($null -ne $cmake) {
 }
 Expect 'Ninja is on the PATH' '^\d+\.\d+' 'ninja' @('--version')
 
-# Lavapipe is the only device. The runner has no GPU, so anything else would be a driver the
+# Lavapipe is the only device. The machine has no GPU, so anything else would be a driver the
 # jobs didn't install.
 $summary = Invoke-Program 'lavapipe is the Vulkan device' 'vulkaninfo' @('--summary')
 if ($null -ne $summary) {
