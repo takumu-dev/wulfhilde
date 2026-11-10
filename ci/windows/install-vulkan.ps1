@@ -1,10 +1,10 @@
-# Installs Vulkan on a Windows runner, which has no GPU and so no Vulkan driver: the Khronos loader
+# Installs Vulkan on a Windows machine in CI, which has no GPU and so no Vulkan driver: the Khronos loader
 # and vulkaninfo from LunarG's runtime components, and lavapipe from mesa-dist-win's MSVC build,
 # each pinned by version and SHA-256.
 #
 # Both are installed system-wide, as a GPU driver would install them. The loader replaces the one
 # in the system directory, whose version is whatever the image's last update left. Lavapipe is
-# registered under HKLM: the runner's processes are elevated, and the loader ignores its
+# registered under HKLM: the job's processes are elevated, and the loader ignores its
 # environment variables, VK_DRIVER_FILES among them, in an elevated process.
 #
 # Unlike the Linux image, this leaves lavapipe's CPU features as the host has them: no Windows job
