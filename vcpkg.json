@@ -7,6 +7,7 @@
   "license": "Zlib",
   "builtin-baseline": "bf19794383e8fb95eba5aa553235bc8ec2271688",
   "dependencies": [
+    "lodepng",
     "pedantjson",
     {
       "name": "shader-slang",
@@ -34,7 +35,6 @@
           "name": "glm",
           "version>=": "1.0.0"
         },
-        "lodepng",
         {
           "name": "vulkan-validationlayers",
           "host": true,
