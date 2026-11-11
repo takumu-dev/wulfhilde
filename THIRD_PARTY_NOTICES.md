@@ -10,7 +10,7 @@ bring it up to date, build the `notices` target rather than editing it.
 
 ## pedantjson
 
-- Version: 0.1.0
+- Version: 0.1.1
 - Licence: Zlib
 - Homepage: https://github.com/takumu-dev/pedantjson
 
