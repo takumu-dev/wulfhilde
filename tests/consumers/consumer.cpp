@@ -1,6 +1,6 @@
 // A game's smallest use of the engine, built by each consumer project: a checked narrowing, a
 // message to the default log sink, the math types, which live wholly in their headers, a map built
-// in code, and the load of a map's file.
+// in code, the load of a map's file, and a headless renderer.
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/core/color.hpp>
@@ -10,12 +10,14 @@
 #include <wulfhilde/core/plane.hpp>
 #include <wulfhilde/core/rigid_transform.hpp>
 #include <wulfhilde/core/vector2.hpp>
+#include <wulfhilde/renderer/renderer.hpp>
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <format>
 
 int main() {
     const wulfhilde::Id<struct SectorTag> sector{wulfhilde::narrow<std::uint32_t>(std::size_t{12})};
@@ -59,6 +61,12 @@ int main() {
                   loaded.error().problems.front().code == wulfhilde::MapProblemCode::missing_file;
     }
 
-    return sector.index() == 12 && turned && warm.r > 1.0F && built && missing ? EXIT_SUCCESS
-                                                                               : EXIT_FAILURE;
+    // A machine without a Vulkan device that has the renderer's features says why, which is as
+    // much as linking the renderer needs to show.
+    const auto renderer = wulfhilde::Renderer::create_headless({});
+    const bool rendered = renderer || !std::format("{}", renderer.error()).empty();
+
+    return sector.index() == 12 && turned && warm.r > 1.0F && built && missing && rendered
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }

@@ -7,7 +7,7 @@ set(WULFHILDE_SOURCE_DIR "" CACHE PATH "The engine's source tree")
 add_subdirectory("${WULFHILDE_SOURCE_DIR}" wulfhilde)
 
 # As a subproject, the engine builds its libraries alone.
-foreach(target IN ITEMS wulfhilde-viewer wulfhilde_core_tests)
+foreach(target IN ITEMS wulfhilde-viewer wulfhilde_core_tests wulfhilde_renderer_testing)
     if(TARGET ${target})
         message(FATAL_ERROR "The engine built ${target} as a subproject.")
     endif()

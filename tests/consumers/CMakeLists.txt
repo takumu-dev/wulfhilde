@@ -48,7 +48,12 @@ function(wulfhilde_add_consumer_test name source_dir)
         list(APPEND arg_OPTIONS "-DCMAKE_PREFIX_PATH=${prefix}")
     endif()
     if(NOT arg_WITHOUT_PACKAGES)
-        list(APPEND arg_OPTIONS "-Dpedantjson_DIR=${pedantjson_DIR}")
+        list(APPEND arg_OPTIONS
+            "-Dpedantjson_DIR=${pedantjson_DIR}"
+            "-Dvolk_DIR=${volk_DIR}"
+            "-DVulkanMemoryAllocator_DIR=${VulkanMemoryAllocator_DIR}"
+            "-Dslang_DIR=${slang_DIR}"
+        )
     endif()
     string(MAKE_C_IDENTIFIER "${name}" binary_dir)
     add_test(NAME "${test_name}"
@@ -78,15 +83,16 @@ endfunction()
 wulfhilde_add_consumer_test("a game links the installed engine through the umbrella target" installed
     INSTALLED
 )
-# assets is a subset that needs world and core, which come with it, and pedantjson.
+# renderer is a subset that needs assets, world and core, which come with it, and the packages
+# pedantjson and volk.
 wulfhilde_add_consumer_test("a game links a subset of the installed engine's modules" installed
     INSTALLED
-    OPTIONS -DWULFHILDE_COMPONENTS=assets
+    OPTIONS -DWULFHILDE_COMPONENTS=renderer
 )
 wulfhilde_add_consumer_test("a game asking for a module the engine lacks is told so" installed
     INSTALLED
     OPTIONS -DWULFHILDE_COMPONENTS=core$<SEMICOLON>flight
-    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world, assets"
+    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world, assets, renderer"
 )
 wulfhilde_add_consumer_test("a game without a package that a module links is told which" installed
     INSTALLED

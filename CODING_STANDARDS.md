@@ -172,6 +172,9 @@ departs from them, it says so.
   `wulfhilde_target_conventions`, and a test target with `wulfhilde_target_warnings`. The settings
   are private to each target, so none of them reaches the installed package's interface or a
   game's build. Third-party headers come in as system includes.
+- The renderer's targets don't warn of missing field initialisers. Vulkan's C structures are filled
+  with designated initialisers that leave every other member zero, as Vulkan intends, and GCC would
+  warn of each member left out.
 - clang-tidy runs the groups in `.clang-tidy`, with every warning an error. A finding that has to
   stand is suppressed with `NOLINT(<check>): <reason>` or `NOLINTNEXTLINE(<check>): <reason>`,
   never a bare `NOLINT`. Keep the reason on that line: `NOLINTNEXTLINE` covers only the line after
@@ -194,6 +197,8 @@ departs from them, it says so.
   `tests/consumers/` the package, and `tests/support/` holds what the tests share.
 - Only the tests of `assets` read files, and the viewer's acceptance suite, which loads the test
   maps in `tests/content/` through `assets`. Every other module's tests build their input in C++.
+  The `image` tests read their reference PNGs, and the tests of their harness write PNGs into the
+  build tree to read back.
 - A map's schema, `schema/map.schema.json`, its loader and the maps of the tests change together, in
   one commit. Each map in `tests/assets/invalid/` holds one mistake, or a few to show several
   problems at once, beside a `.expected` file of its problems, formatted exactly. The `lint`
@@ -205,14 +210,31 @@ departs from them, it says so.
   Its name begins with its module, matching its Catch2 tag (`[core]`), or with `build` or
   `consumers`.
 - Each kind of test has a helper in `tests/CMakeLists.txt`:
-  - `wulfhilde_add_tests` adds a module's Catch2 test cases, each registered with CTest. A test
-    case's name must not begin with `-`, which Catch2 would read as one of its options.
+  - `wulfhilde_add_tests` adds a module's Catch2 test cases, each registered with CTest, with the
+    label its `LABEL` names, `unit` by default. A module's `gpu` and `image` tests are programs of
+    their own. A test case's name must not begin with `-`, which Catch2 would read as one of its
+    options.
   - `wulfhilde_add_program_test` adds a program whose ending or output is the behaviour, which
     `tests/support/check_program.cmake` checks: an abort, an exit status, or what reaches stdout
     and stderr.
   - `wulfhilde_add_precondition_test` adds a program that breaks one precondition, which CTest
     expects to fail. It fails through a replaced handler rather than aborting, since CTest counts
     an abort as a crash even then. These are used sparingly.
+- A `gpu` test is a `TEST_CASE_METHOD` of `GpuTest` from `tests/support/gpu_test.hpp`, and makes
+  its renderer or device with `gpu_test_settings`, which turn validation on. The fixture fails the
+  test for each warning or error logged while it runs, which is how a validation message fails it,
+  in every configuration, release included.
+- The renderer's tests reach what isn't public through `wulfhilde_renderer_testing`, which is
+  never installed: a device made as the renderer makes its own, running shaders the tests supply.
+  A shader function is tested through a compute entry point under `tests/renderer/shaders/` that
+  evaluates it over a table of inputs, and the test compares the results with known values.
+- An `image` test compares what it draws with a reference PNG beside its tests, through
+  `check_reference_image` from `tests/support/image_comparison.hpp`: a pixel matches when each
+  channel is within the tolerance, and the image when few enough pixels don't. References are
+  rendered in CI's Linux image, and only `gcc-release` compares with them. To change them, build
+  `gcc-release` in that image and run `ctest -L image` there with
+  `WULFHILDE_UPDATE_REFERENCES=1`; then look at the new images and commit them with the change that
+  alters them.
 - The math types are pinned by known values, which hold the conventions, and by properties over
   random inputs. Those inputs come from a fixed seed through `tests/core/random_inputs.hpp`, the
   same on every standard library, and the generic operations are compared with GLM, computed in
@@ -221,6 +243,29 @@ departs from them, it says so.
   `tests/support/`, and one that holds a type of the world's, such as an ID or a location,
   includes `world_printing.hpp`. One that didn't would print it as `{?}`, and its copy of Catch2's
   printing could replace the right one in every other file of the program.
+
+## Shaders
+
+- Shaders are Slang, every file at `#language slang 2026`, and belong to the renderer: none is
+  installed or read at run time. `wulfhilde_add_shaders` in `cmake/WulfhildeShaders.cmake`
+  compiles each file that holds a pipeline's entry points into one SPIR-V module, which the target
+  that makes the pipeline embeds as a `u32` array. Modules that pipelines import sit beside them in
+  `src/renderer/shaders/`.
+- Variants are entry points of their own over generic code, and specialisation constants; there is
+  no preprocessor permutation. A specialisation constant is declared `[SpecializationConstant]`,
+  which numbers a file's constants in the order it declares them, and a pipeline is made with their
+  values in that order. Slang 2026.19 takes a constant numbered by `[vk::constant_id]` to occupy set
+  0, and moves the bindless set out of it.
+- Every shader that uses a `DescriptorHandle` imports `bindless`, which gives each descriptor type
+  its own array in the one bindless set. Buffers are reached by device address.
+- Data that shaders share with C++ is in scalar layout. Each such struct has a hand-written C++
+  twin of the same name, with the same `snake_case` fields, and the source that uses the twins
+  includes the generated `<name>_layout.hpp` after them, whose `static_assert`s fail the build
+  when the layouts drift apart. A vector carries no padding, and a matrix is stored column after
+  column, as the math types are. Shared structs avoid arrays of matrices and matrices that aren't
+  square.
+- Shader code follows the C++ naming rules and brace style. `clang-format` doesn't check it, since
+  it reads Slang's attributes and access modifiers as C++ and breaks them.
 
 ## Commits and branches
 

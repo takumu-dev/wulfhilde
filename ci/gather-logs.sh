@@ -1,13 +1,14 @@
 #!/bin/sh
 # Copies the logs a failed job leaves into a directory, for CircleCI to keep: each build's test logs,
-# JUnit report, and vcpkg install log, under their paths in the checkout, and vcpkg's build logs,
-# under vcpkg/.
+# JUnit report, vcpkg install log, and the images and differences of failed image tests, under their
+# paths in the checkout, and vcpkg's build logs, under vcpkg/.
 #
 #   ci/gather-logs.sh logs
 set -eu
 
 destination=$1
-for path in build/*/Testing/Temporary build/*/junit.xml build/*/vcpkg-manifest-install.log; do
+for path in build/*/Testing/Temporary build/*/junit.xml build/*/vcpkg-manifest-install.log \
+    build/*/image-failures; do
     if [ -e "$path" ]; then
         mkdir -p "$destination/$(dirname "$path")"
         cp -R "$path" "$destination/$(dirname "$path")/"
