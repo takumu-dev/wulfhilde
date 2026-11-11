@@ -71,7 +71,7 @@ TEST_CASE("an image that differs from its reference leaves what it drew and wher
     const auto first_byte =
         read_png(directory / "failures" / "gray.actual.png")
             .transform([](const wulfhilde::Image& actual) { return actual.pixels().front(); });
-    CHECK(first_byte == std::optional<std::uint8_t>{64});
+    CHECK(first_byte == std::optional{std::uint8_t{64}});
     CHECK(std::filesystem::exists(directory / "failures" / "gray.difference.png"));
 }
 
