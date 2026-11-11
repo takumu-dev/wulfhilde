@@ -11,18 +11,66 @@ set(WULFHILDE_TEST_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/support")
 
 # Adds a module's Catch2 test cases as one program, registering each case with CTest under the
 # module's name.
+#
+#   SOURCES    the program's sources
+#   LIBRARIES  what it links
+#   LABEL      the label of every case: unit, the default; gpu, for cases that use a Vulkan device
+#              under validation; or image, for cases compared with reference images
+#
+# A module's program of `unit` tests is wulfhilde_<module>_tests, and one of another label
+# wulfhilde_<module>_<label>_tests.
 function(wulfhilde_add_tests module)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;LIBRARIES")
-    set(target wulfhilde_${module}_tests)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "LABEL" "SOURCES;LIBRARIES")
+    if(NOT DEFINED arg_LABEL)
+        set(arg_LABEL unit)
+    endif()
+    if(arg_LABEL STREQUAL "unit")
+        set(target wulfhilde_${module}_tests)
+    else()
+        set(target wulfhilde_${module}_${arg_LABEL}_tests)
+    endif()
     add_executable(${target} ${arg_SOURCES})
     target_include_directories(${target} PRIVATE "${WULFHILDE_TEST_SUPPORT_DIR}")
     target_link_libraries(${target} PRIVATE ${arg_LIBRARIES} Catch2::Catch2WithMain)
     wulfhilde_target_warnings(${target})
+    set(properties LABELS ${arg_LABEL})
+    if(NOT arg_LABEL STREQUAL "unit")
+        list(APPEND properties ENVIRONMENT_MODIFICATION "${WULFHILDE_GPU_TEST_ENVIRONMENT}")
+    endif()
     catch_discover_tests(${target}
         TEST_PREFIX "${module}: "
-        PROPERTIES LABELS unit
+        PROPERTIES ${properties}
     )
 endfunction()
+
+# The validation layers that the tests' vcpkg feature installs, for the Vulkan loader to find
+# beside any installed on the machine. A gpu or image test that can't find them fails.
+set(WULFHILDE_GPU_TEST_ENVIRONMENT "")
+if(DEFINED VCPKG_INSTALLED_DIR)
+    set(host_tree "${VCPKG_INSTALLED_DIR}/${VCPKG_HOST_TRIPLET}")
+    if(WIN32)
+        # The manifest names the library beside it.
+        set(layers "${host_tree}/bin")
+    else()
+        # The manifest names the library alone, for the system's library path to find, so a copy
+        # names it where vcpkg installed it.
+        set(layers "${CMAKE_CURRENT_BINARY_DIR}/validation-layers")
+        set(manifest "${host_tree}/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json")
+        file(READ "${manifest}" layer)
+        string(JSON library GET "${layer}" layer library_path)
+        string(JSON layer SET "${layer}" layer library_path "\"${host_tree}/lib/${library}\"")
+        file(WRITE "${layers}/VkLayer_khronos_validation.json" "${layer}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${manifest}")
+    endif()
+    set(WULFHILDE_GPU_TEST_ENVIRONMENT "VK_ADD_LAYER_PATH=path_list_prepend:${layers}")
+endif()
+
+# The image tests' harness, which compares what they draw with their reference images.
+find_package(lodepng CONFIG REQUIRED)
+add_library(wulfhilde_image_comparison STATIC support/image_comparison.cpp)
+target_include_directories(wulfhilde_image_comparison PUBLIC support)
+target_link_libraries(wulfhilde_image_comparison PUBLIC wulfhilde::renderer PRIVATE lodepng)
+wulfhilde_target_warnings(wulfhilde_image_comparison)
 
 # Builds a test program of a module from one source, naming the target after the source.
 function(wulfhilde_add_test_program out_target module source)
@@ -95,6 +143,7 @@ add_subdirectory(consumers)
 add_subdirectory(core)
 add_subdirectory(world)
 add_subdirectory(assets)
+add_subdirectory(renderer)
 
 if(WULFHILDE_BUILD_VIEWER)
     add_subdirectory(viewer)

@@ -1,0 +1,7 @@
+---
+# Vulkan reaches the renderer only through vulkan.hpp, which includes it through volk, so that every
+# source takes its functions from the same loader rather than including Vulkan's headers itself.
+InheritParentConfig: true
+CheckOptions:
+  misc-include-cleaner.IgnoreHeaders: 'volk\.h;vulkan/.*;vk_video/.*'
+...

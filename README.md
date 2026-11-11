@@ -74,15 +74,28 @@ cmake --workflow --preset gcc-debug
 Warnings are errors in every preset. Machine-specific settings, such as a compiler under another
 name, belong in a `CMakeUserPresets.json`, which git ignores.
 
-The tests carry one CTest label each: `unit` for tests that need only the CPU. To run some of them,
-use for example `ctest --preset gcc-debug -L unit`.
+The tests carry one CTest label each: `unit` for tests that need only the CPU, `gpu` for tests that
+run on a Vulkan device under its validation layers, and `image` for tests that compare what the
+renderer draws with a reference image. To run some of them, use for example
+`ctest --preset gcc-debug -L unit`. Only `gcc-release` runs the `image` tests, since their
+references are rendered by lavapipe in CI's Linux image, which draws alike on every machine.
 
 ## Using the engine in a game
 
 The engine's build only finds its dependencies with `find_package`, and never downloads anything,
-so a game can supply them through vcpkg, Conan, system packages or builds of its own. So far there
-is one, [pedantjson](https://github.com/takumu-dev/pedantjson), which the `assets` module links and
-finds with `find_package(pedantjson CONFIG)`.
+so a game can supply them through vcpkg, Conan, system packages or builds of its own:
+
+| Package | Found with | Needed by |
+|---|---|---|
+| [pedantjson](https://github.com/takumu-dev/pedantjson) | `find_package(pedantjson CONFIG)` | `assets` |
+| [volk](https://github.com/zeux/volk) | `find_package(volk CONFIG)` | `renderer` |
+| [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | `find_package(VulkanMemoryAllocator CONFIG)` | building `renderer` |
+| [Slang](https://github.com/shader-slang/slang) | `find_package(slang CONFIG)` | building `renderer` |
+
+The renderer's shaders are compiled into it when it builds, so a game that uses the installed
+package needs neither Slang nor VulkanMemoryAllocator, and nothing links the Vulkan loader, which
+volk loads when a renderer is created. A game that adds the engine as a subproject needs both, such
+as vcpkg's `shader-slang` port or the copy of Slang in the Vulkan SDK.
 
 As an installed package, for every module and the umbrella target:
 
@@ -139,7 +152,15 @@ until a game installs its own with `wulfhilde::set_log_sink`.
   port stops the configuration until its licence is reviewed again.
 - pedantjson, the strict JSON reader that reads maps, comes from the overlay port in
   `ports/pedantjson/`, a copy of the port in [pedantjson's repository](https://github.com/takumu-dev/pedantjson),
-  until vcpkg's registry has it.
+  until vcpkg's registry has it. lodepng, which reads and writes the image tests' PNG files, comes
+  from the overlay port in `ports/lodepng/`, at a newer commit than the registry's port, until the
+  registry takes it up.
+- The `gpu` and `image` tests run under the validation layers that the manifest's `tests` feature
+  builds, which the tests point the Vulkan loader at, and any message from them fails the test.
+- An image test that fails leaves what it drew, and the pixels where that differs from its
+  reference, in `build/<preset>/image-failures/`, which CI keeps. To change a reference, run the
+  image tests in CI's Linux image with `WULFHILDE_UPDATE_REFERENCES=1`, which writes what they draw
+  over the references in `tests/`; then look at the new images and commit them with the change.
 - `THIRD_PARTY_NOTICES.md` lists the ports that ship with the engine: the manifest's default
   dependencies and what they depend on, without build tools or the tests' dependencies. After a
   change to them, build the `notices` target of the `gcc-release` preset to write it again; that

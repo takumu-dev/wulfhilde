@@ -65,7 +65,7 @@
       "name": "msvc",
       "hidden": true,
       "inherits": "base",
-      "$comment": "Run from a developer command prompt for MSVC 14.52 or newer, which puts cl on the PATH. Build tools get vcpkg's default triplet, named here for the notices.",
+      "$comment": "Run from a developer command prompt for MSVC 14.52 or newer, which puts cl on the PATH. Build tools get a triplet of their own, built for release only, as on Linux.",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -77,7 +77,7 @@
       },
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "cl",
-        "VCPKG_HOST_TRIPLET": "x64-windows",
+        "VCPKG_HOST_TRIPLET": "x64-windows-release",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
       }
     },
@@ -223,16 +223,27 @@
         "noTestsAction": "error"
       }
     },
-    { "name": "gcc-debug", "inherits": "test", "configurePreset": "gcc-debug" },
+    {
+      "name": "test-without-images",
+      "hidden": true,
+      "inherits": "test",
+      "$comment": "Only GCC release, in CI's Linux image, compares with the reference images, which lavapipe there renders the same on every machine.",
+      "filter": {
+        "exclude": {
+          "label": "^image$"
+        }
+      }
+    },
+    { "name": "gcc-debug", "inherits": "test-without-images", "configurePreset": "gcc-debug" },
     { "name": "gcc-release", "inherits": "test", "configurePreset": "gcc-release" },
-    { "name": "clang-debug", "inherits": "test", "configurePreset": "clang-debug" },
-    { "name": "clang-release", "inherits": "test", "configurePreset": "clang-release" },
-    { "name": "libcxx-debug", "inherits": "test", "configurePreset": "libcxx-debug" },
-    { "name": "libcxx-release", "inherits": "test", "configurePreset": "libcxx-release" },
-    { "name": "sanitize", "inherits": "test", "configurePreset": "sanitize" },
-    { "name": "msvc-debug", "inherits": "test", "configurePreset": "msvc-debug" },
-    { "name": "msvc-release", "inherits": "test", "configurePreset": "msvc-release" },
-    { "name": "msvc-asan", "inherits": "test", "configurePreset": "msvc-asan" }
+    { "name": "clang-debug", "inherits": "test-without-images", "configurePreset": "clang-debug" },
+    { "name": "clang-release", "inherits": "test-without-images", "configurePreset": "clang-release" },
+    { "name": "libcxx-debug", "inherits": "test-without-images", "configurePreset": "libcxx-debug" },
+    { "name": "libcxx-release", "inherits": "test-without-images", "configurePreset": "libcxx-release" },
+    { "name": "sanitize", "inherits": "test-without-images", "configurePreset": "sanitize" },
+    { "name": "msvc-debug", "inherits": "test-without-images", "configurePreset": "msvc-debug" },
+    { "name": "msvc-release", "inherits": "test-without-images", "configurePreset": "msvc-release" },
+    { "name": "msvc-asan", "inherits": "test-without-images", "configurePreset": "msvc-asan" }
   ],
   "workflowPresets": [
     {
