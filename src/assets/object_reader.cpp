@@ -1,12 +1,12 @@
 #include "object_reader.hpp"
 
 #include "json_file.hpp"
+#include <wulfhilde/assets/asset_problem.hpp>
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/assertion.hpp>
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
-#include <wulfhilde/world/map_problem.hpp>
 
 #include <pedantjson/pedantjson.hpp>
 
@@ -33,7 +33,7 @@ void report_duplicates(const pedantjson::Object& object, const pedantjson::Point
         const auto name = member.key.name();
         const auto [first, inserted] = first_offsets.try_emplace(name, member.key.offset());
         if (!inserted) {
-            file.report(MapProblemCode::duplicate_member, pointer / name, member.key.offset(),
+            file.report(AssetProblemCode::duplicate_member, pointer / name, member.key.offset(),
                         std::format("the {} has {:?} already, on line {}", noun, name,
                                     file.document().position(first->second).line));
         }
@@ -60,14 +60,9 @@ void report_duplicates_within(const Field& field, JsonFile& file) {
     }
 }
 
-/// Reports a problem in a value, at its position.
-void report_at(const Field& field, MapProblemCode code, std::string message, JsonFile& file) {
-    file.report(code, field.pointer, field.value.offset(), std::move(message));
-}
-
 /// Reports a value of the wrong kind.
 void report_wrong_type(const Field& field, std::string_view expected, JsonFile& file) {
-    report_at(field, MapProblemCode::wrong_type,
+    report_at(field, AssetProblemCode::wrong_type,
               std::format("expected {}, not {}", expected, kind_name(field.value.kind())), file);
 }
 
@@ -98,29 +93,11 @@ std::string_view object_text(std::string_view text, std::size_t offset) {
     return rest;
 }
 
-/// Reads a value as an array of a given count of numbers.
-template <std::size_t Count>
-std::optional<std::array<float, Count>> read_numbers(const Field& field, JsonFile& file) {
-    const auto elements = read_array(field, file);
-    if (!elements) {
-        return std::nullopt;
-    }
-    if (elements->size() != Count) {
-        report_at(field, MapProblemCode::wrong_length,
-                  std::format("expected {} numbers, not {}", Count, elements->size()), file);
-        return std::nullopt;
-    }
-    std::array<float, Count> numbers{};
-    auto read = true;
-    for (auto&& [number, element] : std::views::zip(numbers, *elements)) {
-        const auto value = read_number(element, file);
-        read = value.has_value() && read;
-        number = value.value_or(0.0F);
-    }
-    return read ? std::optional(numbers) : std::nullopt;
-}
-
 } // namespace
+
+void report_at(const Field& field, AssetProblemCode code, std::string message, JsonFile& file) {
+    file.report(code, field.pointer, field.value.offset(), std::move(message));
+}
 
 ObjectReader::ObjectReader(pedantjson::Value object, pedantjson::Pointer pointer,
                            std::string_view noun, JsonFile& file)
@@ -131,12 +108,18 @@ ObjectReader::ObjectReader(pedantjson::Value object, pedantjson::Pointer pointer
     report_duplicates(object_, pointer_, noun_, file);
 }
 
+bool ObjectReader::has(std::string_view name) const { return object_.find(name).has_value(); }
+
+void ObjectReader::report(AssetProblemCode code, std::string message) {
+    file_.get().report(code, pointer_, offset_, std::move(message));
+}
+
 void ObjectReader::finish() {
     const std::string_view article = noun_.find_first_of("aeiou") == 0 ? "an" : "a";
     for (auto&& [member, asked_for] : std::views::zip(object_, asked_for_)) {
         if (!asked_for) {
             file_.get().report(
-                MapProblemCode::unknown_member, pointer_ / member.key.name(), member.key.offset(),
+                AssetProblemCode::unknown_member, pointer_ / member.key.name(), member.key.offset(),
                 std::format("{} {} has no member {:?}", article, noun_, member.key.name()));
             // Its duplicates are reported as duplicates already.
             std::ignore = take(member.key.name(), false);
@@ -155,7 +138,7 @@ std::optional<Field> ObjectReader::take(std::string_view name, bool required) {
         }
     }
     if (!first && required) {
-        file_.get().report(MapProblemCode::missing_member, pointer_, offset_,
+        file_.get().report(AssetProblemCode::missing_member, pointer_, offset_,
                            std::format("the {} has no {:?}, which it must have", noun_, name));
     }
     return first;
@@ -201,7 +184,7 @@ std::optional<float> read_number(const Field& field, JsonFile& file) {
     // A float holds any number in its range, so out of range is the only way this fails.
     const auto value = number->to<float>();
     if (!value) {
-        report_at(field, MapProblemCode::number_out_of_range,
+        report_at(field, AssetProblemCode::number_out_of_range,
                   std::format("the number {} is out of range, too large or too near zero to read",
                               number->text()),
                   file);
@@ -215,21 +198,21 @@ std::optional<Angle> read_angle(const Field& field, JsonFile& file) {
 }
 
 std::optional<Vector2> read_vector2(const Field& field, JsonFile& file) {
-    return read_numbers<2>(field, file).transform([](const auto& numbers) {
+    return read_numbers<2>(field, file, read_number).transform([](const auto& numbers) {
         const auto [x, y] = numbers;
         return Vector2{.x = x, .y = y};
     });
 }
 
 std::optional<Vector3> read_vector3(const Field& field, JsonFile& file) {
-    return read_numbers<3>(field, file).transform([](const auto& numbers) {
+    return read_numbers<3>(field, file, read_number).transform([](const auto& numbers) {
         const auto [x, y, z] = numbers;
         return Vector3{.x = x, .y = y, .z = z};
     });
 }
 
 std::optional<Color> read_color(const Field& field, JsonFile& file) {
-    return read_numbers<3>(field, file).transform([](const auto& numbers) {
+    return read_numbers<3>(field, file, read_number).transform([](const auto& numbers) {
         const auto [r, g, b] = numbers;
         return Color{.r = r, .g = g, .b = b};
     });

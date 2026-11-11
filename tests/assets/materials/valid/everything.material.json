@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../schema/material.schema.json",
+  "format": "wulfhilde-material",
+  "version": 1,
+  "color": { "factor": [1, 0.5, 0.25], "texture": "textures/rgb" },
+  "roughness": { "texture": "textures/rgb", "channel": "g" },
+  "metallic": { "factor": 0.5, "texture": "textures/rgb", "channel": "b" },
+  "normal": { "texture": "textures/rgb", "scale": 0.5 },
+  "occlusion": { "texture": "textures/grey", "strength": 0.75 },
+  "emission": { "nits": 100, "temperature": 2700, "texture": "textures/rgb" },
+  "size": [2, 1],
+  "properties": { "glows": true }
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "json_file.hpp"
+#include <wulfhilde/assets/asset_problem.hpp>
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/vector2.hpp>
@@ -8,9 +9,12 @@
 
 #include <pedantjson/pedantjson.hpp>
 
+#include <array>
 #include <cstddef>
+#include <format>
 #include <functional>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -25,6 +29,14 @@ struct Field {
     /// The value's JSON pointer.
     pedantjson::Pointer pointer;
 };
+
+/// Reports a problem in a value, at its position.
+///
+/// \param field The value.
+/// \param code What kind of problem it is.
+/// \param message What is wrong.
+/// \param file The file.
+void report_at(const Field& field, AssetProblemCode code, std::string message, JsonFile& file);
 
 /// Reads one object of a file, member by member, reporting every structural problem in it once.
 ///
@@ -63,6 +75,17 @@ class ObjectReader {
         const auto field = take(name, false);
         return field ? decode(*field, file_.get()) : decltype(decode(*field, file_.get())){};
     }
+
+    /// Tells whether the object has a member, without asking for it.
+    ///
+    /// \param name The member's name.
+    [[nodiscard]] bool has(std::string_view name) const;
+
+    /// Reports a problem of the object as a whole, at its position.
+    ///
+    /// \param code What kind of problem it is.
+    /// \param message What is wrong.
+    void report(AssetProblemCode code, std::string message);
 
     /// Reports every member that nobody asked for as one that no object of its kind has.
     void finish();
@@ -103,6 +126,34 @@ struct ReadObject {
 
 /// Reads a value as a number, which a `float` holds.
 [[nodiscard]] std::optional<float> read_number(const Field& field, JsonFile& file);
+
+/// Reads a value as an array of a given count of numbers, each read by a function that may check
+/// its range too.
+///
+/// \param read_element What reads each number: a function of a `Field` and a `JsonFile&` that
+///                     returns an optional `float`, empty after it has reported what is wrong.
+/// \return The numbers, or nothing if the array or any of them is wrong.
+template <std::size_t Count, typename ReadElement>
+[[nodiscard]] std::optional<std::array<float, Count>>
+read_numbers(const Field& field, JsonFile& file, ReadElement read_element) {
+    const auto elements = read_array(field, file);
+    if (!elements) {
+        return std::nullopt;
+    }
+    if (elements->size() != Count) {
+        report_at(field, AssetProblemCode::wrong_length,
+                  std::format("expected {} numbers, not {}", Count, elements->size()), file);
+        return std::nullopt;
+    }
+    std::array<float, Count> numbers{};
+    auto read = true;
+    for (auto&& [number, element] : std::views::zip(numbers, *elements)) {
+        const auto value = read_element(element, file);
+        read = value.has_value() && read;
+        number = value.value_or(0.0F);
+    }
+    return read ? std::optional(numbers) : std::nullopt;
+}
 
 /// Reads a value as an angle, a number of degrees.
 [[nodiscard]] std::optional<Angle> read_angle(const Field& field, JsonFile& file);

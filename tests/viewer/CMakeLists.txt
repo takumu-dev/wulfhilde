@@ -36,6 +36,12 @@ wulfhilde_add_program_test(viewer "the viewer reports each problem of a map at i
     EXPECTED_RESULT 1
     STDERR_MATCHES "/tests/assets/invalid/several_problems\\.map\\.json:4:12: the start position has no \"yaw\", which it must have \\(/start\\).+/several_problems\\.map\\.json:12:22: expected an array, not a string \\(/sectors/0/loops/0/0/start\\)"
 )
+wulfhilde_add_program_test(viewer "the viewer reports each problem of a map's assets at its file, and fails"
+    PROGRAM wulfhilde-viewer
+    ARGUMENTS "${PROJECT_SOURCE_DIR}/tests/assets/valid/hall.map.json"
+    EXPECTED_RESULT 1
+    STDERR_MATCHES "/tests/assets/valid/hall\\.map\\.json: there is no file at \"test/floor\\.material\\.json\" \\(/sectors/0/floor/material\\).+/tests/assets/valid/hall\\.map\\.json: there is no file at \"test/wall\\.material\\.json\" \\(/sectors/0/loops/0/0/surface/material\\)"
+)
 wulfhilde_add_program_test(viewer "the viewer names the map's file as given, with its directory, when its content root is named too"
     PROGRAM wulfhilde-viewer
     ARGUMENTS

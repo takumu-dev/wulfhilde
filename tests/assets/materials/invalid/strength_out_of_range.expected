@@ -1,0 +1,1 @@
+invalid/strength_out_of_range.material.json:7:43: -0.5 is outside a strength's range, 0 to 1 (/occlusion/strength)

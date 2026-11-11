@@ -1,12 +1,12 @@
-# The checks that build nothing: formatting, documentation and the map schema. Each target exists
+# The checks that build nothing: formatting, documentation and the asset schemas. Each target exists
 # only where its tool is found, so the lint preset fails at once, naming the target, on a machine
 # that lacks one.
 #
 #   check-format  fails if any source differs from what clang-format would make of it
 #   format        reformats every source in place
 #   docs          runs Doxygen over the public headers, failing on any warning
-#   check-schema  checks the map schema against the maps of the tests, as cmake/check_schemas.cmake
-#                 describes
+#   check-schema  checks the map and material schemas against the tests' files, as
+#                 cmake/check_schemas.cmake describes
 
 include_guard(GLOBAL)
 
@@ -51,7 +51,7 @@ if(WULFHILDE_CHECK_JSONSCHEMA)
             "-DCHECK_JSONSCHEMA=${WULFHILDE_CHECK_JSONSCHEMA}"
             "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/check_schemas.cmake"
-        COMMENT "Checking the map schema against the tests' maps"
+        COMMENT "Checking the map and material schemas against the tests' files"
         VERBATIM
     )
 endif()

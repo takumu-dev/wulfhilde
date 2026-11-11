@@ -1,0 +1,3 @@
+invalid/loader_only/several_problems.material.json:4:25: the image "textures/rgba" has an alpha channel, but a material is opaque, so its colour can't have one (/color/texture)
+invalid/loader_only/several_problems.material.json:5:29: there is no file at "textures/nothing.png" (/roughness/texture)
+invalid/loader_only/several_problems.material.json:7:57: the image "textures/grey" has no alpha channel to read (/occlusion/channel)

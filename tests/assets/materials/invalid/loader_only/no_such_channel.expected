@@ -1,0 +1,1 @@
+invalid/loader_only/no_such_channel.material.json:6:55: the image "textures/rgb" has no alpha channel to read (/metallic/channel)

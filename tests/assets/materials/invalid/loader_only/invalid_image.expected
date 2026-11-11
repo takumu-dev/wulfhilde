@@ -1,0 +1,1 @@
+textures/not_png.png: the file isn't a PNG image that can be decoded: PNG file is smaller than a PNG header, named first by invalid/loader_only/invalid_image.material.json at 4:25 (/color/texture)

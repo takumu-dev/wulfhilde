@@ -1,0 +1,5 @@
+invalid/several_problems.material.json:1:1: the material has no "size", which a material with a texture must have
+invalid/several_problems.material.json:4:35: 2 is outside a colour component's range, 0 to 1 (/color/factor/2)
+invalid/several_problems.material.json:5:44: the roughness has "channel", but no texture for it to apply to (/roughness/channel)
+invalid/several_problems.material.json:6:15: the metalness has no "factor" or "texture", which it must have one of (/metallic)
+invalid/several_problems.material.json:7:42: a normal has no member "sclae" (/normal/sclae)

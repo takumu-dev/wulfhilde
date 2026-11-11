@@ -1,0 +1,1 @@
+invalid/missing_size.material.json:1:1: the material has no "size", which a material with a texture must have

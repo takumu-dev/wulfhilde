@@ -1,0 +1,1 @@
+invalid/loader_only/alpha_in_color_texture.material.json:4:25: the image "textures/rgba" has an alpha channel, but a material is opaque, so its colour can't have one (/color/texture)

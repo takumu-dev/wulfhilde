@@ -1,7 +1,9 @@
 #include <wulfhilde/assets/load_map.hpp>
 
+#include "file_reading.hpp"
 #include "json_file.hpp"
 #include "map_decoding.hpp"
+#include <wulfhilde/assets/asset_problem.hpp>
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/world/asset_path.hpp>
 #include <wulfhilde/world/map.hpp>
@@ -11,59 +13,96 @@
 
 #include <pedantjson/pedantjson.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <expected>
-#include <filesystem>
 #include <format>
-#include <fstream>
-#include <ios>
-#include <iterator>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
+#include <vector>
 
 namespace wulfhilde {
 namespace {
 
-/// Reads the whole text of a file.
-///
-/// \return The text, or the problem of the whole file that kept it from being read.
-std::expected<std::string, MapProblem> read_text(const std::filesystem::path& path) {
-    // The status of what a symbolic link names, not of the link.
-    std::error_code error;
-    const auto status = std::filesystem::status(path, error);
-    if (status.type() == std::filesystem::file_type::not_found) {
-        return std::unexpected(
-            MapProblem{.code = MapProblemCode::missing_file, .message = "there is no such file"});
+/// Returns the code of a map's problem that a problem a map's file may have is.
+MapProblemCode map_problem_code(AssetProblemCode code) {
+    switch (code) {
+    case AssetProblemCode::missing_file:
+        return MapProblemCode::missing_file;
+    case AssetProblemCode::unreadable_file:
+        return MapProblemCode::unreadable_file;
+    case AssetProblemCode::syntax_error:
+        return MapProblemCode::syntax_error;
+    case AssetProblemCode::unknown_format:
+        return MapProblemCode::unknown_format;
+    case AssetProblemCode::unsupported_version:
+        return MapProblemCode::unsupported_version;
+    case AssetProblemCode::wrong_type:
+        return MapProblemCode::wrong_type;
+    case AssetProblemCode::wrong_length:
+        return MapProblemCode::wrong_length;
+    case AssetProblemCode::missing_member:
+        return MapProblemCode::missing_member;
+    case AssetProblemCode::unknown_member:
+        return MapProblemCode::unknown_member;
+    case AssetProblemCode::duplicate_member:
+        return MapProblemCode::duplicate_member;
+    case AssetProblemCode::number_out_of_range:
+        return MapProblemCode::number_out_of_range;
+    case AssetProblemCode::conflicting_members:
+    case AssetProblemCode::member_without_texture:
+    case AssetProblemCode::unknown_channel:
+    case AssetProblemCode::invalid_asset_path:
+    case AssetProblemCode::color_out_of_range:
+    case AssetProblemCode::light_level_out_of_range:
+    case AssetProblemCode::value_out_of_range:
+    case AssetProblemCode::invalid_image:
+    case AssetProblemCode::image_too_large:
+    case AssetProblemCode::alpha_in_color_texture:
+    case AssetProblemCode::grey_normal_texture:
+    case AssetProblemCode::missing_channel:
+    case AssetProblemCode::no_such_channel:
+        break;
     }
-    if (error) {
-        return std::unexpected(MapProblem{
-            .code = MapProblemCode::unreadable_file,
-            .message = std::format("the file can't be read: {}", error.message()),
-        });
-    }
-    if (!std::filesystem::is_regular_file(status)) {
-        return std::unexpected(MapProblem{
-            .code = MapProblemCode::unreadable_file,
-            .message = "the file can't be read, since it isn't a regular file",
-        });
-    }
+    // Only the problems of materials and images are left, which the map's decoder never reports.
+    std::unreachable();
+}
 
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        return std::unexpected(MapProblem{
-            .code = MapProblemCode::unreadable_file,
-            .message = "the file can't be opened",
-        });
+/// Returns a problem of a map's file as a problem of the map.
+MapProblem map_problem(AssetProblem problem) {
+    return {
+        .code = map_problem_code(problem.code),
+        .message = std::move(problem.message),
+        .pointer = std::move(problem.pointer),
+        .position = problem.position,
+    };
+}
+
+/// Places each problem that `Map::create` found at the value its pointer names or, if the file
+/// never wrote that value, at the nearest value on the way to it that the file did, and orders them
+/// by their positions.
+std::vector<MapProblem> place_problems(std::vector<MapProblem> problems,
+                                       const pedantjson::Document& document) {
+    std::vector<std::pair<std::size_t, MapProblem>> placed;
+    placed.reserve(problems.size());
+    for (auto& problem : problems) {
+        // The map's own checks write their pointers themselves, and every one of them is a
+        // pointer; the whole document is the nearest written value to anything.
+        const auto pointer =
+            pedantjson::Pointer::parse(problem.pointer).value_or(pedantjson::Pointer{});
+        const auto offset = document.nearest(pointer).offset();
+        const auto position = document.position(offset);
+        problem.position = TextPosition{.line = position.line, .column = position.column};
+        placed.emplace_back(offset, std::move(problem));
     }
-    std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-    if (file.bad()) {
-        return std::unexpected(MapProblem{
-            .code = MapProblemCode::unreadable_file,
-            .message = "the file can't be read to its end",
-        });
+    std::ranges::stable_sort(placed, {}, &std::pair<std::size_t, MapProblem>::first);
+    std::vector<MapProblem> ordered;
+    ordered.reserve(placed.size());
+    for (auto& [offset, problem] : placed) {
+        ordered.push_back(std::move(problem));
     }
-    return text;
+    return ordered;
 }
 
 } // namespace
@@ -84,41 +123,32 @@ std::expected<Map, MapLoadError> load_map(const ContentRoot& root, std::string_v
                                    path),
         });
     }
-    auto text = read_text(root.directory() / error.file);
+    auto text = detail::read_file(root.directory() / error.file);
     if (!text) {
-        return fail(std::move(text.error()));
+        return fail(map_problem(std::move(text.error())));
     }
 
     // Phase 1: the syntax. The document refers to its own copy of the text, and properties are
     // copied from this one.
-    const auto document = pedantjson::parse(*text);
+    const auto document = detail::parse_json(*text);
     if (!document) {
-        return fail({
-            .code = MapProblemCode::syntax_error,
-            .message = std::string{document.error().message()},
-            .position =
-                TextPosition{
-                    .line = document.error().position.line,
-                    .column = document.error().position.column,
-                },
-        });
+        return fail(map_problem(document.error()));
     }
 
     // Phase 2: the structure, beginning with whether the file is a map of this version at all.
-    detail::JsonFile file(*text, *document);
+    detail::JsonFile file(error.file, *text, *document);
     auto description = detail::decode_map(file);
     if (!description || file.has_problems()) {
-        error.problems = std::move(file).take_problems();
+        for (auto& problem : std::move(file).take_problems()) {
+            error.problems.push_back(map_problem(std::move(problem)));
+        }
         return std::unexpected(std::move(error));
     }
 
     // Phase 3: the map's own rules, positioned by the values they point at.
     auto map = Map::create(std::move(*description));
     if (!map) {
-        for (auto& problem : map.error().problems) {
-            file.report_at_pointer(std::move(problem));
-        }
-        error.problems = std::move(file).take_problems();
+        error.problems = place_problems(std::move(map.error().problems), *document);
         return std::unexpected(std::move(error));
     }
     return std::move(*map);

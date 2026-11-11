@@ -1,0 +1,9 @@
+{
+  "format": "wulfhilde-material",
+  "version": 1,
+  "color": { "texture": "textures/rgba" },
+  "roughness": { "texture": "textures/nothing" },
+  "metallic": { "texture": "textures/nothing", "channel": "b" },
+  "occlusion": { "texture": "textures/grey", "channel": "a" },
+  "size": [1, 1]
+}

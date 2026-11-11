@@ -1,0 +1,1 @@
+invalid/loader_only/missing_channel.material.json:5:29: the image "textures/rgb" has several channels, but the roughness names no "channel" to read (/roughness/texture)

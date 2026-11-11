@@ -200,11 +200,13 @@ departs from them, it says so.
   The `image` tests read their reference PNGs, and the tests of their harness write PNGs into the
   build tree to read back.
 - A map's schema, `schema/map.schema.json`, its loader and the maps of the tests change together, in
-  one commit. Each map in `tests/assets/invalid/` holds one mistake, or a few to show several
-  problems at once, beside a `.expected` file of its problems, formatted exactly. The `lint`
-  preset checks that the schema rejects every one of them, except those in `loader_only/`, which
-  hold the mistakes no schema can state and which it must accept, and that it accepts every map in
-  `tests/content/` and `tests/assets/valid/`.
+  one commit, and so do a material's, `schema/material.schema.json`, and the materials of the
+  tests. Each map in `tests/assets/invalid/`, and each material in
+  `tests/assets/materials/invalid/`, holds one mistake, or a few to show several problems at once,
+  beside a `.expected` file of its problems, formatted exactly. The `lint` preset checks that the
+  schema rejects every one of them, except those in `loader_only/`, which hold the mistakes no
+  schema can state and which it must accept, and that it accepts every map and material in
+  `tests/content/`, and every one in `tests/assets/valid/` and `tests/assets/materials/valid/`.
 - Every test carries exactly one CTest label: `unit` (the CPU only), `gpu` (a Vulkan device, where
   any validation message fails the test) or `image` (rendered and compared with a reference image).
   Its name begins with its module, matching its Catch2 tag (`[core]`), or with `build` or

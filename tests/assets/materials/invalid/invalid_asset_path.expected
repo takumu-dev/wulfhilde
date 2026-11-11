@@ -1,0 +1,1 @@
+invalid/invalid_asset_path.material.json:4:25: "Textures/RGB.png" isn't an asset path, which is segments of a-z, 0-9, _ and - separated by / and without an extension (/color/texture)
