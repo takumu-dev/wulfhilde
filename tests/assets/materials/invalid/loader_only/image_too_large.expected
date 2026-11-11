@@ -1,0 +1,1 @@
+textures/too_large.png: the image is 4097 by 1 pixels, but an image may be at most 4096 pixels on a side, named first by invalid/loader_only/image_too_large.material.json at 5:29 (/roughness/texture)

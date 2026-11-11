@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wulfhilde material",
+  "description": "A material of the wulfhilde engine, in a file ending .material.json: how a surface responds to light, with glTF's metallic-roughness properties, each a factor times an optional texture. A material is opaque and seen from the front only. The engine checks the same rules when it loads a material, and more that a schema can't state: a key written twice, a number too near zero to read, and whether each texture's image is there, is a PNG of at most 4,096 pixels on a side, and can be read as its property reads it.",
+  "type": "object",
+  "required": ["format", "version", "color", "roughness", "metallic"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "description": "The schema that an editor checks the file against. The engine ignores it.",
+      "type": "string"
+    },
+    "format": {
+      "description": "What the file is: a wulfhilde material.",
+      "const": "wulfhilde-material"
+    },
+    "version": {
+      "description": "The version of the material format the file is written in. This version of the engine reads version 1 only.",
+      "const": 1
+    },
+    "color": {
+      "description": "The base colour: the colour of a dielectric, or the reflectance of a metal.",
+      "type": "object",
+      "anyOf": [{ "required": ["factor"] }, { "required": ["texture"] }],
+      "additionalProperties": false,
+      "properties": {
+        "factor": {
+          "description": "What the texture is multiplied by, or the colour itself without one. Defaults to [1, 1, 1] with a texture.",
+          "$ref": "#/$defs/color"
+        },
+        "texture": {
+          "description": "An image of the colour, in sRGB, which may not have an alpha channel, since a material is opaque.",
+          "$ref": "#/$defs/texture"
+        }
+      }
+    },
+    "roughness": {
+      "description": "The roughness, from 0 for a mirror to 1 for fully rough.",
+      "$ref": "#/$defs/valueProperty",
+      "unevaluatedProperties": false
+    },
+    "metallic": {
+      "description": "The metalness, from 0 for a dielectric to 1 for a metal.",
+      "$ref": "#/$defs/valueProperty",
+      "unevaluatedProperties": false
+    },
+    "normal": {
+      "description": "A normal texture, which tilts the surface's normal in tangent space. Without one, the surface is flat.",
+      "type": "object",
+      "required": ["texture"],
+      "additionalProperties": false,
+      "properties": {
+        "texture": {
+          "description": "An image of red, green and blue, as glTF and OpenGL have it: red is +u, green is +v, and blue points out of the surface.",
+          "$ref": "#/$defs/texture"
+        },
+        "scale": {
+          "description": "What the texture's u and v components are multiplied by. Defaults to 1.",
+          "$ref": "#/$defs/number"
+        }
+      }
+    },
+    "occlusion": {
+      "description": "The ambient occlusion, from 0, where no ambient light reaches, to 1, where it all does. Without it, there is none.",
+      "$ref": "#/$defs/valueProperty",
+      "unevaluatedProperties": false,
+      "properties": {
+        "strength": {
+          "description": "How strongly the occlusion applies, from 0 for not at all to 1 for fully. Defaults to 1.",
+          "$ref": "#/$defs/fraction"
+        }
+      }
+    },
+    "emission": {
+      "description": "The light the material gives out of itself, which lights nothing else: nits times the colour times the texture. Without it, there is none.",
+      "type": "object",
+      "required": ["nits"],
+      "oneOf": [{ "required": ["color"] }, { "required": ["temperature"] }],
+      "additionalProperties": false,
+      "properties": {
+        "nits": {
+          "description": "The luminance of white, in nits.",
+          "$ref": "#/$defs/number",
+          "minimum": 0
+        },
+        "color": {
+          "description": "The colour of the light.",
+          "$ref": "#/$defs/color"
+        },
+        "temperature": {
+          "description": "The colour of the light as a black body's temperature, in kelvin, at the luminance of white.",
+          "type": "number",
+          "minimum": 1000,
+          "maximum": 40000
+        },
+        "texture": {
+          "description": "An image of the light's colour, in sRGB.",
+          "$ref": "#/$defs/texture"
+        }
+      }
+    },
+    "size": {
+      "description": "The real-world size, in metres along u and v, of one repeat of the material's textures, which all share it. The bottom-left corner of each texture lies at the origin of u and v. A material has it exactly when it has a texture.",
+      "type": "array",
+      "prefixItems": [{ "$ref": "#/$defs/length" }, { "$ref": "#/$defs/length" }],
+      "items": false,
+      "minItems": 2
+    },
+    "properties": {
+      "description": "Game-defined data, which the engine keeps and ignores.",
+      "type": "object"
+    }
+  },
+  "if": {
+    "anyOf": [
+      { "required": ["normal"] },
+      { "required": ["color"], "properties": { "color": { "required": ["texture"] } } },
+      { "required": ["roughness"], "properties": { "roughness": { "required": ["texture"] } } },
+      { "required": ["metallic"], "properties": { "metallic": { "required": ["texture"] } } },
+      { "required": ["occlusion"], "properties": { "occlusion": { "required": ["texture"] } } },
+      { "required": ["emission"], "properties": { "emission": { "required": ["texture"] } } }
+    ]
+  },
+  "then": { "required": ["size"] },
+  "else": { "not": { "required": ["size"] } },
+  "$defs": {
+    "number": {
+      "description": "A number within the range the engine reads numbers in, that of a single-precision float.",
+      "type": "number",
+      "exclusiveMinimum": -3.4028235677973366e38,
+      "exclusiveMaximum": 3.4028235677973366e38
+    },
+    "fraction": {
+      "description": "A number from 0 to 1.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "length": {
+      "description": "A length, in metres, of more than 0.",
+      "$ref": "#/$defs/number",
+      "exclusiveMinimum": 0
+    },
+    "color": {
+      "description": "A colour in linear Rec.709, [r, g, b], each component from 0 to 1.",
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/fraction" },
+        { "$ref": "#/$defs/fraction" },
+        { "$ref": "#/$defs/fraction" }
+      ],
+      "items": false,
+      "minItems": 3
+    },
+    "texture": {
+      "description": "The asset path of an image, a PNG file ending .png under the content root, in /-separated segments of a-z, 0-9, _ and -, without the extension. Its colour space is the one its property reads it in, whatever the PNG says.",
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+(/[a-z0-9_-]+)*$"
+    },
+    "valueProperty": {
+      "description": "A property of one value: a factor times one channel of an optional texture. Where it is used, it says that no other member may sit beside its own.",
+      "type": "object",
+      "anyOf": [{ "required": ["factor"] }, { "required": ["texture"] }],
+      "dependentRequired": { "channel": ["texture"] },
+      "properties": {
+        "factor": {
+          "description": "What the texture is multiplied by, or the value itself without one. Defaults to 1 with a texture.",
+          "$ref": "#/$defs/fraction"
+        },
+        "texture": {
+          "description": "An image of the value, read linearly: a grey image, or an image of several channels of which `channel` names the one to read.",
+          "$ref": "#/$defs/texture"
+        },
+        "channel": {
+          "description": "The channel of the texture that holds the value, which an image of several channels needs.",
+          "enum": ["r", "g", "b", "a"]
+        }
+      }
+    }
+  }
+}

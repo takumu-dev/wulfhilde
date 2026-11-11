@@ -1,0 +1,2 @@
+invalid/missing_normal_texture.material.json:1:1: the material has no "size", which a material with a texture must have
+invalid/missing_normal_texture.material.json:7:13: the normal has no "texture", which it must have (/normal)

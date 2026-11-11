@@ -1,0 +1,1 @@
+invalid/size_without_texture.material.json:7:11: the material has "size", but no texture for it to apply to (/size)

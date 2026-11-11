@@ -1,0 +1,1 @@
+invalid/emission_color_and_temperature.material.json:7:67: the emission has both "color" and "temperature", but may have only one of them (/emission/temperature)

@@ -1,0 +1,1 @@
+invalid/loader_only/grey_normal_texture.material.json:7:26: the image "textures/grey" is grey, but a normal texture needs red, green and blue to hold a direction (/normal/texture)

@@ -1,6 +1,7 @@
 #include "command_line.hpp"
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
+#include <wulfhilde/assets/load_map_assets.hpp>
 #include <wulfhilde/core/narrow.hpp>
 
 #include <cstddef>
@@ -47,6 +48,21 @@ int main(int argc, char** argv) {
         // viewer was started, so that a terminal or an editor finds it.
         auto error = std::move(map.error());
         error.file = (command_line->content / error.file).lexically_normal().generic_string();
+        std::print(stderr, "{}\n", error);
+        return EXIT_FAILURE;
+    }
+
+    auto assets = wulfhilde::load_map_assets(*root, *map);
+    if (!assets) {
+        // As a map's problems do, each names its file as a path from where the viewer was started,
+        // and a problem in the map, whose file the map doesn't know, names the map's.
+        auto error = std::move(assets.error());
+        for (auto& problem : error.problems) {
+            problem.file =
+                problem.file.empty()
+                    ? command_line->map.generic_string()
+                    : (command_line->content / problem.file).lexically_normal().generic_string();
+        }
         std::print(stderr, "{}\n", error);
         return EXIT_FAILURE;
     }

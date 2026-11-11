@@ -34,6 +34,17 @@ set_tests_properties("consumers: the map schema is installed, for the editors of
         LABELS unit
 )
 
+add_test(NAME "consumers: the material schema is installed, for the editors of those who write materials"
+    COMMAND "${CMAKE_COMMAND}" -E compare_files
+        "${PROJECT_SOURCE_DIR}/schema/material.schema.json"
+        "${prefix}/${CMAKE_INSTALL_DATADIR}/wulfhilde/schema/material.schema.json"
+)
+set_tests_properties("consumers: the material schema is installed, for the editors of those who write materials"
+    PROPERTIES
+        FIXTURES_REQUIRED wulfhilde_installed
+        LABELS unit
+)
+
 # Adds a test that builds the consumer project in `source_dir` and runs the program it builds.
 # The consumer finds the third-party packages the engine links where this build found them.
 #
@@ -49,6 +60,7 @@ function(wulfhilde_add_consumer_test name source_dir)
     endif()
     if(NOT arg_WITHOUT_PACKAGES)
         list(APPEND arg_OPTIONS
+            "-Dlodepng_DIR=${lodepng_DIR}"
             "-Dpedantjson_DIR=${pedantjson_DIR}"
             "-Dvolk_DIR=${volk_DIR}"
             "-DVulkanMemoryAllocator_DIR=${VulkanMemoryAllocator_DIR}"
@@ -84,7 +96,7 @@ wulfhilde_add_consumer_test("a game links the installed engine through the umbre
     INSTALLED
 )
 # renderer is a subset that needs assets, world and core, which come with it, and the packages
-# pedantjson and volk.
+# lodepng, pedantjson and volk.
 wulfhilde_add_consumer_test("a game links a subset of the installed engine's modules" installed
     INSTALLED
     OPTIONS -DWULFHILDE_COMPONENTS=renderer
@@ -98,12 +110,12 @@ wulfhilde_add_consumer_test("a game without a package that a module links is tol
     INSTALLED
     WITHOUT_PACKAGES
     OPTIONS -DWULFHILDE_COMPONENTS=assets
-    FAILS_MATCHING "the assets module links pedantjson, which wasn't found"
+    FAILS_MATCHING "the assets module links lodepng, which wasn't found"
 )
 wulfhilde_add_consumer_test("a game without a package that a module links can't have the whole engine" installed
     INSTALLED
     WITHOUT_PACKAGES
-    FAILS_MATCHING "the assets module links pedantjson, which wasn't found"
+    FAILS_MATCHING "the assets module links lodepng, which wasn't found"
 )
 wulfhilde_add_consumer_test("a game builds the engine as a subproject" subproject
     OPTIONS "-DWULFHILDE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"

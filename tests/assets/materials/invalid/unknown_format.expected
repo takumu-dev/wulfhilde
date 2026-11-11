@@ -1,0 +1,1 @@
+invalid/unknown_format.material.json:2:13: the file isn't a wulfhilde material: its "format" is "wulfhilde-map", not "wulfhilde-material" (/format)

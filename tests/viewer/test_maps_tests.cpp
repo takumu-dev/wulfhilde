@@ -2,6 +2,7 @@
 // as the viewer loads them.
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
+#include <wulfhilde/assets/load_map_assets.hpp>
 
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -12,7 +13,7 @@
 #include <string>
 #include <string_view>
 
-TEST_CASE("every test map loads without a problem", "[viewer]") {
+TEST_CASE("every test map loads without a problem, and so do its assets", "[viewer]") {
     const std::filesystem::path content = WULFHILDE_TEST_CONTENT;
     const auto root = wulfhilde::ContentRoot::open(content);
     REQUIRE(root.has_value());
@@ -29,6 +30,11 @@ TEST_CASE("every test map loads without a problem", "[viewer]") {
         const auto map = wulfhilde::load_map(*root, name.substr(0, name.size() - extension.size()));
         if (!map) {
             FAIL_CHECK(std::format("{}", map.error()));
+            continue;
+        }
+        const auto assets = wulfhilde::load_map_assets(*root, *map);
+        if (!assets) {
+            FAIL_CHECK(std::format("{}", assets.error()));
         }
     }
     CHECK(maps > 0);
@@ -45,4 +51,8 @@ TEST_CASE("the sectors map is one concave sector", "[viewer]") {
     CHECK(map->sectors().front().loops.front().size() == 6);
     CHECK(map->sector(map->start().location.sector).id == "hall");
     CHECK(map->contains(map->start().location));
+
+    const auto assets = wulfhilde::load_map_assets(*root, *map);
+    REQUIRE(assets.has_value());
+    CHECK(assets->materials.size() == 3);
 }

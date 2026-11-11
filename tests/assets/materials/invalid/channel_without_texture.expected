@@ -1,0 +1,1 @@
+invalid/channel_without_texture.material.json:5:44: the roughness has "channel", but no texture for it to apply to (/roughness/channel)

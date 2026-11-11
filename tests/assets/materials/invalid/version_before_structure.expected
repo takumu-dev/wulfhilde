@@ -1,0 +1,1 @@
+invalid/version_before_structure.material.json:3:14: this version of the engine reads materials of version 1 only, not 0 (/version)

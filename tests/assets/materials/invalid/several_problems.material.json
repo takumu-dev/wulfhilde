@@ -1,0 +1,8 @@
+{
+  "format": "wulfhilde-material",
+  "version": 1,
+  "color": { "factor": [0.5, 0.5, 2] },
+  "roughness": { "factor": 0.5, "channel": "r" },
+  "metallic": {},
+  "normal": { "texture": "textures/rgb", "sclae": 1 }
+}

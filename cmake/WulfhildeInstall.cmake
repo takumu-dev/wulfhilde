@@ -54,8 +54,11 @@ install(FILES
 )
 
 install(FILES LICENSE README.md THIRD_PARTY_NOTICES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
-# The schema of a map's file, which an editor checks a map against as it is written.
-install(FILES schema/map.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/wulfhilde/schema")
+# The schemas of the files of maps and materials, which an editor checks a file against as it is
+# written.
+install(FILES schema/map.schema.json schema/material.schema.json
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/wulfhilde/schema"
+)
 # The logo, at the path the README shows it from, so that the installed copy shows it too.
 install(FILES
     branding/wulfhilde-logo.svg

@@ -14,7 +14,6 @@
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include <algorithm>
 #include <filesystem>
 #include <format>
 #include <string>
@@ -36,33 +35,12 @@ using wulfhilde::WallId;
 
 namespace {
 
-ContentRoot open_root(const std::filesystem::path& directory) {
-    auto root = ContentRoot::open(directory);
-    REQUIRE(root.has_value());
-    return std::move(*root);
-}
-
 Map load_valid(const ContentRoot& root, std::string_view path) {
     auto map = load_map(root, path);
     if (!map) {
         FAIL(std::format("{}", map.error()));
     }
     return std::move(*map);
-}
-
-// The asset path of each map under a directory, and of each file beside them, without its
-// extension, as long as the file's name has the extension.
-std::vector<std::string> asset_paths(const std::filesystem::path& directory,
-                                     std::string_view extension) {
-    std::vector<std::string> paths;
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(directory)) {
-        const auto name = entry.path().lexically_relative(directory).generic_string();
-        if (entry.is_regular_file() && name.ends_with(extension)) {
-            paths.push_back(name.substr(0, name.size() - extension.size()));
-        }
-    }
-    std::ranges::sort(paths);
-    return paths;
 }
 
 } // namespace

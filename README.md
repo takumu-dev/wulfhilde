@@ -11,7 +11,7 @@ game links the modules it needs and keeps `main` and its frame loop to itself.
 
 It is at an early stage. Today it holds three modules, `core`, `world` and `assets`, which a game
 builds against as a package or a subproject, and `wulfhilde-viewer`, the map-preview tool, which so
-far loads a map and reports every problem in it.
+far loads a map and its assets and reports every problem in them.
 
 ## Modules
 
@@ -19,7 +19,7 @@ far loads a map and reports every problem in it.
 |---|---|---|
 | `core` | | checks of preconditions and their handler, the log sink, the checked `narrow`, typed IDs, and the math types: vectors, matrices, rotations, rigid transforms, angles, colours and planes |
 | `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, and asked whether a location is in its sector, the heights there and where a trace stops. It opens no files |
-| `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file, with every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
+| `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file and its materials, with their PNG textures decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
 `<wulfhilde/<module>/...>`. The umbrella target `wulfhilde::wulfhilde` links them all.
@@ -32,6 +32,12 @@ extensions. `schema/map.schema.json` is the map's JSON Schema, installed under
 `share/wulfhilde/schema/`, so an editor can check and complete a map as it is written. Point the
 map's `$schema` at it, as the maps in `tests/content/` do, or tell the editor to use it for every
 `*.map.json`.
+
+Each surface names a material, a strict JSON file ending `.material.json` in the same content
+root, with glTF's metallic-roughness properties, each a factor times an optional texture, an
+emission in nits, and the real-world size of one repeat of its textures. A texture is a PNG,
+named by its asset path without `.png`, whose colour space is the one the property reading it
+needs. `schema/material.schema.json` is the material's JSON Schema, installed beside the map's.
 
 The viewer opens a map's file, with the content root defaulting to the file's own directory:
 
@@ -68,7 +74,7 @@ cmake --workflow --preset gcc-debug
 | `libcxx-debug`, `libcxx-release` | Clang with libc++ |
 | `sanitize` | Clang with AddressSanitizer and UndefinedBehaviorSanitizer |
 | `tidy` | Clang, with `clang-tidy` run on every source |
-| `lint` | the formatting, documentation and map schema checks |
+| `lint` | the formatting, documentation and asset schema checks |
 | `msvc-debug`, `msvc-release`, `msvc-asan`, `msvc-noexcept` | MSVC, from a developer command prompt |
 
 Warnings are errors in every preset. Machine-specific settings, such as a compiler under another
@@ -87,6 +93,7 @@ so a game can supply them through vcpkg, Conan, system packages or builds of its
 
 | Package | Found with | Needed by |
 |---|---|---|
+| [lodepng](https://github.com/lvandeve/lodepng) | `find_package(lodepng CONFIG)` | `assets` |
 | [pedantjson](https://github.com/takumu-dev/pedantjson) | `find_package(pedantjson CONFIG)` | `assets` |
 | [volk](https://github.com/zeux/volk) | `find_package(volk CONFIG)` | `renderer` |
 | [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | `find_package(VulkanMemoryAllocator CONFIG)` | building `renderer` |
@@ -132,8 +139,8 @@ until a game installs its own with `wulfhilde::set_log_sink`.
 
 - `CODING_STANDARDS.md` says how the code is written, tested and committed.
 - `cmake --workflow --preset lint` checks the formatting with `clang-format`, the documentation
-  with Doxygen, and the map schema with `check-jsonschema` against the maps of the tests. Building
-  the `format` target reformats every source.
+  with Doxygen, and the map and material schemas with `check-jsonschema` against the tests' files.
+  Building the `format` target reformats every source.
 - Every public declaration has a Doxygen comment. Doxygen writes the reference to `build/docs`.
 - Tests come first, through the public interfaces only, under `tests/`, which mirrors `src/` and
   `apps/`. `tests/consumers/` builds a small game against the installed package and as a
@@ -152,9 +159,9 @@ until a game installs its own with `wulfhilde::set_log_sink`.
   port stops the configuration until its licence is reviewed again.
 - pedantjson, the strict JSON reader that reads maps, comes from the overlay port in
   `ports/pedantjson/`, a copy of the port in [pedantjson's repository](https://github.com/takumu-dev/pedantjson),
-  until vcpkg's registry has it. lodepng, which reads and writes the image tests' PNG files, comes
-  from the overlay port in `ports/lodepng/`, at a newer commit than the registry's port, until the
-  registry takes it up.
+  until vcpkg's registry has it. lodepng, which decodes materials' textures and reads and writes
+  the image tests' PNG files, comes from the overlay port in `ports/lodepng/`, at a newer commit
+  than the registry's port, until the registry takes it up.
 - The `gpu` and `image` tests run under the validation layers that the manifest's `tests` feature
   builds, which the tests point the Vulkan loader at, and any message from them fails the test.
 - An image test that fails leaves what it drew, and the pixels where that differs from its
