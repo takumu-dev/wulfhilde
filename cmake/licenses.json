@@ -11,5 +11,36 @@
     "CC0-1.0",
     "Unlicense"
   ],
-  "overrides": []
+  "overrides": [
+    {
+      "port": "shader-slang",
+      "version": "2026.19",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "reason": "The port declares no licence. Slang's LICENSE is Apache-2.0 with the LLVM exception, and the libraries its release bundles are under MIT, BSD, Apache-2.0 and Boost licences. It is a build tool, of which nothing ships."
+    },
+    {
+      "port": "spirv-cross",
+      "version": "1.4.363.0",
+      "license": "Apache-2.0",
+      "reason": "The port declares no licence, and SPIRV-Cross's LICENSE is Apache-2.0. The validation layers build with it, and nothing of it ships."
+    },
+    {
+      "port": "spirv-headers",
+      "version": "1.4.357.0",
+      "license": "MIT",
+      "reason": "The port declares no licence. SPIRV-Headers' headers and grammar are under the MIT licence's terms, said of 'Materials', and only its documents, which aren't installed, are CC-BY-4.0. Tools build with it, and nothing of it ships."
+    },
+    {
+      "port": "vulkan-utility-libraries",
+      "version": "1.4.357.0",
+      "license": "Apache-2.0",
+      "reason": "The port declares no licence, and LICENSE.md puts every file under Apache-2.0. The validation layers build with it, and nothing of it ships."
+    },
+    {
+      "port": "vulkan-validationlayers",
+      "version": "1.4.357.0",
+      "license": "Apache-2.0",
+      "reason": "The port declares no licence. Its LICENSE.txt is Apache-2.0, with any file that deviates under a more permissive licence. The tests run under the layers, and nothing of them ships."
+    }
+  ]
 }

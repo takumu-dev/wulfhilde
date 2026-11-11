@@ -187,8 +187,8 @@ wulfhilde_add_license_test("a dependency that declares no licence fails the chec
 )
 wulfhilde_add_license_test(
     "a dependency whose port sets its licence to null fails the check, naming it"
-    PORTS "shader-slang:x64-linux-release 2026.19 LicenseRef-vcpkg-null"
-    FAILS_WITH "shader-slang 2026\\.19 declares no licence\\. Review it, and add an override for"
+    PORTS "shader-tool:x64-linux-release 2026.19 LicenseRef-vcpkg-null"
+    FAILS_WITH "shader-tool 2026\\.19 declares no licence\\. Review it, and add an override for"
 )
 wulfhilde_add_license_test("an override gives the licence of a dependency that declares none"
     LICENSES licenses/overrides.json
