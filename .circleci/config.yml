@@ -49,9 +49,12 @@ commands:
       preset:
         type: string
     steps:
+      # vcpkg prints nothing while it builds a port, and the validation layers take longer than
+      # CircleCI's ten minutes without output allow.
       - run:
           name: Build and test << parameters.preset >>
           when: always
+          no_output_timeout: 30m
           command: >-
             pwsh -NoProfile -File ci/windows/build.ps1
             -MsvcVersion $env:MSVC_VERSION -Preset << parameters.preset >>;
@@ -127,8 +130,11 @@ jobs:
             mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
       - restore-vcpkg-cache:
           triplet: << parameters.triplet >>
+      # vcpkg prints nothing while it builds a port, and the validation layers take longer than
+      # CircleCI's ten minutes without output allow.
       - run:
           name: Configure, build and test
+          no_output_timeout: 30m
           command: cmake --workflow --preset << parameters.preset >>
       # Only develop saves a cache, which pull requests then restore. A key is saved once, and a
       # failed job saves nothing, or a cache missing ports would stand until the key changed.
