@@ -3,13 +3,15 @@
 #include "plan_geometry.hpp"
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
+#include <wulfhilde/world/ambient_light.hpp>
+#include <wulfhilde/world/asset_path.hpp>
 #include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <format>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <string>
@@ -76,23 +78,6 @@ void check_point(Problems& problems, std::string_view pointer, const Vector3& po
     check_coordinate(problems, child(pointer, 2), point.z);
 }
 
-/// Tells whether a string is an asset path: `/`-separated segments of lowercase `a`-`z`, `0`-`9`,
-/// `_` and `-`, none of them empty. A path so has no extension and can't leave its content root.
-[[nodiscard]] bool is_asset_path(std::string_view path) {
-    // Splitting an empty string gives no segments at all, rather than one empty segment.
-    if (path.empty()) {
-        return false;
-    }
-    for (const auto segment : std::views::split(path, '/')) {
-        if (segment.empty() || !std::ranges::all_of(segment, [](char c) {
-                return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
-            })) {
-            return false;
-        }
-    }
-    return true;
-}
-
 /// Checks that a string is an asset path.
 void check_asset_path(Problems& problems, std::string pointer, std::string_view path) {
     if (!is_asset_path(path)) {
@@ -100,6 +85,29 @@ void check_asset_path(Problems& problems, std::string pointer, std::string_view 
                      std::format(R"("{}" isn't an asset path, which is segments of a-z, 0-9, _ )"
                                  "and - separated by / and without an extension",
                                  path));
+    }
+}
+
+/// Checks that an ambient light's colour filters white, each component from 0 to 1, and that its
+/// light level is a finite number, 0 or more.
+void check_ambient(Problems& problems, std::string_view pointer,
+                   const std::optional<AmbientLight>& ambient) {
+    if (!ambient) {
+        return;
+    }
+    const auto color_pointer = child(pointer, "color");
+    for (std::size_t i = 0;
+         const auto component : {ambient->color.r, ambient->color.g, ambient->color.b}) {
+        if (std::isnan(component) || component < 0.0F || component > 1.0F) {
+            problems.add(
+                MapProblemCode::color_out_of_range, child(color_pointer, i),
+                std::format("{} is outside a colour component's range, 0 to 1", component));
+        }
+        ++i;
+    }
+    if (!std::isfinite(ambient->lux) || ambient->lux < 0.0F) {
+        problems.add(MapProblemCode::light_level_out_of_range, child(pointer, "lux"),
+                     std::format("{} lux isn't a light level, which is 0 or more", ambient->lux));
     }
 }
 
@@ -186,6 +194,7 @@ void check_loop(Problems& problems, std::string_view pointer,
 void check_sector(Problems& problems, std::string_view pointer, const SectorDescription& sector) {
     check_floor_or_ceiling(problems, child(pointer, "floor"), sector.floor);
     check_floor_or_ceiling(problems, child(pointer, "ceiling"), sector.ceiling);
+    check_ambient(problems, child(pointer, "ambient"), sector.ambient);
     const auto loops_pointer = child(pointer, "loops");
     if (sector.loops.empty()) {
         problems.add(MapProblemCode::missing_outer_loop, loops_pointer,
@@ -203,6 +212,7 @@ void check_sector(Problems& problems, std::string_view pointer, const SectorDesc
 
 std::vector<MapProblem> find_problems(const MapDescription& description) {
     Problems problems;
+    check_ambient(problems, "/ambient", description.ambient);
     std::unordered_map<std::string_view, std::size_t> sectors_by_id;
     for (std::size_t i = 0; const auto& sector : description.sectors) {
         const auto pointer = child("/sectors", i);

@@ -24,8 +24,10 @@ foreach(module IN LISTS WULFHILDE_MODULES)
         DESTINATION "${WULFHILDE_INSTALL_CMAKEDIR}"
     )
     get_property(dependencies GLOBAL PROPERTY WULFHILDE_${module}_DEPENDS)
+    get_property(packages GLOBAL PROPERTY WULFHILDE_${module}_PACKAGES)
     string(APPEND WULFHILDE_MODULE_DEPENDENCIES
         "set(_wulfhilde_${module}_dependencies ${dependencies})\n"
+        "set(_wulfhilde_${module}_packages ${packages})\n"
     )
 endforeach()
 
@@ -52,6 +54,8 @@ install(FILES
 )
 
 install(FILES LICENSE README.md THIRD_PARTY_NOTICES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+# The schema of a map's file, which an editor checks a map against as it is written.
+install(FILES schema/map.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/wulfhilde/schema")
 # The logo, at the path the README shows it from, so that the installed copy shows it too.
 install(FILES
     branding/wulfhilde-logo.svg

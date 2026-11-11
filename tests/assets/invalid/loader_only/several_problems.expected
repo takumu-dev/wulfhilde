@@ -1,0 +1,2 @@
+loader_only/several_problems.map.json:10:9: the outer loop runs clockwise seen from above, but must run anticlockwise (/sectors/0/loops/0)
+loader_only/several_problems.map.json:19:24: no sector has the id "yard" (/start/sector)

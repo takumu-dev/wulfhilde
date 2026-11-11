@@ -1,0 +1,20 @@
+{
+  "format": "build-map",
+  "version": 1,
+  "sectors": [
+    {
+      "id": "hall",
+      "floor": { "height": 0, "material": "test/floor" },
+      "ceiling": { "height": 3, "material": "test/ceiling" },
+      "loops": [
+        [
+          { "start": [0, 0], "surface": { "material": "test/wall" } },
+          { "start": [4, 0], "surface": { "material": "test/wall" } },
+          { "start": [4, 4], "surface": { "material": "test/wall" } },
+          { "start": [0, 4], "surface": { "material": "test/wall" } }
+        ]
+      ]
+    }
+  ],
+  "start": { "sector": "hall", "point": [2, 2, 0], "yaw": 0 }
+}

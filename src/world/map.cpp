@@ -117,6 +117,7 @@ std::expected<Map, MapLoadError> Map::create(MapDescription description) {
                     .start = wall.start,
                     .end = end,
                     .surface = make_surface(materials, std::move(wall.surface)),
+                    .properties = std::move(wall.properties),
                 });
             }
         }

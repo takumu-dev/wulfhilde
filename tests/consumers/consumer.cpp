@@ -1,6 +1,8 @@
 // A game's smallest use of the engine, built by each consumer project: a checked narrowing, a
-// message to the default log sink, the math types, which live wholly in their headers, and a map
-// built in code.
+// message to the default log sink, the math types, which live wholly in their headers, a map built
+// in code, and the load of a map's file.
+#include <wulfhilde/assets/content_root.hpp>
+#include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/id.hpp>
 #include <wulfhilde/core/log_sink.hpp>
@@ -9,6 +11,7 @@
 #include <wulfhilde/core/rigid_transform.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/map_problem.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -48,5 +51,14 @@ int main() {
     const bool built = map && map->contains(map->start().location) &&
                        map->trace(map->start().location, {.z = 5.0F}).end.point.z == 3.0F;
 
-    return sector.index() == 12 && turned && warm.r > 1.0F && built ? EXIT_SUCCESS : EXIT_FAILURE;
+    // No map is where the consumer runs, so the load reports its file missing.
+    bool missing = false;
+    if (const auto root = wulfhilde::ContentRoot::open(".")) {
+        const auto loaded = wulfhilde::load_map(*root, "nowhere");
+        missing = !loaded && loaded.error().file == "nowhere.map.json" &&
+                  loaded.error().problems.front().code == wulfhilde::MapProblemCode::missing_file;
+    }
+
+    return sector.index() == 12 && turned && warm.r > 1.0F && built && missing ? EXIT_SUCCESS
+                                                                               : EXIT_FAILURE;
 }

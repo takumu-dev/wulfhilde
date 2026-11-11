@@ -1,0 +1,1 @@
+invalid_asset_path.map.json:7:43: "Test/Floor.png" isn't an asset path, which is segments of a-z, 0-9, _ and - separated by / and without an extension (/sectors/0/floor/material)

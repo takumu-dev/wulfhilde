@@ -1,0 +1,1 @@
+ambient_lux_out_of_range.map.json:4:43: -5 lux isn't a light level, which is 0 or more (/ambient/lux)

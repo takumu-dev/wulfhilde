@@ -1,0 +1,1 @@
+coordinate_out_of_range.map.json:12:23: 5000 is beyond the map's bounds, 4,096 m either side of the origin (/sectors/0/loops/0/1/start/0)

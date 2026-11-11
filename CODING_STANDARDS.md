@@ -27,6 +27,9 @@ departs from them, it says so.
   vcpkg's licence data is a best guess, so a port that declares no licence, or the wrong one, takes
   an override there once someone has read its licence: the port, the version read, the licence and
   why. When the port's version changes, its override fails the check until it is read again.
+- pedantjson comes from the overlay port in `ports/pedantjson/`, a copy of the port that
+  pedantjson's own repository keeps, until vcpkg's registry has it. Taking a new release of
+  pedantjson copies that port again, once it names the release, in a `build(deps)` commit.
 - `THIRD_PARTY_NOTICES.md` is generated, never edited. Build the `notices` target of the
   `gcc-release` preset whenever the dependencies change, and commit the result with the change.
 
@@ -189,7 +192,14 @@ departs from them, it says so.
   Its name is a sentence saying what holds, such as "a null log sink restores the default".
 - `tests/` mirrors `src/` and `apps/`. Beside them, `tests/cmake/` tests the configuration,
   `tests/consumers/` the package, and `tests/support/` holds what the tests share.
-- Only the tests of `assets` read files. Every other module's tests build their input in C++.
+- Only the tests of `assets` read files, and the viewer's acceptance suite, which loads the test
+  maps in `tests/content/` through `assets`. Every other module's tests build their input in C++.
+- A map's schema, `schema/map.schema.json`, its loader and the maps of the tests change together, in
+  one commit. Each map in `tests/assets/invalid/` holds one mistake, or a few to show several
+  problems at once, beside a `.expected` file of its problems, formatted exactly. The `lint`
+  preset checks that the schema rejects every one of them, except those in `loader_only/`, which
+  hold the mistakes no schema can state and which it must accept, and that it accepts every map in
+  `tests/content/` and `tests/assets/valid/`.
 - Every test carries exactly one CTest label: `unit` (the CPU only), `gpu` (a Vulkan device, where
   any validation message fails the test) or `image` (rendered and compared with a reference image).
   Its name begins with its module, matching its Catch2 tag (`[core]`), or with `build` or

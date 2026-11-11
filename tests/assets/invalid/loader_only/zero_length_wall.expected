@@ -1,0 +1,1 @@
+loader_only/zero_length_wall.map.json:12:11: the wall has no length, since it starts where the next wall starts (/sectors/0/loops/0/1)

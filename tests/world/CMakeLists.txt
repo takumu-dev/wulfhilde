@@ -1,5 +1,6 @@
 wulfhilde_add_tests(world
     SOURCES
+        asset_path_tests.cpp
         map_load_error_tests.cpp
         map_query_tests.cpp
         map_rules_tests.cpp

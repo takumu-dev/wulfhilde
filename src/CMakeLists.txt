@@ -6,3 +6,4 @@ add_library(wulfhilde::wulfhilde ALIAS wulfhilde)
 
 add_subdirectory(core)
 add_subdirectory(world)
+add_subdirectory(assets)

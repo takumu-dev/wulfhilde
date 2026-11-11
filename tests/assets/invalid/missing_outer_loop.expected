@@ -1,0 +1,1 @@
+missing_outer_loop.map.json:9:16: the sector has no loops, but needs its outer loop (/sectors/0/loops)

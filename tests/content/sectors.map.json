@@ -1,0 +1,23 @@
+{
+  "$schema": "../../schema/map.schema.json",
+  "format": "wulfhilde-map",
+  "version": 1,
+  "sectors": [
+    {
+      "id": "hall",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [0, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [12, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [12, 4], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4, 4], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4, 10], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, 10], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    }
+  ],
+  "start": { "sector": "hall", "point": [2, 2, 0], "yaw": 0 }
+}

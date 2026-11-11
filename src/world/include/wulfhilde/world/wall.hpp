@@ -7,6 +7,8 @@
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/surface.hpp>
 
+#include <string>
+
 namespace wulfhilde {
 
 /// A wall of a map, which runs between two corners of a sector's loop, seen from above, and stands
@@ -26,6 +28,10 @@ struct Wall {
 
     /// What covers the wall, with u along it from its start and v up.
     Surface surface;
+
+    /// Game-defined data that the engine keeps and ignores: the JSON text of an object, or empty
+    /// for none.
+    std::string properties{};
 };
 
 } // namespace wulfhilde

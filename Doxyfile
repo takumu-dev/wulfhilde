@@ -6,13 +6,16 @@ PROJECT_BRIEF          = "A library for games built from sectors joined by porta
 
 # Each module's public include tree.
 INPUT                  = src/core/include \
-                         src/world/include
+                         src/world/include \
+                         src/assets/include
 RECURSIVE              = YES
 FILE_PATTERNS          = *.hpp
 STRIP_FROM_PATH        = src/core/include \
-                         src/world/include
+                         src/world/include \
+                         src/assets/include
 STRIP_FROM_INC_PATH    = src/core/include \
-                         src/world/include
+                         src/world/include \
+                         src/assets/include
 
 # Knows the standard library's classes, so that a specialisation such as std::formatter has a
 # scope to be documented in.
