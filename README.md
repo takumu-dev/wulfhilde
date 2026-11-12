@@ -9,9 +9,9 @@ wulfhilde is a library for games built from sectors joined by portals, in the ma
 engine: stacked sectors, sectors that share the same space, and spaces bigger inside than out. A
 game links the modules it needs and keeps `main` and its frame loop to itself.
 
-It is at an early stage. Today it holds three modules, `core`, `world` and `assets`, which a game
-builds against as a package or a subproject, and `wulfhilde-viewer`, the map-preview tool, which so
-far loads a map and its assets and reports every problem in them.
+It is at an early stage. Today it holds five modules, `core`, `world`, `assets`, `platform` and
+`renderer`, which a game builds against as a package or a subproject, and `wulfhilde-viewer`, the
+map-preview tool, which draws a map in a window, or reports every problem in it and its assets.
 
 ## Modules
 
@@ -41,12 +41,17 @@ emission in nits, and the real-world size of one repeat of its textures. A textu
 named by its asset path without `.png`, whose colour space is the one the property reading it
 needs. `schema/material.schema.json` is the material's JSON Schema, installed beside the map's.
 
-The viewer opens a map's file, with the content root defaulting to the file's own directory:
+The viewer opens a map's file, with the content root defaulting to the file's own directory, and
+draws the map in a window from the eye of someone at its start position, or from a camera given as
+a sector's id, a point in metres and a facing in degrees:
 
 ```sh
 wulfhilde-viewer tests/content/sectors.map.json
 wulfhilde-viewer content/maps/e1m1.map.json --content content
+wulfhilde-viewer tests/content/sectors.map.json --camera hall,11,1,1.65,165,-5 --fullscreen
 ```
+
+`wulfhilde-viewer --help` lists its options. Closing the window quits.
 
 A map with mistakes in it has every problem of the first phase that finds any reported, each as
 `file:line:column: message (pointer)`, a form that terminals and editors link to. The phases are

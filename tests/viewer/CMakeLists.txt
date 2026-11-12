@@ -1,5 +1,6 @@
 wulfhilde_add_tests(viewer
     SOURCES
+        cameras_tests.cpp
         command_line_tests.cpp
         test_maps_tests.cpp
     LIBRARIES
@@ -39,10 +40,32 @@ wulfhilde_add_program_test(viewer "a usage error is reported before the usage"
     EXPECTED_RESULT 1
     STDERR_MATCHES "^wulfhilde-viewer: unknown argument: --fly.+usage: wulfhilde-viewer "
 )
-wulfhilde_add_program_test(viewer "the viewer loads a clean map, says so and succeeds"
+wulfhilde_add_program_test(viewer "video that can't start is reported, and the viewer fails"
     PROGRAM wulfhilde-viewer
     ARGUMENTS "${PROJECT_SOURCE_DIR}/tests/content/sectors.map.json"
-    STDOUT_MATCHES "/tests/content/sectors\\.map\\.json: loaded"
+    EXPECTED_RESULT 1
+    STDERR_MATCHES "^wulfhilde-viewer: video couldn't start: "
+)
+set_tests_properties("viewer: video that can't start is reported, and the viewer fails"
+    PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=nowhere"
+)
+wulfhilde_add_program_test(viewer "a sample count the device lacks is reported, naming those it has, and the viewer fails"
+    PROGRAM wulfhilde-viewer
+    ARGUMENTS "${PROJECT_SOURCE_DIR}/tests/content/sectors.map.json" --samples 64
+    EXPECTED_RESULT 1
+    STDERR_MATCHES "wulfhilde-viewer: the device can't take 64 samples a pixel, only 1, "
+)
+set_tests_properties("viewer: a sample count the device lacks is reported, naming those it has, and the viewer fails"
+    PROPERTIES
+        LABELS gpu
+        ENVIRONMENT "${WULFHILDE_TEST_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION "${WULFHILDE_GPU_TEST_ENVIRONMENT}"
+)
+wulfhilde_add_program_test(viewer "a camera that isn't in the map is a usage error"
+    PROGRAM wulfhilde-viewer
+    ARGUMENTS "${PROJECT_SOURCE_DIR}/tests/content/sectors.map.json" --camera yard,1,1,1,0,0
+    EXPECTED_RESULT 1
+    STDERR_MATCHES "^wulfhilde-viewer: --camera names no sector of the map: yard.+usage: wulfhilde-viewer "
 )
 wulfhilde_add_program_test(viewer "the viewer reports each problem of a map at its file, line and column, and fails"
     PROGRAM wulfhilde-viewer
