@@ -20,6 +20,7 @@ far loads a map and its assets and reports every problem in them.
 | `core` | | checks of preconditions and their handler, the log sink, the checked `narrow`, typed IDs, and the math types: vectors, matrices, rotations, rigid transforms, angles, colours and planes |
 | `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, and asked whether a location is in its sector, the heights there and where a trace stops. It opens no files |
 | `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file and its materials, with their PNG textures decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
+| `platform` | `core` | the system's windows, keyboard and mouse, through SDL3, which no public header names: a window that can be resized or cover the display, with relative mouse mode, and events of the window, the keys by their USB HID codes, and the mouse |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
 `<wulfhilde/<module>/...>`. The umbrella target `wulfhilde::wulfhilde` links them all.
@@ -57,6 +58,9 @@ another.
   with anything older stops with a message naming the floor.
 - CMake 4.4 or newer, and Ninja.
 - For the engine's own builds, [vcpkg](https://vcpkg.io), with `VCPKG_ROOT` naming a clone of it.
+  On Linux, vcpkg builds SDL's X11 and Wayland drivers against the system's headers, from
+  `libx11-dev`, `libxext-dev`, `libwayland-dev`, `libxkbcommon-dev` and `libegl-dev` on Debian and
+  Ubuntu.
 
 ## Building
 
@@ -96,7 +100,9 @@ so a game can supply them through vcpkg, Conan, system packages or builds of its
 | [earcut.hpp](https://github.com/mapbox/earcut.hpp) | `find_package(earcut_hpp CONFIG)` | building `renderer` |
 | [lodepng](https://github.com/lvandeve/lodepng) | `find_package(lodepng CONFIG)` | `assets` |
 | [pedantjson](https://github.com/takumu-dev/pedantjson) | `find_package(pedantjson CONFIG)` | `assets` |
+| [SDL3](https://www.libsdl.org) | `find_package(SDL3 CONFIG)` | `platform` |
 | [volk](https://github.com/zeux/volk) | `find_package(volk CONFIG)` | `renderer` |
+| [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) | `find_package(VulkanHeaders CONFIG)` | building `platform` |
 | [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | `find_package(VulkanMemoryAllocator CONFIG)` | building `renderer` |
 | [Slang](https://github.com/shader-slang/slang) | `find_package(slang CONFIG)` | building `renderer` |
 
