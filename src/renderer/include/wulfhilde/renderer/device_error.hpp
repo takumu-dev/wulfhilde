@@ -15,7 +15,8 @@ enum class DeviceErrorCode : std::uint8_t {
     no_vulkan,          ///< No Vulkan loader was found, or only one older than Vulkan 1.3.
     no_validation,      ///< Validation was asked for, and the validation layers aren't installed.
     no_suitable_device, ///< No device has every feature the renderer needs.
-    device_failure,     ///< The device failed a request, such as by running out of memory.
+    unsupported_sample_count, ///< The device can't take the number of samples a pixel asked for.
+    device_failure,           ///< The device failed a request, such as by running out of memory.
 };
 
 /// Why the renderer couldn't come up on a device, or what failed on it.

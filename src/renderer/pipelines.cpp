@@ -132,10 +132,13 @@ create_graphics_pipeline(const Device& device, const GraphicsPipelineDescription
     }
     const auto infos = stages->infos();
 
+    const bool has_depth = description.depth_stencil_format != VK_FORMAT_UNDEFINED;
     const VkPipelineRenderingCreateInfo rendering{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .colorAttachmentCount = 1,
         .pColorAttachmentFormats = &description.color_format,
+        .depthAttachmentFormat = description.depth_stencil_format,
+        .stencilAttachmentFormat = description.depth_stencil_format,
     };
     const VkPipelineVertexInputStateCreateInfo vertex_input{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -152,13 +155,19 @@ create_graphics_pipeline(const Device& device, const GraphicsPipelineDescription
     const VkPipelineRasterizationStateCreateInfo rasterization{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode = VK_CULL_MODE_NONE,
+        .cullMode = description.cull_mode,
         .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .lineWidth = 1.0F,
     };
     const VkPipelineMultisampleStateCreateInfo multisample{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        .rasterizationSamples = description.samples,
+    };
+    const VkPipelineDepthStencilStateCreateInfo depth_stencil{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = has_depth ? VK_TRUE : VK_FALSE,
+        .depthWriteEnable = has_depth ? VK_TRUE : VK_FALSE,
+        .depthCompareOp = VK_COMPARE_OP_GREATER,
     };
     const VkPipelineColorBlendAttachmentState attachment{
         .colorWriteMask = flags_of(VK_COLOR_COMPONENT_R_BIT, VK_COLOR_COMPONENT_G_BIT,
@@ -185,6 +194,7 @@ create_graphics_pipeline(const Device& device, const GraphicsPipelineDescription
         .pViewportState = &viewport,
         .pRasterizationState = &rasterization,
         .pMultisampleState = &multisample,
+        .pDepthStencilState = &depth_stencil,
         .pColorBlendState = &blend,
         .pDynamicState = &dynamic,
         .layout = device.pipeline_layout(),

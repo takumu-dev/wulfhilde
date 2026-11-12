@@ -100,6 +100,13 @@ std::expected<BindlessDescriptors, DeviceError> BindlessDescriptors::create(VkDe
 DescriptorHandle BindlessDescriptors::add_sampled_image(VkImageView view) {
     WULFHILDE_ASSERT(sampled_images_ < sampled_image_count,
                      "the bindless set has room for another sampled image");
+    const DescriptorHandle handle{.index = narrow<std::uint32_t>(sampled_images_++)};
+    replace_sampled_image(handle, view);
+    return handle;
+}
+
+void BindlessDescriptors::replace_sampled_image(DescriptorHandle handle, VkImageView view) {
+    WULFHILDE_ASSERT(handle.index < sampled_images_, "the sampled image was added before");
     const VkDescriptorImageInfo image{
         .imageView = view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -108,13 +115,12 @@ DescriptorHandle BindlessDescriptors::add_sampled_image(VkImageView view) {
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = set_,
         .dstBinding = sampled_image_binding,
-        .dstArrayElement = narrow<std::uint32_t>(sampled_images_),
+        .dstArrayElement = handle.index,
         .descriptorCount = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
         .pImageInfo = &image,
     };
     vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
-    return {.index = narrow<std::uint32_t>(sampled_images_++)};
 }
 
 DescriptorHandle BindlessDescriptors::add_sampler(VkSampler sampler) {

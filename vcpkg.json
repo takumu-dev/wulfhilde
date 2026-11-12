@@ -7,6 +7,10 @@
   "license": "Zlib",
   "builtin-baseline": "bf19794383e8fb95eba5aa553235bc8ec2271688",
   "dependencies": [
+    {
+      "name": "earcut-hpp",
+      "version>=": "3.2.4"
+    },
     "lodepng",
     "pedantjson",
     {

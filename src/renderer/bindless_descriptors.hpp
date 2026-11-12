@@ -45,6 +45,10 @@ class BindlessDescriptors {
     /// handle. The view must outlive every use of the handle.
     [[nodiscard]] DescriptorHandle add_sampled_image(VkImageView view);
 
+    /// Puts another image view in the place of one added before, once no work that may read the
+    /// old one is pending. The view must outlive every use of the handle.
+    void replace_sampled_image(DescriptorHandle handle, VkImageView view);
+
     /// Adds a sampler and returns its handle. The sampler must outlive every use of the handle.
     [[nodiscard]] DescriptorHandle add_sampler(VkSampler sampler);
 

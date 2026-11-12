@@ -38,6 +38,7 @@ class Device {
         VkPhysicalDevice physical_device = VK_NULL_HANDLE;
         std::uint32_t api_version = 0;
         bool takes_spirv_directly = false;
+        VkSampleCountFlags sample_counts = 0;
         DeviceHandle device;
         Allocator allocator;
         VkQueue queue = VK_NULL_HANDLE;
@@ -80,6 +81,10 @@ class Device {
     /// Whether pipelines take their SPIR-V directly, as Vulkan 1.4's `maintenance5` allows,
     /// rather than through a shader module.
     [[nodiscard]] bool takes_spirv_directly() const noexcept { return parts_.takes_spirv_directly; }
+
+    /// The sample counts the device takes for the scene's targets: drawn into, depth and stencil
+    /// tested, and read by the tone-mapping pass.
+    [[nodiscard]] VkSampleCountFlags sample_counts() const noexcept { return parts_.sample_counts; }
 
     /// Records the binding of a pipeline, with the bindless set and push constants that every
     /// pipeline shares.

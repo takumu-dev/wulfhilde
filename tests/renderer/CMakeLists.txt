@@ -12,6 +12,7 @@ wulfhilde_add_tests(renderer
 wulfhilde_add_tests(renderer
     LABEL gpu
     SOURCES
+        render_image_tests.cpp
         renderer_tests.cpp
         shader_function_tests.cpp
         test_pattern_tests.cpp
@@ -21,6 +22,7 @@ wulfhilde_add_tests(renderer
 )
 wulfhilde_add_shaders(wulfhilde_renderer_gpu_tests
     SOURCES
+        shaders/agx_tests.slang
         shaders/luminance_tests.slang
         shaders/matrix_layout_tests.slang
         shaders/test_pattern.slang

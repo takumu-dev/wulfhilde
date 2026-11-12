@@ -1,5 +1,6 @@
 #include "required_profile.hpp"
 
+#include "formats.hpp"
 #include "vulkan.hpp"
 
 #include <array>
@@ -142,6 +143,13 @@ std::vector<std::string_view> missing_features(VkPhysicalDevice device, std::uin
         if (requirement.field(supported) != VK_TRUE) {
             missing.push_back(requirement.name);
         }
+    }
+    // Vulkan guarantees a depth format with stencil, but not which, and only this one has float
+    // depth.
+    VkFormatProperties depth{};
+    vkGetPhysicalDeviceFormatProperties(device, scene_depth_format, &depth);
+    if ((depth.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0) {
+        missing.emplace_back("a 32-bit float depth format with stencil");
     }
     return missing;
 }

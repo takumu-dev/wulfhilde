@@ -2,6 +2,7 @@
   "$schema": "../../schema/map.schema.json",
   "format": "wulfhilde-map",
   "version": 1,
+  "ambient": { "color": [1, 1, 1], "lux": 250 },
   "sectors": [
     {
       "id": "hall",
