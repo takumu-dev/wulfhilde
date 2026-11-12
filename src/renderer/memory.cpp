@@ -1,5 +1,6 @@
 #include "memory.hpp"
 
+#include "formats.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/core/assertion.hpp>
 #include <wulfhilde/core/narrow.hpp>
@@ -103,7 +104,8 @@ void Buffer::reset() noexcept {
 
 std::expected<GpuImage, DeviceError> GpuImage::create(VmaAllocator allocator, VkDevice device,
                                                       VkFormat format, Extent extent,
-                                                      VkImageUsageFlags usage) {
+                                                      VkImageUsageFlags usage,
+                                                      VkSampleCountFlagBits samples) {
     WULFHILDE_ASSERT(extent.width > 0 && extent.height > 0, "an image has at least one pixel");
     const VkImageCreateInfo image_info{
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -117,7 +119,7 @@ std::expected<GpuImage, DeviceError> GpuImage::create(VmaAllocator allocator, Vk
             },
         .mipLevels = 1,
         .arrayLayers = 1,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .samples = samples,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .usage = usage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -140,7 +142,7 @@ std::expected<GpuImage, DeviceError> GpuImage::create(VmaAllocator allocator, Vk
         .format = format,
         .subresourceRange =
             {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .aspectMask = aspects_of(format),
                 .levelCount = 1,
                 .layerCount = 1,
             },

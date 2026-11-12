@@ -19,9 +19,11 @@
 
 namespace {
 
+#include "agx_tests_spirv.h"
 #include "luminance_tests_spirv.h"
 #include "matrix_layout_tests_spirv.h"
 
+using AgxTable = wulfhilde::detail::TableConstants;
 using LuminanceTable = wulfhilde::detail::TableConstants;
 using MatrixTable = wulfhilde::detail::TableConstants;
 
@@ -30,6 +32,7 @@ struct MatrixRow {
     wulfhilde::Vector4 vector;
 };
 
+#include "agx_tests_layout.hpp"           // IWYU pragma: keep
 #include "luminance_tests_layout.hpp"     // IWYU pragma: keep
 #include "matrix_layout_tests_layout.hpp" // IWYU pragma: keep
 
@@ -102,4 +105,32 @@ TEST_CASE_METHOD(GpuTest, "a matrix from C++ times a vector gives the same in th
 
     CHECK(products.at(0) == wulfhilde::Vector4{.x = 1.0F, .y = 2.0F, .z = 3.0F, .w = 4.0F});
     CHECK(products.at(1) == matrix * rows.at(1).vector);
+}
+
+TEST_CASE_METHOD(GpuTest,
+                 "AgX takes the scene's light into the display's, rolling bright light off",
+                 "[renderer]") {
+    const std::array colors{
+        wulfhilde::Vector3{.x = 0.0F},
+        wulfhilde::Vector3{.x = 0.18F, .y = 0.18F, .z = 0.18F},
+        wulfhilde::Vector3{.x = 1.0F, .y = 1.0F, .z = 1.0F},
+        wulfhilde::Vector3{.x = 1000.0F, .y = 1000.0F, .z = 1000.0F},
+        wulfhilde::Vector3{.x = 4.0F, .y = 0.5F, .z = 0.1F},
+    };
+
+    const auto displayed = run_table<wulfhilde::Vector3>(agx_tests_spirv, "agx_of_colors", colors);
+
+    // The values of AgX's published matrices, stops and curve, decoded with a power of 2.2.
+    using Catch::Matchers::WithinAbs;
+    const auto check = [](const wulfhilde::Vector3& actual, const wulfhilde::Vector3& expected) {
+        CHECK_THAT(actual.x, WithinAbs(static_cast<double>(expected.x), 2e-4));
+        CHECK_THAT(actual.y, WithinAbs(static_cast<double>(expected.y), 2e-4));
+        CHECK_THAT(actual.z, WithinAbs(static_cast<double>(expected.z), 2e-4));
+    };
+    check(displayed.at(0), {});
+    check(displayed.at(1), {.x = 0.214467F, .y = 0.214533F, .z = 0.214537F});
+    check(displayed.at(2), {.x = 0.589977F, .y = 0.590207F, .z = 0.590221F});
+    check(displayed.at(3), {.x = 0.996502F, .y = 0.996978F, .z = 0.997007F});
+    // A bright orange keeps its hue, red over green over blue, short of white.
+    check(displayed.at(4), {.x = 0.949165F, .y = 0.476594F, .z = 0.275492F});
 }

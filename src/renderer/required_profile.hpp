@@ -32,7 +32,8 @@ struct FeatureChain {
 };
 
 /// Names each part of the required profile that a device lacks, in the profile's order, or
-/// nothing when it has the whole profile. A device older than Vulkan 1.3 lacks only that.
+/// nothing when it has the whole profile: its features, then the scene's depth format. A device
+/// older than Vulkan 1.3 lacks only that.
 ///
 /// \param device The device.
 /// \param api_version The Vulkan version the device is taken to have: its own, or older.

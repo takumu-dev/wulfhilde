@@ -9,6 +9,20 @@ target_compile_definitions(wulfhilde_viewer_tests PRIVATE
     "WULFHILDE_TEST_CONTENT=\"${PROJECT_SOURCE_DIR}/tests/content\""
 )
 
+wulfhilde_add_tests(viewer
+    LABEL image
+    SOURCES
+        test_map_image_tests.cpp
+    LIBRARIES
+        wulfhilde::wulfhilde
+        wulfhilde_image_comparison
+)
+target_compile_definitions(wulfhilde_viewer_image_tests PRIVATE
+    "WULFHILDE_TEST_CONTENT=\"${PROJECT_SOURCE_DIR}/tests/content\""
+    "WULFHILDE_VIEWER_REFERENCES=\"${CMAKE_CURRENT_SOURCE_DIR}/references\""
+    "WULFHILDE_IMAGE_FAILURES=\"${PROJECT_BINARY_DIR}/image-failures/viewer\""
+)
+
 wulfhilde_add_program_test(viewer "with --help, the viewer prints the usage and succeeds"
     PROGRAM wulfhilde-viewer
     ARGUMENTS --help

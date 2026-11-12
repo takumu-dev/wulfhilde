@@ -64,6 +64,7 @@ function(wulfhilde_add_consumer_test name source_dir)
             "-Dpedantjson_DIR=${pedantjson_DIR}"
             "-Dvolk_DIR=${volk_DIR}"
             "-DVulkanMemoryAllocator_DIR=${VulkanMemoryAllocator_DIR}"
+            "-Dearcut_hpp_DIR=${earcut_hpp_DIR}"
             "-Dslang_DIR=${slang_DIR}"
         )
     endif()

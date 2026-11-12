@@ -102,13 +102,14 @@ class GpuImage {
     ///
     /// \param allocator The allocator of the device.
     /// \param device The device.
-    /// \param format The image's format, a colour format.
+    /// \param format The image's format: a colour format, or the scene's depth format, whose view
+    ///               takes in both depth and stencil.
     /// \param extent The image's size, neither side zero.
     /// \param usage What the image is used for.
-    [[nodiscard]] static std::expected<GpuImage, DeviceError> create(VmaAllocator allocator,
-                                                                     VkDevice device,
-                                                                     VkFormat format, Extent extent,
-                                                                     VkImageUsageFlags usage);
+    /// \param samples How many samples each pixel holds.
+    [[nodiscard]] static std::expected<GpuImage, DeviceError>
+    create(VmaAllocator allocator, VkDevice device, VkFormat format, Extent extent,
+           VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
 
     GpuImage(GpuImage&& other) noexcept;
     GpuImage& operator=(GpuImage&& other) noexcept;

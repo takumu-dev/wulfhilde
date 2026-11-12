@@ -93,16 +93,18 @@ so a game can supply them through vcpkg, Conan, system packages or builds of its
 
 | Package | Found with | Needed by |
 |---|---|---|
+| [earcut.hpp](https://github.com/mapbox/earcut.hpp) | `find_package(earcut_hpp CONFIG)` | building `renderer` |
 | [lodepng](https://github.com/lvandeve/lodepng) | `find_package(lodepng CONFIG)` | `assets` |
 | [pedantjson](https://github.com/takumu-dev/pedantjson) | `find_package(pedantjson CONFIG)` | `assets` |
 | [volk](https://github.com/zeux/volk) | `find_package(volk CONFIG)` | `renderer` |
 | [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | `find_package(VulkanMemoryAllocator CONFIG)` | building `renderer` |
 | [Slang](https://github.com/shader-slang/slang) | `find_package(slang CONFIG)` | building `renderer` |
 
-The renderer's shaders are compiled into it when it builds, so a game that uses the installed
-package needs neither Slang nor VulkanMemoryAllocator, and nothing links the Vulkan loader, which
-volk loads when a renderer is created. A game that adds the engine as a subproject needs both, such
-as vcpkg's `shader-slang` port or the copy of Slang in the Vulkan SDK.
+The renderer's shaders are compiled into it when it builds, and earcut.hpp and
+VulkanMemoryAllocator are headers compiled into it too, so a game that uses the installed package
+needs none of the three, and nothing links the Vulkan loader, which volk loads when a renderer is
+created. A game that adds the engine as a subproject needs them all, such as vcpkg's
+`shader-slang` port or the copy of Slang in the Vulkan SDK.
 
 As an installed package, for every module and the umbrella target:
 

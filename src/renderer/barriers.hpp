@@ -14,10 +14,11 @@ struct BarrierScope {
 /// The side of a barrier that waits for nothing, as before an image's first use.
 inline constexpr BarrierScope no_earlier_work{};
 
-/// Records a barrier that moves the whole of a one-level colour image from one layout to another,
-/// after the work in `before` and ahead of the work in `after`.
+/// Records a barrier that moves the whole of a one-level image from one layout to another, after
+/// the work in `before` and ahead of the work in `after`. The aspects are those of its format.
 inline void record_image_barrier(VkCommandBuffer commands, VkImage image, VkImageLayout from,
-                                 VkImageLayout to, BarrierScope before, BarrierScope after) {
+                                 VkImageLayout to, BarrierScope before, BarrierScope after,
+                                 VkImageAspectFlags aspects = VK_IMAGE_ASPECT_COLOR_BIT) {
     const VkImageMemoryBarrier2 barrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .srcStageMask = before.stages,
@@ -31,7 +32,7 @@ inline void record_image_barrier(VkCommandBuffer commands, VkImage image, VkImag
         .image = image,
         .subresourceRange =
             {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .aspectMask = aspects,
                 .levelCount = 1,
                 .layerCount = 1,
             },

@@ -1,6 +1,7 @@
 #include "device.hpp"
 
 #include "bindless_descriptors.hpp"
+#include "formats.hpp"
 #include "instance.hpp"
 #include "memory.hpp"
 #include "owned_handle.hpp"
@@ -151,6 +152,30 @@ create_pipeline_layout(VkDevice device, VkDescriptorSetLayout bindless_layout) {
     return PipelineLayoutHandle(device, layout);
 }
 
+// The sample counts that the scene's colour and depth targets both take, as the device's limits
+// and its formats allow.
+VkSampleCountFlags scene_sample_counts(VkPhysicalDevice device,
+                                       const VkPhysicalDeviceLimits& limits) {
+    VkSampleCountFlags counts =
+        limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts &
+        limits.framebufferStencilSampleCounts & limits.sampledImageColorSampleCounts;
+    const std::array targets{
+        std::pair{scene_color_format,
+                  flags_of(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_USAGE_SAMPLED_BIT)},
+        std::pair{scene_depth_format, flags_of(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)},
+    };
+    for (const auto& [format, usage] : targets) {
+        VkImageFormatProperties properties{};
+        if (vkGetPhysicalDeviceImageFormatProperties(device, format, VK_IMAGE_TYPE_2D,
+                                                     VK_IMAGE_TILING_OPTIMAL, usage, 0,
+                                                     &properties) != VK_SUCCESS) {
+            return 0;
+        }
+        counts &= properties.sampleCounts;
+    }
+    return counts;
+}
+
 } // namespace
 
 std::expected<std::unique_ptr<Device>, DeviceError>
@@ -255,6 +280,7 @@ Device::create(const RendererSettings& settings, std::uint32_t newest_api_versio
                    .physical_device = chosen->device,
                    .api_version = api_version,
                    .takes_spirv_directly = enabled.vulkan14.maintenance5 == VK_TRUE,
+                   .sample_counts = scene_sample_counts(chosen->device, chosen->properties.limits),
                    .device = std::move(device),
                    .allocator = std::move(*allocator),
                    .queue = queue,
