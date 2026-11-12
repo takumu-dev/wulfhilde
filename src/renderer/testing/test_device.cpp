@@ -60,7 +60,8 @@ struct TestDevice::BindlessContents {
 
 std::expected<TestDevice, DeviceError> TestDevice::create(RendererSettings settings,
                                                           std::uint32_t newest_minor_version) {
-    auto device = Device::create(settings, VK_MAKE_API_VERSION(0, 1, newest_minor_version, 0));
+    auto device =
+        Device::create(settings, nullptr, VK_MAKE_API_VERSION(0, 1, newest_minor_version, 0));
     if (!device) {
         return std::unexpected(std::move(device).error());
     }

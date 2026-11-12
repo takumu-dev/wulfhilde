@@ -98,8 +98,8 @@ endfunction()
 wulfhilde_add_consumer_test("a game links the installed engine through the umbrella target" installed
     INSTALLED
 )
-# renderer is a subset that needs assets, world and core, which come with it, and the packages
-# lodepng, pedantjson and volk.
+# renderer is a subset that needs assets, world, platform and core, which come with it, and the
+# packages lodepng, pedantjson, SDL3 and volk.
 wulfhilde_add_consumer_test("a game links a subset of the installed engine's modules" installed
     INSTALLED
     OPTIONS -DWULFHILDE_COMPONENTS=renderer

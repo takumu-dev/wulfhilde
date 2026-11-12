@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <span>
 #include <utility>
 
 namespace wulfhilde::detail {
@@ -18,7 +19,9 @@ class Instance {
     ///
     /// \param validation Whether to run under the validation layers, synchronisation validation
     ///                   included, which must be installed.
-    [[nodiscard]] static std::expected<Instance, DeviceError> create(bool validation);
+    /// \param surface_extensions The extensions that a window's surface needs, or none.
+    [[nodiscard]] static std::expected<Instance, DeviceError>
+    create(bool validation, std::span<const char* const> surface_extensions = {});
 
     /// Returns the instance, still owned.
     [[nodiscard]] VkInstance get() const noexcept { return instance_.get(); }

@@ -4,6 +4,7 @@
 
 #include "bindless_descriptors.hpp"
 #include "device.hpp"
+#include "presentation.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/assets/map_assets.hpp>
 #include <wulfhilde/renderer/camera.hpp>
@@ -20,7 +21,8 @@
 namespace wulfhilde::detail {
 
 /// Draws a map on one device: each sector's surfaces into a multisampled scene in linear light,
-/// then the AgX pass, which resolves the scene's samples into an sRGB image.
+/// then the AgX pass, which resolves the scene's samples into an sRGB image, or into a window's
+/// image to show.
 class Drawing {
     struct Pipelines;
     struct Geometry;
@@ -32,9 +34,11 @@ class Drawing {
     };
 
   public:
-    /// Makes every pipeline for a sample count that the device takes for its scene targets.
+    /// Makes every pipeline for a sample count that the device takes for its scene targets, and
+    /// for the format of a window's images if there is a window.
     [[nodiscard]] static std::expected<std::unique_ptr<Drawing>, DeviceError>
-    create(Device& device, VkSampleCountFlagBits samples);
+    create(Device& device, VkSampleCountFlagBits samples,
+           std::optional<WindowFormat> window_format = std::nullopt);
 
     /// Takes the pipelines that `create` made.
     Drawing(Key /*key*/, VkSampleCountFlagBits samples,
@@ -56,7 +60,20 @@ class Drawing {
     [[nodiscard]] std::expected<Image, DeviceError>
     render_image(Device& device, const Camera& camera, Extent extent);
 
+    /// Draws the map that is set as a camera sees it into a window's image, on the device this was
+    /// made on, once the image is acquired, leaving it ready to present.
+    [[nodiscard]] std::expected<void, DeviceError> draw(Device& device, const Camera& camera,
+                                                        const Frame& frame);
+
   private:
+    // Makes the targets anew unless they are of the extent already.
+    [[nodiscard]] std::expected<void, DeviceError> fit_targets(Device& device, Extent extent);
+
+    // Records the scene's pass, then the AgX pass with a pipeline into an output image's view,
+    // which is in the colour attachment layout and stays so.
+    void record_passes(const Device& device, VkCommandBuffer commands, const Camera& camera,
+                       VkPipeline resolve, VkImageView output) const;
+
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     std::unique_ptr<Pipelines> pipelines_;
     std::unique_ptr<Geometry> geometry_;
