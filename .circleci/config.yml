@@ -16,7 +16,7 @@ parameters:
   # the tag is written here, and the image job fails when it is out of step with ci/linux/.
   image-tag:
     type: string
-    default: a6c6a73f0e62ad570cfdc7d4e57cb879d6406d49
+    default: 11c03402963f1372143fb9f46e41de6fb94a68bc
   windows:
     description: Runs the Windows job on develop, for Monday's schedule.
     type: boolean

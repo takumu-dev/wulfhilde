@@ -113,6 +113,9 @@ using ImageViewHandle = OwnedHandle<VkDevice, VkImageView, vkDestroyImageView>;
 using PipelineHandle = OwnedHandle<VkDevice, VkPipeline, vkDestroyPipeline>;
 using PipelineLayoutHandle = OwnedHandle<VkDevice, VkPipelineLayout, vkDestroyPipelineLayout>;
 using SamplerHandle = OwnedHandle<VkDevice, VkSampler, vkDestroySampler>;
+using SemaphoreHandle = OwnedHandle<VkDevice, VkSemaphore, vkDestroySemaphore>;
 using ShaderModuleHandle = OwnedHandle<VkDevice, VkShaderModule, vkDestroyShaderModule>;
+using SurfaceHandle = OwnedHandle<VkInstance, VkSurfaceKHR, vkDestroySurfaceKHR>;
+using SwapchainHandle = OwnedHandle<VkDevice, VkSwapchainKHR, vkDestroySwapchainKHR>;
 
 } // namespace wulfhilde::detail

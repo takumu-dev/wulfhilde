@@ -9,6 +9,10 @@ include(Catch)
 
 set(WULFHILDE_TEST_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/support")
 
+# What every test's environment holds: windows open offscreen, needing no display, and Vulkan draws
+# into them through headless surfaces.
+set(WULFHILDE_TEST_ENVIRONMENT "SDL_VIDEO_DRIVER=offscreen")
+
 # Adds a module's Catch2 test cases as one program, registering each case with CTest under the
 # module's name.
 #
@@ -33,7 +37,7 @@ function(wulfhilde_add_tests module)
     target_include_directories(${target} PRIVATE "${WULFHILDE_TEST_SUPPORT_DIR}")
     target_link_libraries(${target} PRIVATE ${arg_LIBRARIES} Catch2::Catch2WithMain)
     wulfhilde_target_warnings(${target})
-    set(properties LABELS ${arg_LABEL})
+    set(properties LABELS ${arg_LABEL} ENVIRONMENT "${WULFHILDE_TEST_ENVIRONMENT}")
     if(NOT arg_LABEL STREQUAL "unit")
         list(APPEND properties ENVIRONMENT_MODIFICATION "${WULFHILDE_GPU_TEST_ENVIRONMENT}")
     endif()
@@ -143,6 +147,7 @@ add_subdirectory(consumers)
 add_subdirectory(core)
 add_subdirectory(world)
 add_subdirectory(assets)
+add_subdirectory(platform)
 add_subdirectory(renderer)
 
 if(WULFHILDE_BUILD_VIEWER)

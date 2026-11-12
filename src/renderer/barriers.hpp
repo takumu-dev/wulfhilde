@@ -14,6 +14,10 @@ struct BarrierScope {
 /// The side of a barrier that waits for nothing, as before an image's first use.
 inline constexpr BarrierScope no_earlier_work{};
 
+/// The side of a barrier that nothing waits on, as before an image is presented, where a semaphore
+/// signalled after every command takes its place.
+inline constexpr BarrierScope no_later_work{};
+
 /// Records a barrier that moves the whole of a one-level image from one layout to another, after
 /// the work in `before` and ahead of the work in `after`. The aspects are those of its format.
 inline void record_image_barrier(VkCommandBuffer commands, VkImage image, VkImageLayout from,

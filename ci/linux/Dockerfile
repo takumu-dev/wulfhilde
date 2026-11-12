@@ -77,6 +77,8 @@ COPY apt.llvm.org.sources /etc/apt/sources.list.d/
 #   the presets' tools: doxygen, ninja-build, python3-check-jsonschema
 #   vcpkg and the CI steps: curl, git, jq, pkgconf, python3, tar, unzip, xz-utils, zip, zstd
 #   the Vulkan loader, lavapipe and vulkaninfo: libvulkan1, mesa-vulkan-drivers, vulkan-tools
+#   SDL's X11 and Wayland drivers, which load these libraries at run time and build against their
+#   headers: libegl-dev, libwayland-dev, libx11-dev, libxext-dev, libxkbcommon-dev
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         binutils libc6-dev libgmp10 libmpc3 libmpfr6 libzstd1 \
@@ -84,6 +86,7 @@ RUN apt-get update \
         doxygen ninja-build python3-check-jsonschema \
         curl git jq pkgconf python3 tar unzip xz-utils zip zstd \
         libvulkan1 mesa-vulkan-drivers vulkan-tools \
+        libegl-dev libwayland-dev libx11-dev libxext-dev libxkbcommon-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl --fail --silent --show-error --location --retry 3 --output /tmp/cmake.tar.gz \

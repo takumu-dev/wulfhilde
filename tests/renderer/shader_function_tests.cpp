@@ -22,10 +22,12 @@ namespace {
 #include "agx_tests_spirv.h"
 #include "luminance_tests_spirv.h"
 #include "matrix_layout_tests_spirv.h"
+#include "srgb_tests_spirv.h"
 
 using AgxTable = wulfhilde::detail::TableConstants;
 using LuminanceTable = wulfhilde::detail::TableConstants;
 using MatrixTable = wulfhilde::detail::TableConstants;
+using SrgbTable = wulfhilde::detail::TableConstants;
 
 struct MatrixRow {
     wulfhilde::Matrix4 matrix;
@@ -35,6 +37,7 @@ struct MatrixRow {
 #include "agx_tests_layout.hpp"           // IWYU pragma: keep
 #include "luminance_tests_layout.hpp"     // IWYU pragma: keep
 #include "matrix_layout_tests_layout.hpp" // IWYU pragma: keep
+#include "srgb_tests_layout.hpp"          // IWYU pragma: keep
 
 // Runs a table test's entry point over rows of inputs, on a device taken to have Vulkan 1.4 or
 // the given older version, and reads back one result for each row.
@@ -79,6 +82,26 @@ TEST_CASE_METHOD(GpuTest, "the renderer's luminance weights green most and blue 
     CHECK_THAT(luminances.at(3), WithinAbs(0.7152, 1e-6));
     CHECK_THAT(luminances.at(4), WithinAbs(0.0722, 1e-6));
     CHECK_THAT(luminances.at(5), WithinAbs(0.5, 1e-6));
+}
+
+TEST_CASE_METHOD(GpuTest,
+                 "the renderer's sRGB encoding is linear near black and a power curve above",
+                 "[renderer]") {
+    const std::array colors{
+        wulfhilde::Vector3{.x = 0.0F, .y = 0.001F, .z = 0.0031308F},
+        wulfhilde::Vector3{.x = 0.18F, .y = 0.5F, .z = 1.0F},
+    };
+
+    const auto encoded =
+        run_table<wulfhilde::Vector3>(srgb_tests_spirv, "srgb_encoded_colors", colors);
+
+    using Catch::Matchers::WithinAbs;
+    CHECK_THAT(encoded.at(0).x, WithinAbs(0.0, 1e-6));
+    CHECK_THAT(encoded.at(0).y, WithinAbs(0.01292, 1e-6));
+    CHECK_THAT(encoded.at(0).z, WithinAbs(0.0404482, 1e-5));
+    CHECK_THAT(encoded.at(1).x, WithinAbs(0.4613561, 1e-5));
+    CHECK_THAT(encoded.at(1).y, WithinAbs(0.7353570, 1e-5));
+    CHECK_THAT(encoded.at(1).z, WithinAbs(1.0, 1e-5));
 }
 
 TEST_CASE_METHOD(GpuTest, "a matrix from C++ times a vector gives the same in the shaders",

@@ -1,18 +1,38 @@
+#include "cameras.hpp"
 #include "command_line.hpp"
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/assets/load_map_assets.hpp>
 #include <wulfhilde/core/narrow.hpp>
+#include <wulfhilde/platform/event.hpp>
+#include <wulfhilde/platform/platform.hpp>
+#include <wulfhilde/platform/window.hpp>
+#include <wulfhilde/renderer/camera.hpp>
+#include <wulfhilde/renderer/renderer.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <expected>
+#include <format>
 #include <print>
 #include <ranges>
 #include <span>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
+
+namespace {
+
+// Reports an error of the engine's, or of the system's, and fails.
+template <typename Error> int fail(const Error& error) {
+    std::print(stderr, "wulfhilde-viewer: {}\n", error);
+    return EXIT_FAILURE;
+}
+
+} // namespace
 
 // NOLINTNEXTLINE(bugprone-exception-escape): nothing is caught, so a failure ends the program.
 int main(int argc, char** argv) {
@@ -38,8 +58,7 @@ int main(int argc, char** argv) {
 
     const auto root = wulfhilde::ContentRoot::open(command_line->content);
     if (!root) {
-        std::print(stderr, "wulfhilde-viewer: {}\n", root.error());
-        return EXIT_FAILURE;
+        return fail(root.error());
     }
 
     auto map = wulfhilde::load_map(*root, command_line->map_asset_path);
@@ -67,7 +86,49 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    // Until the viewer draws the map, loading it is all there is to do.
-    std::print("{}: loaded\n", command_line->map.generic_string());
-    return EXIT_SUCCESS;
+    // A camera that the command line names is placed once there is a map to place it in.
+    const auto camera =
+        command_line->camera
+            ? viewer::camera_from_option(*map, *command_line->camera)
+            : std::expected<wulfhilde::Camera, viewer::UsageError>(viewer::camera_at_start(*map));
+    if (!camera) {
+        std::print(stderr, "wulfhilde-viewer: {}\n\n{}", camera.error(), viewer::usage());
+        return EXIT_FAILURE;
+    }
+
+    auto platform = wulfhilde::Platform::create();
+    if (!platform) {
+        return fail(platform.error());
+    }
+    auto window = wulfhilde::Window::create(
+        *platform, {
+                       .title = std::format("{} - wulfhilde-viewer",
+                                            command_line->map.filename().generic_string()),
+                       .size = {.width = 1280, .height = 720},
+                       .fullscreen = command_line->fullscreen,
+                   });
+    if (!window) {
+        return fail(window.error());
+    }
+    auto renderer = wulfhilde::Renderer::create(*window, {.sample_count = command_line->samples});
+    if (!renderer) {
+        return fail(renderer.error());
+    }
+    if (auto set = renderer->set_map(*map, *assets); !set) {
+        return fail(set.error());
+    }
+
+    // Each frame is shown at the display's next refresh, which paces the loop, except while the
+    // window has no area to show one, such as when it is minimised.
+    while (true) {
+        const auto events = platform->poll_events();
+        if (std::ranges::any_of(events, [](const wulfhilde::Event& event) {
+                return std::holds_alternative<wulfhilde::WindowClosed>(event);
+            })) {
+            return EXIT_SUCCESS;
+        }
+        if (auto drawn = renderer->draw(*camera); !drawn) {
+            return fail(drawn.error());
+        }
+    }
 }
