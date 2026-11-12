@@ -242,17 +242,17 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples) {
         return std::unexpected(std::move(resolve).error());
     }
     return std::make_unique<Drawing>(
-        Key{}, device, samples,
-        std::make_unique<Pipelines>(std::move(*scene), std::move(*resolve)));
+        Key{}, samples, std::make_unique<Pipelines>(std::move(*scene), std::move(*resolve)));
 }
 
-Drawing::Drawing(Key /*key*/, Device& device, VkSampleCountFlagBits samples,
+Drawing::Drawing(Key /*key*/, VkSampleCountFlagBits samples,
                  std::unique_ptr<Pipelines> pipelines) noexcept
-    : device_(&device), samples_(samples), pipelines_(std::move(pipelines)) {}
+    : samples_(samples), pipelines_(std::move(pipelines)) {}
 
 Drawing::~Drawing() = default;
 
-std::expected<void, DeviceError> Drawing::set_map(const Map& map, const MapAssets& assets) {
+std::expected<void, DeviceError> Drawing::set_map(const Device& device, const Map& map,
+                                                  const MapAssets& assets) {
     geometry_.reset();
     auto triangles = triangulate(map);
 
@@ -267,15 +267,15 @@ std::expected<void, DeviceError> Drawing::set_map(const Map& map, const MapAsset
         sectors.push_back({.ambient = sector.ambient.color * sector.ambient.lux});
     }
 
-    auto vertex_buffer = upload<SectorVertex>(*device_, triangles.vertices);
+    auto vertex_buffer = upload<SectorVertex>(device, triangles.vertices);
     if (!vertex_buffer) {
         return std::unexpected(std::move(vertex_buffer).error());
     }
-    auto material_buffer = upload<MaterialShading>(*device_, materials);
+    auto material_buffer = upload<MaterialShading>(device, materials);
     if (!material_buffer) {
         return std::unexpected(std::move(material_buffer).error());
     }
-    auto sector_buffer = upload<SectorShading>(*device_, sectors);
+    auto sector_buffer = upload<SectorShading>(device, sectors);
     if (!sector_buffer) {
         return std::unexpected(std::move(sector_buffer).error());
     }
@@ -284,11 +284,12 @@ std::expected<void, DeviceError> Drawing::set_map(const Map& map, const MapAsset
     return {};
 }
 
-std::expected<Image, DeviceError> Drawing::render_image(const Camera& camera, Extent extent) {
+std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Camera& camera,
+                                                        Extent extent) {
     if (!targets_ || targets_->extent != extent) {
         // Nothing reads the old targets now, since every batch of work is waited for.
         targets_.reset();
-        auto made = Targets::create(*device_, extent, samples_, scene_descriptor_);
+        auto made = Targets::create(device, extent, samples_, scene_descriptor_);
         if (!made) {
             return std::unexpected(std::move(made).error());
         }
@@ -307,7 +308,7 @@ std::expected<Image, DeviceError> Drawing::render_image(const Camera& camera, Ex
     };
 
     const auto size = vulkan_extent(extent);
-    const auto executed = device_->execute([&](VkCommandBuffer commands) {
+    const auto executed = device.execute([&](VkCommandBuffer commands) {
         record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
                              color_attachment_write);
@@ -340,8 +341,8 @@ std::expected<Image, DeviceError> Drawing::render_image(const Camera& camera, Ex
             .pStencilAttachment = &scene_depth,
         };
         vkCmdBeginRendering(commands, &scene_rendering);
-        device_->record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->scene.get(),
-                                std::as_bytes(std::span(&scene_constants, 1)));
+        device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->scene.get(),
+                              std::as_bytes(std::span(&scene_constants, 1)));
         set_viewport(commands, size);
         for (const auto& range : geometry_->ranges) {
             vkCmdDraw(commands, narrow<std::uint32_t>(range.count), 1,
@@ -374,9 +375,8 @@ std::expected<Image, DeviceError> Drawing::render_image(const Camera& camera, Ex
             .pColorAttachments = &output,
         };
         vkCmdBeginRendering(commands, &output_rendering);
-        device_->record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                pipelines_->resolve.get(),
-                                std::as_bytes(std::span(&resolve_constants, 1)));
+        device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->resolve.get(),
+                              std::as_bytes(std::span(&resolve_constants, 1)));
         set_viewport(commands, size);
         vkCmdDraw(commands, 3, 1, 0, 0);
         vkCmdEndRendering(commands);

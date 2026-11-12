@@ -36,8 +36,8 @@ class Drawing {
     [[nodiscard]] static std::expected<std::unique_ptr<Drawing>, DeviceError>
     create(Device& device, VkSampleCountFlagBits samples);
 
-    /// Takes the pipelines that `create` made, for drawing on `device`, which outlives this.
-    Drawing(Key /*key*/, Device& device, VkSampleCountFlagBits samples,
+    /// Takes the pipelines that `create` made.
+    Drawing(Key /*key*/, VkSampleCountFlagBits samples,
             std::unique_ptr<Pipelines> pipelines) noexcept;
 
     Drawing(const Drawing&) = delete;
@@ -46,16 +46,18 @@ class Drawing {
     Drawing& operator=(Drawing&&) = delete;
     ~Drawing();
 
-    /// Triangulates a map and uploads its geometry and shading, in place of any set before.
-    [[nodiscard]] std::expected<void, DeviceError> set_map(const Map& map, const MapAssets& assets);
+    /// Triangulates a map and uploads its geometry and shading to the device this was made on, in
+    /// place of any set before.
+    [[nodiscard]] std::expected<void, DeviceError> set_map(const Device& device, const Map& map,
+                                                           const MapAssets& assets);
 
-    /// Draws the map that is set as a camera sees it, and reads the image back.
-    [[nodiscard]] std::expected<Image, DeviceError> render_image(const Camera& camera,
-                                                                 Extent extent);
+    /// Draws the map that is set as a camera sees it, on the device this was made on, and reads
+    /// the image back.
+    [[nodiscard]] std::expected<Image, DeviceError>
+    render_image(Device& device, const Camera& camera, Extent extent);
 
   private:
-    Device* device_;
-    VkSampleCountFlagBits samples_;
+    VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     std::unique_ptr<Pipelines> pipelines_;
     std::unique_ptr<Geometry> geometry_;
     std::unique_ptr<Targets> targets_;

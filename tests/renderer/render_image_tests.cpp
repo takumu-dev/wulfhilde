@@ -29,6 +29,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -156,7 +157,7 @@ Pixel pixel_at(const wulfhilde::Image& image, std::size_t x, std::size_t y) {
     return pixel;
 }
 
-Pixel centre_of(const wulfhilde::Image& image) {
+Pixel center_of(const wulfhilde::Image& image) {
     return pixel_at(image, image.extent().width / 2, image.extent().height / 2);
 }
 
@@ -187,6 +188,48 @@ std::string describe(const Pixel& pixel) {
     return std::format("({}, {}, {}, {})", pixel.at(0), pixel.at(1), pixel.at(2), pixel.at(3));
 }
 
+// The sample counts that the message of a refused count names, after its "only".
+std::vector<std::size_t> counts_named_in(std::string_view message) {
+    std::vector<std::size_t> counts;
+    const auto only = message.find("only ");
+    if (only == std::string_view::npos) {
+        return counts;
+    }
+    std::size_t count = 0;
+    bool in_number = false;
+    for (const char character : message.substr(only)) {
+        if (character >= '0' && character <= '9') {
+            count = (count * 10) + static_cast<std::size_t>(character - '0');
+            in_number = true;
+        } else if (in_number) {
+            counts.push_back(count);
+            count = 0;
+            in_number = false;
+        }
+    }
+    if (in_number) {
+        counts.push_back(count);
+    }
+    return counts;
+}
+
+// Whether a renderer comes up with a sample count and draws the box with it, checking that one
+// that doesn't come up is refused for its sample count alone.
+bool draws_with(const wulfhilde::Map& map, std::size_t sample_count) {
+    CAPTURE(sample_count);
+    auto renderer =
+        wulfhilde::Renderer::create_headless({.validation = true, .sample_count = sample_count});
+    if (!renderer) {
+        CHECK(renderer.error().code == wulfhilde::DeviceErrorCode::unsupported_sample_count);
+        return false;
+    }
+    require_value(renderer->set_map(map, assets_of(map)));
+    const auto image =
+        render(*renderer, camera_at(map, {.x = 2.0F, .y = 2.0F, .z = 1.5F}, Angle::degrees(0.0F)));
+    CHECK(shows(center_of(image), blue));
+    return true;
+}
+
 } // namespace
 
 TEST_CASE_METHOD(GpuTest, "a sample count the device lacks is refused, naming the counts it has",
@@ -211,10 +254,10 @@ TEST_CASE_METHOD(GpuTest,
     const auto east = Angle::degrees(0.0F);
 
     const auto down =
-        centre_of(render(renderer, camera_at(map, middle, east, Angle::degrees(-90.0F))));
+        center_of(render(renderer, camera_at(map, middle, east, Angle::degrees(-90.0F))));
     const auto up =
-        centre_of(render(renderer, camera_at(map, middle, east, Angle::degrees(90.0F))));
-    const auto ahead = centre_of(render(renderer, camera_at(map, middle, east)));
+        center_of(render(renderer, camera_at(map, middle, east, Angle::degrees(90.0F))));
+    const auto ahead = center_of(render(renderer, camera_at(map, middle, east)));
 
     CAPTURE(describe(down), describe(up), describe(ahead));
     CHECK(shows(down, red));
@@ -320,8 +363,8 @@ TEST_CASE_METHOD(GpuTest, "a surface nearer the eye than 5 cm isn't drawn, and o
         return camera_at(map, {.x = 4.0F - distance, .y = 2.0F, .z = 1.5F}, Angle::degrees(0.0F));
     };
 
-    const auto too_near = centre_of(render(renderer, facing_east_wall(0.04F)));
-    const auto near_enough = centre_of(render(renderer, facing_east_wall(0.06F)));
+    const auto too_near = center_of(render(renderer, facing_east_wall(0.04F)));
+    const auto near_enough = center_of(render(renderer, facing_east_wall(0.06F)));
 
     CAPTURE(describe(too_near), describe(near_enough));
     CHECK(too_near == black);
@@ -353,8 +396,8 @@ TEST_CASE_METHOD(GpuTest, "a wall 4 km away is drawn, since there is no far plan
                          Angle::degrees(0.0F), Angle::degrees(0.5F)),
                {.width = 100, .height = 100});
 
-    CAPTURE(describe(centre_of(image)));
-    CHECK(shows(centre_of(image), blue));
+    CAPTURE(describe(center_of(image)));
+    CHECK(shows(center_of(image), blue));
 }
 
 TEST_CASE_METHOD(GpuTest,
@@ -391,22 +434,21 @@ TEST_CASE_METHOD(GpuTest,
                  "other",
                  "[renderer]") {
     const auto map = make_map(box_map());
+    // A count that no device has is refused with the counts the device reports.
+    const auto refused =
+        wulfhilde::Renderer::create_headless({.validation = true, .sample_count = 3});
+    REQUIRE(!refused.has_value());
+    const auto reported = counts_named_in(refused.error().message);
+
     std::vector<std::size_t> drawn;
     for (std::size_t sample_count = 1; sample_count <= 64; sample_count *= 2) {
-        CAPTURE(sample_count);
-        auto renderer = wulfhilde::Renderer::create_headless(
-            {.validation = true, .sample_count = sample_count});
-        if (!renderer) {
-            CHECK(renderer.error().code == wulfhilde::DeviceErrorCode::unsupported_sample_count);
-            continue;
+        if (draws_with(map, sample_count)) {
+            drawn.push_back(sample_count);
         }
-        require_value(renderer->set_map(map, assets_of(map)));
-        const auto image = render(
-            *renderer, camera_at(map, {.x = 2.0F, .y = 2.0F, .z = 1.5F}, Angle::degrees(0.0F)));
-        CHECK(shows(centre_of(image), blue));
-        drawn.push_back(sample_count);
     }
 
+    CAPTURE(refused.error().message);
+    CHECK(drawn == reported);
     // Vulkan guarantees 1 and 4 for these formats.
     CHECK(std::ranges::contains(drawn, 1U));
     CHECK(std::ranges::contains(drawn, 4U));
@@ -420,10 +462,10 @@ TEST_CASE_METHOD(GpuTest, "a map set in place of another is drawn instead", "[re
     const auto second = make_map(std::move(description));
     auto renderer = renderer_of(first);
     const auto camera = camera_at(first, {.x = 2.0F, .y = 2.0F, .z = 1.5F}, Angle::degrees(0.0F));
-    const auto before = centre_of(render(renderer, camera));
+    const auto before = center_of(render(renderer, camera));
 
     require_value(renderer.set_map(second, assets_of(second)));
-    const auto after = centre_of(render(renderer, camera));
+    const auto after = center_of(render(renderer, camera));
 
     CAPTURE(describe(before), describe(after));
     CHECK(shows(before, blue));
@@ -449,7 +491,7 @@ TEST_CASE_METHOD(GpuTest,
     };
     const auto blue_of = [&camera](const wulfhilde::Map& map) {
         auto renderer = renderer_of(map);
-        return centre_of(render(renderer, camera(map)));
+        return center_of(render(renderer, camera(map)));
     };
 
     const auto unlit = blue_of(dark);

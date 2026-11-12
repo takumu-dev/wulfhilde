@@ -12,11 +12,14 @@
 #include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/map.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <expected>
 #include <format>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -26,27 +29,23 @@ namespace wulfhilde {
 
 namespace {
 
-// Every sample count Vulkan can name, each a power of two.
-constexpr std::size_t largest_sample_count = 64;
+// Every sample count that Vulkan can name.
+constexpr std::array<std::size_t, 7> named_sample_counts{1, 2, 4, 8, 16, 32, 64};
 
 // The flag bit of a sample count, if it is one that Vulkan can name.
 std::optional<VkSampleCountFlagBits> sample_count_bit(std::size_t count) {
-    for (std::size_t named = 1; named <= largest_sample_count; named *= 2) {
-        if (named == count) {
-            return static_cast<VkSampleCountFlagBits>(count);
-        }
+    if (!std::ranges::contains(named_sample_counts, count)) {
+        return std::nullopt;
     }
-    return std::nullopt;
+    return static_cast<VkSampleCountFlagBits>(count);
 }
 
 // The error of a sample count the device can't take, naming those it can: "only 1, 4 or 8".
 DeviceError unsupported_sample_count(std::size_t count, VkSampleCountFlags supported) {
-    std::vector<std::size_t> counts;
-    for (std::size_t named = 1; named <= largest_sample_count; named *= 2) {
-        if ((supported & named) != 0) {
-            counts.push_back(named);
-        }
-    }
+    const auto counts =
+        named_sample_counts |
+        std::views::filter([supported](std::size_t named) { return (supported & named) != 0; }) |
+        std::ranges::to<std::vector>();
     std::string message = std::format("the device can't take {} samples a pixel, only", count);
     for (std::size_t index = 0; const auto named : counts) {
         std::string_view separator = ", ";
@@ -108,7 +107,7 @@ std::expected<void, DeviceError> Renderer::set_map(const Map& map, const MapAsse
     WULFHILDE_ASSERT(assets.materials.size() == map.materials().size(),
                      "the assets hold a material for each of the map's");
     map_ = nullptr;
-    if (auto set = drawing_->set_map(map, assets); !set) {
+    if (auto set = drawing_->set_map(*device_, map, assets); !set) {
         return set;
     }
     map_ = &map;
@@ -120,7 +119,7 @@ std::expected<Image, DeviceError> Renderer::render_image(const Camera& camera, E
     WULFHILDE_ASSERT(camera.location.sector.index() < map_->sectors().size(),
                      "the camera is in a sector of the map that is set");
     WULFHILDE_ASSERT(extent.width > 0 && extent.height > 0, "an image has at least one pixel");
-    return drawing_->render_image(camera, extent);
+    return drawing_->render_image(*device_, camera, extent);
 }
 
 } // namespace wulfhilde
