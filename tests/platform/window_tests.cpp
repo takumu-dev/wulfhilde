@@ -35,7 +35,7 @@ TEST_CASE("a window opens at the size it is asked for", "[platform]") {
     CHECK(window->size() == wulfhilde::WindowSize{.width = 640, .height = 360});
 }
 
-#if defined(WULFHILDE_TEST_WINDOWS_OFFSCREEN)
+#ifdef WULFHILDE_TEST_WINDOWS_OFFSCREEN
 // The tests' windows open offscreen, where there is no mouse to hold, so the system refuses.
 TEST_CASE("relative mouse mode the system can't give is refused, naming why, and stays off",
           "[platform]") {
