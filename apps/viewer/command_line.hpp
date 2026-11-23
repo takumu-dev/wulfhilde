@@ -57,6 +57,10 @@ struct CommandLine {
 
     /// How many samples each pixel takes: 1, 2, 4, 8, 16, 32 or 64.
     std::size_t samples = 4;
+
+    /// How many times anisotropic filtering samples a texture: from 1, trilinear filtering alone,
+    /// to 16.
+    std::size_t anisotropy = 16;
 };
 
 /// What kind of mistake makes a command line one the viewer can't follow.

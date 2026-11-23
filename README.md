@@ -51,7 +51,8 @@ wulfhilde-viewer content/maps/e1m1.map.json --content content
 wulfhilde-viewer tests/content/sectors.map.json --camera hall,11,1,1.65,165,-5 --fullscreen
 ```
 
-`wulfhilde-viewer --help` lists its options. Closing the window quits.
+`wulfhilde-viewer --help` lists its options, among them how many samples each pixel takes and how
+many times anisotropic filtering samples a texture. Closing the window quits.
 
 A map with mistakes in it has every problem of the first phase that finds any reported, each as
 `file:line:column: message (pointer)`, a form that terminals and editors link to. The phases are
