@@ -9,9 +9,9 @@ wulfhilde is a library for games built from sectors joined by portals, in the ma
 engine: stacked sectors, sectors that share the same space, and spaces bigger inside than out. A
 game links the modules it needs and keeps `main` and its frame loop to itself.
 
-It is at an early stage. Today it holds three modules, `core`, `world` and `assets`, which a game
-builds against as a package or a subproject, and `wulfhilde-viewer`, the map-preview tool, which so
-far loads a map and its assets and reports every problem in them.
+It is at an early stage. Today it holds five modules, `core`, `world`, `assets`, `platform` and
+`renderer`, which a game builds against as a package or a subproject, and `wulfhilde-viewer`, the
+map-preview tool, which draws a map in a window, or reports every problem in it and its assets.
 
 ## Modules
 
@@ -20,6 +20,8 @@ far loads a map and its assets and reports every problem in them.
 | `core` | | checks of preconditions and their handler, the log sink, the checked `narrow`, typed IDs, and the math types: vectors, matrices, rotations, rigid transforms, angles, colours and planes |
 | `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, and asked whether a location is in its sector, the heights there and where a trace stops. It opens no files |
 | `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file and its materials, with their PNG textures decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
+| `platform` | `core` | the system's windows, keyboard and mouse, through SDL3, which no public header names: a window that can be resized or cover the display, with relative mouse mode, and events of the window, the keys by their USB HID codes, and the mouse |
+| `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, drawn in linear light with multisampling and tone-mapped with AgX, into a window frame after frame or into an image in memory |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
 `<wulfhilde/<module>/...>`. The umbrella target `wulfhilde::wulfhilde` links them all.
@@ -39,12 +41,17 @@ emission in nits, and the real-world size of one repeat of its textures. A textu
 named by its asset path without `.png`, whose colour space is the one the property reading it
 needs. `schema/material.schema.json` is the material's JSON Schema, installed beside the map's.
 
-The viewer opens a map's file, with the content root defaulting to the file's own directory:
+The viewer opens a map's file, with the content root defaulting to the file's own directory, and
+draws the map in a window from the eye of someone at its start position, or from a camera given as
+a sector's id, a point in metres and a facing in degrees:
 
 ```sh
 wulfhilde-viewer tests/content/sectors.map.json
 wulfhilde-viewer content/maps/e1m1.map.json --content content
+wulfhilde-viewer tests/content/sectors.map.json --camera hall,11,1,1.65,165,-5 --fullscreen
 ```
+
+`wulfhilde-viewer --help` lists its options. Closing the window quits.
 
 A map with mistakes in it has every problem of the first phase that finds any reported, each as
 `file:line:column: message (pointer)`, a form that terminals and editors link to. The phases are
@@ -57,6 +64,9 @@ another.
   with anything older stops with a message naming the floor.
 - CMake 4.4 or newer, and Ninja.
 - For the engine's own builds, [vcpkg](https://vcpkg.io), with `VCPKG_ROOT` naming a clone of it.
+  On Linux, vcpkg builds SDL's X11 and Wayland drivers against the system's headers, from
+  `libx11-dev`, `libxext-dev`, `libwayland-dev`, `libxkbcommon-dev` and `libegl-dev` on Debian and
+  Ubuntu.
 
 ## Building
 
@@ -96,7 +106,9 @@ so a game can supply them through vcpkg, Conan, system packages or builds of its
 | [earcut.hpp](https://github.com/mapbox/earcut.hpp) | `find_package(earcut_hpp CONFIG)` | building `renderer` |
 | [lodepng](https://github.com/lvandeve/lodepng) | `find_package(lodepng CONFIG)` | `assets` |
 | [pedantjson](https://github.com/takumu-dev/pedantjson) | `find_package(pedantjson CONFIG)` | `assets` |
+| [SDL3](https://www.libsdl.org) | `find_package(SDL3 CONFIG)` | `platform` |
 | [volk](https://github.com/zeux/volk) | `find_package(volk CONFIG)` | `renderer` |
+| [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) | `find_package(VulkanHeaders CONFIG)` | building `platform` |
 | [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | `find_package(VulkanMemoryAllocator CONFIG)` | building `renderer` |
 | [Slang](https://github.com/shader-slang/slang) | `find_package(slang CONFIG)` | building `renderer` |
 

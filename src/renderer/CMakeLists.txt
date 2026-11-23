@@ -38,6 +38,8 @@ wulfhilde_add_module(renderer
         owned_handle.hpp
         pipelines.cpp
         pipelines.hpp
+        presentation.cpp
+        presentation.hpp
         renderer.cpp
         required_profile.cpp
         required_profile.hpp
@@ -49,15 +51,17 @@ wulfhilde_add_module(renderer
     DEPENDS
         world
         assets
+        platform
     PACKAGES
         volk
 )
 # VulkanMemoryAllocator and earcut are headers alone, compiled into the renderer, so a game never
-# needs them.
+# needs them, and neither does it need the platform's header for the window's surface.
 target_link_libraries(wulfhilde_renderer PRIVATE
     volk::volk
     $<BUILD_INTERFACE:GPUOpen::VulkanMemoryAllocator>
     $<BUILD_INTERFACE:earcut_hpp::earcut_hpp>
+    $<BUILD_INTERFACE:wulfhilde_platform_vulkan>
 )
 # Vulkan's C structures are filled with designated initialisers that leave every other member zero,
 # as Vulkan intends, which GCC warns of member by member.
@@ -94,7 +98,7 @@ if(WULFHILDE_BUILD_TESTS)
     )
     target_link_libraries(wulfhilde_renderer_testing
         PUBLIC wulfhilde::renderer
-        PRIVATE volk::volk GPUOpen::VulkanMemoryAllocator
+        PRIVATE volk::volk GPUOpen::VulkanMemoryAllocator wulfhilde_platform_vulkan
     )
     wulfhilde_target_conventions(wulfhilde_renderer_testing)
     wulfhilde_renderer_settings(wulfhilde_renderer_testing)

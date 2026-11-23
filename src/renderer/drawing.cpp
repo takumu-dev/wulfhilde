@@ -7,6 +7,7 @@
 #include "memory.hpp"
 #include "owned_handle.hpp"
 #include "pipelines.hpp"
+#include "presentation.hpp"
 #include "sector_geometry.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/assets/map_assets.hpp>
@@ -153,6 +154,8 @@ constexpr BarrierScope depth_attachment_access{
 struct Drawing::Pipelines {
     PipelineHandle scene;
     PipelineHandle resolve;
+    // The AgX pass into a window's images, or none without a window.
+    PipelineHandle present;
 };
 
 struct Drawing::Geometry {
@@ -213,8 +216,33 @@ struct Drawing::Targets {
     }
 };
 
+namespace {
+
+// Makes the AgX pass for a sample count, writing an 8-bit format that encodes sRGB as it stores
+// it, or one into which the pass encodes it.
+std::expected<PipelineHandle, DeviceError>
+create_resolve_pipeline(const Device& device, VkSampleCountFlagBits samples, WindowFormat format) {
+    // A scene of one sample a pixel isn't a multisampled image, so it is read another way.
+    const std::array<std::uint32_t, 2> constants{
+        static_cast<std::uint32_t>(samples),
+        format.encodes_srgb ? VK_TRUE : VK_FALSE,
+    };
+    return create_graphics_pipeline(
+        device, {
+                    .spirv = resolve_spirv,
+                    .vertex_entry_point = "cover",
+                    .fragment_entry_point =
+                        samples == VK_SAMPLE_COUNT_1_BIT ? "resolve_sample" : "resolve_samples",
+                    .specialization_constants = constants,
+                    .color_format = format.format,
+                });
+}
+
+} // namespace
+
 std::expected<std::unique_ptr<Drawing>, DeviceError>
-Drawing::create(Device& device, VkSampleCountFlagBits samples) {
+Drawing::create(Device& device, VkSampleCountFlagBits samples,
+                std::optional<WindowFormat> window_format) {
     auto scene = create_graphics_pipeline(device, {
                                                       .spirv = sectors_spirv,
                                                       .vertex_entry_point = "place",
@@ -227,22 +255,21 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples) {
     if (!scene) {
         return std::unexpected(std::move(scene).error());
     }
-    // A scene of one sample a pixel isn't a multisampled image, so it is read another way.
-    const std::array<std::uint32_t, 1> sample_count{static_cast<std::uint32_t>(samples)};
-    auto resolve = create_graphics_pipeline(
-        device, {
-                    .spirv = resolve_spirv,
-                    .vertex_entry_point = "cover",
-                    .fragment_entry_point =
-                        samples == VK_SAMPLE_COUNT_1_BIT ? "resolve_sample" : "resolve_samples",
-                    .specialization_constants = sample_count,
-                    .color_format = output_format,
-                });
+    auto resolve = create_resolve_pipeline(device, samples, {.format = output_format});
     if (!resolve) {
         return std::unexpected(std::move(resolve).error());
     }
+    PipelineHandle present;
+    if (window_format) {
+        auto made = create_resolve_pipeline(device, samples, *window_format);
+        if (!made) {
+            return std::unexpected(std::move(made).error());
+        }
+        present = std::move(*made);
+    }
     return std::make_unique<Drawing>(
-        Key{}, samples, std::make_unique<Pipelines>(std::move(*scene), std::move(*resolve)));
+        Key{}, samples,
+        std::make_unique<Pipelines>(std::move(*scene), std::move(*resolve), std::move(present)));
 }
 
 Drawing::Drawing(Key /*key*/, VkSampleCountFlagBits samples,
@@ -284,20 +311,24 @@ std::expected<void, DeviceError> Drawing::set_map(const Device& device, const Ma
     return {};
 }
 
-std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Camera& camera,
-                                                        Extent extent) {
-    if (!targets_ || targets_->extent != extent) {
-        // Nothing reads the old targets now, since every batch of work is waited for.
-        targets_.reset();
-        auto made = Targets::create(device, extent, samples_, scene_descriptor_);
-        if (!made) {
-            return std::unexpected(std::move(made).error());
-        }
-        targets_ = std::move(*made);
+std::expected<void, DeviceError> Drawing::fit_targets(Device& device, Extent extent) {
+    if (targets_ && targets_->extent == extent) {
+        return {};
     }
+    // Nothing reads the old targets now, since every batch of work is waited for.
+    targets_.reset();
+    auto made = Targets::create(device, extent, samples_, scene_descriptor_);
+    if (!made) {
+        return std::unexpected(std::move(made).error());
+    }
+    targets_ = std::move(*made);
+    return {};
+}
 
+void Drawing::record_passes(const Device& device, VkCommandBuffer commands, const Camera& camera,
+                            VkPipeline resolve, VkImageView output) const {
     const SceneConstants scene_constants{
-        .view_projection = view_projection(camera, extent),
+        .view_projection = view_projection(camera, targets_->extent),
         .vertices = geometry_->vertices.address(),
         .materials = geometry_->materials.address(),
         .sectors = geometry_->sectors.address(),
@@ -306,80 +337,88 @@ std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Ca
         .scene = targets_->scene_descriptor,
         .exposure = exposure_of(pinned_exposure_ev100),
     };
+    const auto size = vulkan_extent(targets_->extent);
 
+    record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_UNDEFINED,
+                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
+                         color_attachment_write);
+    record_image_barrier(commands, targets_->depth.get(), VK_IMAGE_LAYOUT_UNDEFINED,
+                         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, no_earlier_work,
+                         depth_attachment_access, aspects_of(scene_depth_format));
+    const VkRenderingAttachmentInfo scene_color{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = targets_->scene.view(),
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+    };
+    // Depth is cleared to infinitely far away, and nothing after this pass reads it.
+    const VkRenderingAttachmentInfo scene_depth{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = targets_->depth.view(),
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .clearValue = {.depthStencil = {.depth = 0.0F, .stencil = 0}},
+    };
+    const VkRenderingInfo scene_rendering{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea = {.extent = size},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &scene_color,
+        .pDepthAttachment = &scene_depth,
+        .pStencilAttachment = &scene_depth,
+    };
+    vkCmdBeginRendering(commands, &scene_rendering);
+    device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->scene.get(),
+                          std::as_bytes(std::span(&scene_constants, 1)));
+    set_viewport(commands, size);
+    for (const auto& range : geometry_->ranges) {
+        vkCmdDraw(commands, narrow<std::uint32_t>(range.count), 1,
+                  narrow<std::uint32_t>(range.first), 0);
+    }
+    vkCmdEndRendering(commands);
+
+    record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, color_attachment_write,
+                         {
+                             .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                             .access = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                         });
+    const VkRenderingAttachmentInfo output_attachment{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = output,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+    };
+    const VkRenderingInfo output_rendering{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea = {.extent = size},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &output_attachment,
+    };
+    vkCmdBeginRendering(commands, &output_rendering);
+    device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, resolve,
+                          std::as_bytes(std::span(&resolve_constants, 1)));
+    set_viewport(commands, size);
+    vkCmdDraw(commands, 3, 1, 0, 0);
+    vkCmdEndRendering(commands);
+}
+
+std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Camera& camera,
+                                                        Extent extent) {
+    if (auto fitted = fit_targets(device, extent); !fitted) {
+        return std::unexpected(std::move(fitted).error());
+    }
     const auto size = vulkan_extent(extent);
     const auto executed = device.execute([&](VkCommandBuffer commands) {
-        record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_UNDEFINED,
-                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
-                             color_attachment_write);
-        record_image_barrier(commands, targets_->depth.get(), VK_IMAGE_LAYOUT_UNDEFINED,
-                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, no_earlier_work,
-                             depth_attachment_access, aspects_of(scene_depth_format));
-        const VkRenderingAttachmentInfo scene_color{
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = targets_->scene.view(),
-            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        };
-        // Depth is cleared to infinitely far away, and nothing after this pass reads it.
-        const VkRenderingAttachmentInfo scene_depth{
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = targets_->depth.view(),
-            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .clearValue = {.depthStencil = {.depth = 0.0F, .stencil = 0}},
-        };
-        const VkRenderingInfo scene_rendering{
-            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea = {.extent = size},
-            .layerCount = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments = &scene_color,
-            .pDepthAttachment = &scene_depth,
-            .pStencilAttachment = &scene_depth,
-        };
-        vkCmdBeginRendering(commands, &scene_rendering);
-        device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->scene.get(),
-                              std::as_bytes(std::span(&scene_constants, 1)));
-        set_viewport(commands, size);
-        for (const auto& range : geometry_->ranges) {
-            vkCmdDraw(commands, narrow<std::uint32_t>(range.count), 1,
-                      narrow<std::uint32_t>(range.first), 0);
-        }
-        vkCmdEndRendering(commands);
-
-        record_image_barrier(commands, targets_->scene.get(),
-                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, color_attachment_write,
-                             {
-                                 .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                                 .access = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                             });
         record_image_barrier(commands, targets_->output.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
                              color_attachment_write);
-        const VkRenderingAttachmentInfo output{
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = targets_->output.view(),
-            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        };
-        const VkRenderingInfo output_rendering{
-            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea = {.extent = size},
-            .layerCount = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments = &output,
-        };
-        vkCmdBeginRendering(commands, &output_rendering);
-        device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->resolve.get(),
-                              std::as_bytes(std::span(&resolve_constants, 1)));
-        set_viewport(commands, size);
-        vkCmdDraw(commands, 3, 1, 0, 0);
-        vkCmdEndRendering(commands);
+        record_passes(device, commands, camera, pipelines_->resolve.get(), targets_->output.view());
 
         record_image_barrier(
             commands, targets_->output.get(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -404,6 +443,29 @@ std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Ca
     std::vector<std::uint8_t> pixels(memory.size());
     std::memcpy(pixels.data(), memory.data(), memory.size());
     return Image(extent, std::move(pixels));
+}
+
+std::expected<void, DeviceError> Drawing::draw(Device& device, const Camera& camera,
+                                               const Frame& frame) {
+    if (auto fitted = fit_targets(device, frame.extent); !fitted) {
+        return fitted;
+    }
+    return device.execute(
+        [&](VkCommandBuffer commands) {
+            // The image is written once the semaphore that the submission waits for at this stage
+            // says it is acquired.
+            record_image_barrier(commands, frame.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                 {.stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT},
+                                 color_attachment_write);
+            record_passes(device, commands, camera, pipelines_->present.get(), frame.view);
+            // The semaphore that the submission signals, after every command, makes the image's
+            // new layout visible to the present that waits for it.
+            record_image_barrier(commands, frame.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, color_attachment_write,
+                                 no_later_work);
+        },
+        {.wait = frame.acquired, .signal = frame.rendered});
 }
 
 } // namespace wulfhilde::detail

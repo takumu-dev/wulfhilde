@@ -89,6 +89,11 @@ expect "CMake is 4.4" '^cmake version 4\.4\.' cmake --version
 expect "Doxygen is 1.15" '^1\.15\.' doxygen --version
 expect_command ninja check-jsonschema git curl tar zip unzip xz zstd pkg-config python3 jq
 
+# SDL's window drivers build against these, as its CMake looks for them.
+for module in x11 xext wayland-client wayland-cursor wayland-egl wayland-scanner egl xkbcommon; do
+    pkg-config --exists "$module" || fail "pkg-config finds no $module"
+done
+
 # Lavapipe is the only device, using no AVX-512 and vectors 256 bits wide on every host. The cap
 # lives in the environment, so it reaches every host; Mesa's dump shows lavapipe honours it on this
 # one.
@@ -106,6 +111,8 @@ else
         *) fail "the Vulkan device isn't lavapipe with 256-bit vectors: $devices" ;;
     esac
 fi
+# The tests open their windows offscreen, where a surface is a headless one.
+expect "Vulkan makes headless surfaces" 'VK_EXT_headless_surface' vulkaninfo
 
 if [ "$failures" -ne 0 ]; then
     echo "check-image: promises broken: $failures" >&2

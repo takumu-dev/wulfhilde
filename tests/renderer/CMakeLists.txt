@@ -16,6 +16,7 @@ wulfhilde_add_tests(renderer
         renderer_tests.cpp
         shader_function_tests.cpp
         test_pattern_tests.cpp
+        window_tests.cpp
     LIBRARIES
         wulfhilde_renderer_testing
         wulfhilde::core
@@ -25,6 +26,7 @@ wulfhilde_add_shaders(wulfhilde_renderer_gpu_tests
         shaders/agx_tests.slang
         shaders/luminance_tests.slang
         shaders/matrix_layout_tests.slang
+        shaders/srgb_tests.slang
         shaders/test_pattern.slang
     MODULE_DIRECTORIES
         "${WULFHILDE_SHADER_MODULES}"

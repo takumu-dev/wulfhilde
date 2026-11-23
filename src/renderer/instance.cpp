@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -90,7 +91,8 @@ std::expected<bool, DeviceError> has_validation_layer() {
 
 } // namespace
 
-std::expected<Instance, DeviceError> Instance::create(bool validation) {
+std::expected<Instance, DeviceError>
+Instance::create(bool validation, std::span<const char* const> surface_extensions) {
     const auto loader_version = load_vulkan();
     if (!loader_version) {
         return std::unexpected(loader_version.error());
@@ -133,10 +135,11 @@ std::expected<Instance, DeviceError> Instance::create(bool validation) {
         .pSettings = &sync_validation,
     };
     const std::array layers{validation_layer};
-    const std::array extensions{
-        VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-        VK_EXT_LAYER_SETTINGS_EXTENSION_NAME,
-    };
+    std::vector<const char*> extensions(surface_extensions.begin(), surface_extensions.end());
+    if (validation) {
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        extensions.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
+    }
     const VkInstanceCreateInfo info{
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         // The messenger in the chain reports what goes wrong while the instance is being made.
@@ -144,7 +147,7 @@ std::expected<Instance, DeviceError> Instance::create(bool validation) {
         .pApplicationInfo = &application,
         .enabledLayerCount = validation ? narrow<std::uint32_t>(layers.size()) : 0,
         .ppEnabledLayerNames = layers.data(),
-        .enabledExtensionCount = validation ? narrow<std::uint32_t>(extensions.size()) : 0,
+        .enabledExtensionCount = narrow<std::uint32_t>(extensions.size()),
         .ppEnabledExtensionNames = extensions.data(),
     };
     VkInstance created = VK_NULL_HANDLE;

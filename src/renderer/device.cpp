@@ -10,6 +10,8 @@
 #include <wulfhilde/core/assertion.hpp>
 #include <wulfhilde/core/log_sink.hpp>
 #include <wulfhilde/core/narrow.hpp>
+#include <wulfhilde/platform/vulkan_surface.hpp>
+#include <wulfhilde/platform/window.hpp>
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/renderer_settings.hpp>
 
@@ -34,7 +36,8 @@ namespace wulfhilde::detail {
 namespace {
 
 // A device found on the machine, with what it lacks of the required profile, which includes a
-// queue family for graphics and compute when it has none.
+// queue family for graphics and compute when it has none, and presenting to the window when there
+// is one.
 struct Candidate {
     VkPhysicalDevice device = VK_NULL_HANDLE;
     VkPhysicalDeviceProperties properties{};
@@ -70,8 +73,52 @@ std::optional<std::uint32_t> graphics_queue_family(VkPhysicalDevice device) {
     return std::nullopt;
 }
 
+// Whether a device has a device extension.
+std::expected<bool, DeviceError> has_extension(VkPhysicalDevice device, std::string_view name) {
+    std::uint32_t count = 0;
+    if (const auto error =
+            failure(vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr),
+                    "listing a device's extensions")) {
+        return std::unexpected(*error);
+    }
+    std::vector<VkExtensionProperties> extensions(count);
+    if (const auto error = failure(
+            vkEnumerateDeviceExtensionProperties(device, nullptr, &count, extensions.data()),
+            "listing a device's extensions")) {
+        return std::unexpected(*error);
+    }
+    return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
+        return name_of(extension.extensionName) == name;
+    });
+}
+
+// Adds to a candidate's missing features what it lacks to present to a surface from its queue.
+std::expected<void, DeviceError> check_presentation(Candidate& candidate, VkSurfaceKHR surface,
+                                                    bool has_queue_family) {
+    const auto swapchain = has_extension(candidate.device, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    if (!swapchain) {
+        return std::unexpected(swapchain.error());
+    }
+    if (!*swapchain) {
+        candidate.missing.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    }
+    VkBool32 presents = VK_FALSE;
+    if (has_queue_family) {
+        if (const auto error =
+                failure(vkGetPhysicalDeviceSurfaceSupportKHR(
+                            candidate.device, candidate.queue_family, surface, &presents),
+                        "finding whether a device presents to the window")) {
+            return std::unexpected(*error);
+        }
+    }
+    if (presents != VK_TRUE) {
+        candidate.missing.emplace_back("presenting to the window from that queue");
+    }
+    return {};
+}
+
 std::expected<std::vector<Candidate>, DeviceError>
-find_candidates(VkInstance instance, std::uint32_t newest_api_version) {
+find_candidates(VkInstance instance, std::uint32_t newest_api_version, VkSurfaceKHR surface) {
     std::uint32_t count = 0;
     if (const auto error = failure(vkEnumeratePhysicalDevices(instance, &count, nullptr),
                                    "listing Vulkan devices")) {
@@ -89,10 +136,17 @@ find_candidates(VkInstance instance, std::uint32_t newest_api_version) {
         candidate.properties.apiVersion =
             std::min(candidate.properties.apiVersion, newest_api_version);
         candidate.missing = missing_features(device, candidate.properties.apiVersion);
-        if (const auto family = graphics_queue_family(device)) {
+        const auto family = graphics_queue_family(device);
+        if (family) {
             candidate.queue_family = *family;
         } else {
             candidate.missing.emplace_back("a queue for graphics and compute");
+        }
+        if (surface != VK_NULL_HANDLE) {
+            if (auto checked = check_presentation(candidate, surface, family.has_value());
+                !checked) {
+                return std::unexpected(std::move(checked).error());
+            }
         }
         candidates.push_back(std::move(candidate));
     }
@@ -179,13 +233,27 @@ VkSampleCountFlags scene_sample_counts(VkPhysicalDevice device,
 } // namespace
 
 std::expected<std::unique_ptr<Device>, DeviceError>
-Device::create(const RendererSettings& settings, std::uint32_t newest_api_version) {
-    auto instance = Instance::create(settings.validation);
+Device::create(const RendererSettings& settings, const Window* window,
+               std::uint32_t newest_api_version) {
+    auto instance =
+        Instance::create(settings.validation, window != nullptr ? vulkan_surface_extensions(*window)
+                                                                : std::span<const char* const>{});
     if (!instance) {
         return std::unexpected(std::move(instance).error());
     }
-    const auto candidates =
-        find_candidates(instance->get(), std::min(newest_api_version, instance->api_version()));
+    SurfaceHandle surface;
+    if (window != nullptr) {
+        auto made = create_vulkan_surface(*window, instance->get());
+        if (!made) {
+            return std::unexpected(DeviceError{
+                .code = DeviceErrorCode::device_failure,
+                .message = std::move(made).error().message,
+            });
+        }
+        surface = SurfaceHandle(instance->get(), *made);
+    }
+    const auto candidates = find_candidates(
+        instance->get(), std::min(newest_api_version, instance->api_version()), surface.get());
     if (!candidates) {
         return std::unexpected(candidates.error());
     }
@@ -206,11 +274,15 @@ Device::create(const RendererSettings& settings, std::uint32_t newest_api_versio
         .queueCount = 1,
         .pQueuePriorities = &priority,
     };
+    // A device that presents to a window does it through a swapchain.
+    const std::array extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     const VkDeviceCreateInfo device_info{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pNext = &enabled.features,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_info,
+        .enabledExtensionCount = window != nullptr ? narrow<std::uint32_t>(extensions.size()) : 0,
+        .ppEnabledExtensionNames = extensions.data(),
     };
     VkDevice made_device = VK_NULL_HANDLE;
     if (const auto error =
@@ -277,6 +349,7 @@ Device::create(const RendererSettings& settings, std::uint32_t newest_api_versio
     return std::make_unique<Device>(
         Key{}, Parts{
                    .instance = std::move(*instance),
+                   .surface = std::move(surface),
                    .physical_device = chosen->device,
                    .api_version = api_version,
                    .takes_spirv_directly = enabled.vulkan14.maintenance5 == VK_TRUE,
@@ -327,7 +400,7 @@ std::expected<void, DeviceError> Device::begin_commands() const {
     return {};
 }
 
-std::expected<void, DeviceError> Device::finish_commands() {
+std::expected<void, DeviceError> Device::finish_commands(const Synchronization& synchronization) {
     if (const auto error =
             failure(vkEndCommandBuffer(parts_.commands), "ending a command buffer")) {
         return std::unexpected(*error);
@@ -340,10 +413,26 @@ std::expected<void, DeviceError> Device::finish_commands() {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
         .commandBuffer = parts_.commands,
     };
+    // An image to present is written as colour, once it is acquired, and signalled as presentable
+    // once every command is done.
+    const VkSemaphoreSubmitInfo wait{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = synchronization.wait,
+        .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+    };
+    const VkSemaphoreSubmitInfo signal{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = synchronization.signal,
+        .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+    };
     const VkSubmitInfo2 submit{
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .waitSemaphoreInfoCount = synchronization.wait != VK_NULL_HANDLE ? 1U : 0U,
+        .pWaitSemaphoreInfos = &wait,
         .commandBufferInfoCount = 1,
         .pCommandBufferInfos = &commands_info,
+        .signalSemaphoreInfoCount = synchronization.signal != VK_NULL_HANDLE ? 1U : 0U,
+        .pSignalSemaphoreInfos = &signal,
     };
     if (const auto error =
             failure(vkQueueSubmit2(parts_.queue, 1, &submit, fence), "submitting commands")) {

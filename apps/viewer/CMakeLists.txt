@@ -2,6 +2,8 @@
 # the umbrella target. Its code is a small library, which tests/viewer tests, plus main().
 
 add_library(wulfhilde_viewer_lib STATIC
+    cameras.cpp
+    cameras.hpp
     command_line.cpp
     command_line.hpp
 )

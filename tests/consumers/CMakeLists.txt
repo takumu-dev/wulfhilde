@@ -62,7 +62,9 @@ function(wulfhilde_add_consumer_test name source_dir)
         list(APPEND arg_OPTIONS
             "-Dlodepng_DIR=${lodepng_DIR}"
             "-Dpedantjson_DIR=${pedantjson_DIR}"
+            "-DSDL3_DIR=${SDL3_DIR}"
             "-Dvolk_DIR=${volk_DIR}"
+            "-DVulkanHeaders_DIR=${VulkanHeaders_DIR}"
             "-DVulkanMemoryAllocator_DIR=${VulkanMemoryAllocator_DIR}"
             "-Dearcut_hpp_DIR=${earcut_hpp_DIR}"
             "-Dslang_DIR=${slang_DIR}"
@@ -96,8 +98,8 @@ endfunction()
 wulfhilde_add_consumer_test("a game links the installed engine through the umbrella target" installed
     INSTALLED
 )
-# renderer is a subset that needs assets, world and core, which come with it, and the packages
-# lodepng, pedantjson and volk.
+# renderer is a subset that needs assets, world, platform and core, which come with it, and the
+# packages lodepng, pedantjson, SDL3 and volk.
 wulfhilde_add_consumer_test("a game links a subset of the installed engine's modules" installed
     INSTALLED
     OPTIONS -DWULFHILDE_COMPONENTS=renderer
@@ -105,7 +107,7 @@ wulfhilde_add_consumer_test("a game links a subset of the installed engine's mod
 wulfhilde_add_consumer_test("a game asking for a module the engine lacks is told so" installed
     INSTALLED
     OPTIONS -DWULFHILDE_COMPONENTS=core$<SEMICOLON>flight
-    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world, assets, renderer"
+    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world, assets, platform, renderer"
 )
 wulfhilde_add_consumer_test("a game without a package that a module links is told which" installed
     INSTALLED

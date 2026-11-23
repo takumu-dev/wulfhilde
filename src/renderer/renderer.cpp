@@ -2,9 +2,11 @@
 
 #include "device.hpp"
 #include "drawing.hpp"
+#include "presentation.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/assets/map_assets.hpp>
 #include <wulfhilde/core/assertion.hpp>
+#include <wulfhilde/platform/window.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
@@ -62,8 +64,17 @@ DeviceError unsupported_sample_count(std::size_t count, VkSampleCountFlags suppo
 
 } // namespace
 
+std::expected<Renderer, DeviceError> Renderer::create(Window& window, RendererSettings settings) {
+    return create_for(&window, settings);
+}
+
 std::expected<Renderer, DeviceError> Renderer::create_headless(RendererSettings settings) {
-    auto device = detail::Device::create(settings);
+    return create_for(nullptr, settings);
+}
+
+std::expected<Renderer, DeviceError> Renderer::create_for(Window* window,
+                                                          RendererSettings settings) {
+    auto device = detail::Device::create(settings, window);
     if (!device) {
         return std::unexpected(std::move(device).error());
     }
@@ -72,22 +83,34 @@ std::expected<Renderer, DeviceError> Renderer::create_headless(RendererSettings 
         return std::unexpected(
             unsupported_sample_count(settings.sample_count, (*device)->sample_counts()));
     }
-    auto drawing = detail::Drawing::create(**device, *samples);
+    std::unique_ptr<detail::Presentation> presentation;
+    std::optional<detail::WindowFormat> window_format;
+    if (window != nullptr) {
+        auto made = detail::Presentation::create(**device, *window);
+        if (!made) {
+            return std::unexpected(std::move(made).error());
+        }
+        presentation = std::move(*made);
+        window_format = presentation->format();
+    }
+    auto drawing = detail::Drawing::create(**device, *samples, window_format);
     if (!drawing) {
         return std::unexpected(std::move(drawing).error());
     }
-    return Renderer(std::move(*device), std::move(*drawing));
+    return Renderer(std::move(*device), std::move(*drawing), std::move(presentation));
 }
 
-Renderer::Renderer(std::unique_ptr<detail::Device> device,
-                   std::unique_ptr<detail::Drawing> drawing) noexcept
-    : device_(std::move(device)), drawing_(std::move(drawing)) {}
+Renderer::Renderer(std::unique_ptr<detail::Device> device, std::unique_ptr<detail::Drawing> drawing,
+                   std::unique_ptr<detail::Presentation> presentation) noexcept
+    : device_(std::move(device)), drawing_(std::move(drawing)),
+      presentation_(std::move(presentation)) {}
 
 Renderer::Renderer(Renderer&& other) noexcept = default;
 
 Renderer& Renderer::operator=(Renderer&& other) noexcept {
     if (this != &other) {
-        // What is drawn with goes before the device it was made on.
+        // What is drawn with and shown with goes before the device it was made on.
+        presentation_ = std::move(other.presentation_);
         drawing_ = std::move(other.drawing_);
         device_ = std::move(other.device_);
         map_ = std::exchange(other.map_, nullptr);
@@ -96,10 +119,12 @@ Renderer& Renderer::operator=(Renderer&& other) noexcept {
 }
 
 Renderer::~Renderer() {
-    // What is drawn with goes before the device it was made on, once the device is idle.
+    // What is drawn with and shown with goes before the device it was made on, once the device is
+    // idle.
     if (device_) {
         static_cast<void>(vkDeviceWaitIdle(device_->get()));
     }
+    presentation_.reset();
     drawing_.reset();
 }
 
@@ -112,6 +137,24 @@ std::expected<void, DeviceError> Renderer::set_map(const Map& map, const MapAsse
     }
     map_ = &map;
     return {};
+}
+
+std::expected<void, DeviceError> Renderer::draw(const Camera& camera) {
+    WULFHILDE_ASSERT(presentation_ != nullptr, "a renderer draws frames only into a window");
+    WULFHILDE_ASSERT(map_ != nullptr, "a map is set before a frame of it is drawn");
+    WULFHILDE_ASSERT(camera.location.sector.index() < map_->sectors().size(),
+                     "the camera is in a sector of the map that is set");
+    const auto frame = presentation_->begin_frame(*device_);
+    if (!frame) {
+        return std::unexpected(frame.error());
+    }
+    if (!*frame) {
+        return {};
+    }
+    if (auto drawn = drawing_->draw(*device_, camera, **frame); !drawn) {
+        return drawn;
+    }
+    return presentation_->end_frame(*device_, **frame);
 }
 
 std::expected<Image, DeviceError> Renderer::render_image(const Camera& camera, Extent extent) {
