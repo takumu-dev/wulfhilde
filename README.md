@@ -9,9 +9,10 @@ wulfhilde is a library for games built from sectors joined by portals, in the ma
 engine: stacked sectors, sectors that share the same space, and spaces bigger inside than out. A
 game links the modules it needs and keeps `main` and its frame loop to itself.
 
-It is at an early stage. Today it holds five modules, `core`, `world`, `assets`, `platform` and
-`renderer`, which a game builds against as a package or a subproject, and `wulfhilde-viewer`, the
-map-preview tool, which draws a map in a window, or reports every problem in it and its assets.
+It is at an early stage. Today it holds six modules, `core`, `world`, `assets`, `platform`,
+`renderer` and `collision`, which a game builds against as a package or a subproject, and
+`wulfhilde-viewer`, the map-preview tool, which draws a map in a window, or reports every problem
+in it and its assets.
 
 ## Modules
 
@@ -22,6 +23,7 @@ map-preview tool, which draws a map in a window, or reports every problem in it 
 | `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file and its materials, with their PNG textures decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
 | `platform` | `core` | the system's windows, keyboard and mouse, through SDL3, which no public header names: a window that can be resized or cover the display, with relative mouse mode, and events of the window, the keys by their USB HID codes, and the mouse |
 | `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, their materials' textures laid on them as the map says and filtered anisotropically, drawn in linear light with multisampling and tone-mapped with AgX, into a window frame after frame or into an image in memory |
+| `collision` | `world` | moving bodies through a map: a capsule, tilted or upright, stopped by walls and held between floor and ceiling, which slides along what it meets and stands on what its own gravity pulls it onto, through two stateless functions, `move` and `settle`, that any of a game's bodies can use |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
 `<wulfhilde/<module>/...>`. The umbrella target `wulfhilde::wulfhilde` links them all.
