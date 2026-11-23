@@ -9,9 +9,17 @@ include(Catch)
 
 set(WULFHILDE_TEST_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/support")
 
-# What every test's environment holds: windows open offscreen, needing no display, and Vulkan draws
-# into them through headless surfaces.
-set(WULFHILDE_TEST_ENVIRONMENT "SDL_VIDEO_DRIVER=offscreen")
+# What every test's environment holds: the driver that the tests' windows open with. On Linux they
+# open offscreen, needing no display, and Vulkan draws into them through headless surfaces. The
+# lavapipe of Windows has none of those, so there they open on the desktop, which CI's Windows
+# machine has.
+if(WIN32)
+    set(WULFHILDE_TEST_WINDOWS_OFFSCREEN OFF)
+    set(WULFHILDE_TEST_ENVIRONMENT "SDL_VIDEO_DRIVER=windows")
+else()
+    set(WULFHILDE_TEST_WINDOWS_OFFSCREEN ON)
+    set(WULFHILDE_TEST_ENVIRONMENT "SDL_VIDEO_DRIVER=offscreen")
+endif()
 
 # Adds a module's Catch2 test cases as one program, registering each case with CTest under the
 # module's name.

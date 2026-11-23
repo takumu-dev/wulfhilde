@@ -13,6 +13,9 @@ wulfhilde_add_tests(platform
     LIBRARIES
         wulfhilde::platform
 )
+if(WULFHILDE_TEST_WINDOWS_OFFSCREEN)
+    target_compile_definitions(wulfhilde_platform_gpu_tests PRIVATE WULFHILDE_TEST_WINDOWS_OFFSCREEN)
+endif()
 
 wulfhilde_add_precondition_test(platform "a second platform while one lives fires its precondition"
     SOURCE programs/second_platform.cpp

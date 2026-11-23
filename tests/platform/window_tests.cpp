@@ -35,6 +35,7 @@ TEST_CASE("a window opens at the size it is asked for", "[platform]") {
     CHECK(window->size() == wulfhilde::WindowSize{.width = 640, .height = 360});
 }
 
+#if defined(WULFHILDE_TEST_WINDOWS_OFFSCREEN)
 // The tests' windows open offscreen, where there is no mouse to hold, so the system refuses.
 TEST_CASE("relative mouse mode the system can't give is refused, naming why, and stays off",
           "[platform]") {
@@ -54,6 +55,22 @@ TEST_CASE("relative mouse mode the system can't give is refused, naming why, and
     CHECK(!window->relative_mouse_mode());
     require_platform_value(window->set_relative_mouse_mode(false));
 }
+#else
+// A window on the desktop takes relative mouse mode, which holds the mouse once it has the focus.
+TEST_CASE("a window's relative mouse mode turns on and off", "[platform]") {
+    auto platform = wulfhilde::Platform::create();
+    require_platform_value(platform);
+    auto window = wulfhilde::Window::create(*platform, {.title = "a window"});
+    require_platform_value(window);
+    CHECK(!window->relative_mouse_mode());
+
+    require_platform_value(window->set_relative_mouse_mode(true));
+    CHECK(window->relative_mouse_mode());
+
+    require_platform_value(window->set_relative_mouse_mode(false));
+    CHECK(!window->relative_mouse_mode());
+}
+#endif
 
 TEST_CASE("a window moved from leaves the window open in the one it moved to", "[platform]") {
     auto platform = wulfhilde::Platform::create();

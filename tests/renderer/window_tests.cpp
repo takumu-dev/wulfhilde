@@ -1,5 +1,5 @@
-// The renderer drawing into a window. The tests' windows open offscreen, where Vulkan presents to
-// a headless surface that nobody sees, so what a frame shows is checked by hand.
+// The renderer drawing into a window. On Linux the tests' windows open offscreen, where Vulkan
+// presents to a headless surface that nobody sees, so what a frame shows is checked by hand.
 #include <wulfhilde/platform/window.hpp>
 
 #include "gpu_test.hpp"
