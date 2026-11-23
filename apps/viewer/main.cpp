@@ -1,16 +1,15 @@
 #include "cameras.hpp"
 #include "command_line.hpp"
+#include "pacing.hpp"
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/assets/load_map_assets.hpp>
 #include <wulfhilde/core/narrow.hpp>
-#include <wulfhilde/platform/event.hpp>
 #include <wulfhilde/platform/platform.hpp>
 #include <wulfhilde/platform/window.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/renderer.hpp>
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -21,7 +20,6 @@
 #include <span>
 #include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace {
@@ -30,6 +28,30 @@ namespace {
 template <typename Error> int fail(const Error& error) {
     std::print(stderr, "wulfhilde-viewer: {}\n", error);
     return EXIT_FAILURE;
+}
+
+// Draws the map in the window until it is closed, then succeeds, or fails if a frame can't be
+// drawn.
+//
+// Each frame is shown at the display's next refresh, which paces the loop. A minimised window has
+// nothing to show one in, so then the viewer rests until something happens instead.
+int show(wulfhilde::Platform& platform, wulfhilde::Renderer& renderer,
+         const wulfhilde::Camera& camera) {
+    viewer::Pacing pacing;
+    auto pace = viewer::Pace::draw;
+    while (true) {
+        const auto events =
+            pace == viewer::Pace::rest ? platform.wait_events() : platform.poll_events();
+        pace = pacing.follow(events);
+        if (pace == viewer::Pace::quit) {
+            return EXIT_SUCCESS;
+        }
+        if (pace == viewer::Pace::draw) {
+            if (auto drawn = renderer.draw(camera); !drawn) {
+                return fail(drawn.error());
+            }
+        }
+    }
 }
 
 } // namespace
@@ -118,17 +140,5 @@ int main(int argc, char** argv) {
         return fail(set.error());
     }
 
-    // Each frame is shown at the display's next refresh, which paces the loop, except while the
-    // window has no area to show one, such as when it is minimised.
-    while (true) {
-        const auto events = platform->poll_events();
-        if (std::ranges::any_of(events, [](const wulfhilde::Event& event) {
-                return std::holds_alternative<wulfhilde::WindowClosed>(event);
-            })) {
-            return EXIT_SUCCESS;
-        }
-        if (auto drawn = renderer->draw(*camera); !drawn) {
-            return fail(drawn.error());
-        }
-    }
+    return show(*platform, *renderer, *camera);
 }
