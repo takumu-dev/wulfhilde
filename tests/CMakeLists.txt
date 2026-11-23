@@ -157,6 +157,7 @@ add_subdirectory(world)
 add_subdirectory(assets)
 add_subdirectory(platform)
 add_subdirectory(renderer)
+add_subdirectory(collision)
 
 if(WULFHILDE_BUILD_VIEWER)
     add_subdirectory(viewer)

@@ -1,0 +1,12 @@
+wulfhilde_add_module(collision
+    HEADERS
+        include/wulfhilde/collision/body_shape.hpp
+        include/wulfhilde/collision/collision.hpp
+        include/wulfhilde/collision/ground.hpp
+        include/wulfhilde/collision/movement.hpp
+        include/wulfhilde/collision/pose.hpp
+    SOURCES
+        collision.cpp
+    DEPENDS
+        world
+)

@@ -1,8 +1,10 @@
 // A game's smallest use of the engine, built by each consumer project: a checked narrowing, a
 // message to the default log sink, the math types, which live wholly in their headers, a map built
-// in code, the load of a map's file, the platform, and a headless renderer.
+// in code, a body moved through it, the load of a map's file, the platform, and a headless
+// renderer.
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
+#include <wulfhilde/collision/collision.hpp>
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/id.hpp>
 #include <wulfhilde/core/log_sink.hpp>
@@ -15,6 +17,7 @@
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -54,6 +57,21 @@ int main() {
     const bool built = map && map->contains(map->start().location) &&
                        map->trace(map->start().location, {.z = 5.0F}).end.point.z == 3.0F;
 
+    // A body dropped from above the start lands on the floor and stands there.
+    bool landed = false;
+    if (map) {
+        const wulfhilde::BodyShape body{.radius = 0.25F, .height = 1.0F};
+        const auto settled =
+            wulfhilde::settle(*map, body,
+                              {.centre = {.sector = map->start().location.sector,
+                                          .point = {.x = 1.0F, .y = 1.0F, .z = 2.0F}}});
+        if (settled) {
+            const auto movement = wulfhilde::move(*map, body, *settled, {.z = -4.0F}, 1.0F);
+            landed = movement.ground.has_value() &&
+                     std::abs(movement.pose.centre.point.z - 0.5F) < 1e-4F;
+        }
+    }
+
     // No map is where the consumer runs, so the load reports its file missing.
     bool missing = false;
     if (const auto root = wulfhilde::ContentRoot::open(".")) {
@@ -72,7 +90,7 @@ int main() {
     const auto renderer = wulfhilde::Renderer::create_headless({});
     const bool rendered = renderer || !std::format("{}", renderer.error()).empty();
 
-    return sector.index() == 12 && turned && warm.r > 1.0F && built && missing &&
+    return sector.index() == 12 && turned && warm.r > 1.0F && built && landed && missing &&
                    platform_answered && rendered
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
