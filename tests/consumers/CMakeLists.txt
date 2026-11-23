@@ -98,16 +98,16 @@ endfunction()
 wulfhilde_add_consumer_test("a game links the installed engine through the umbrella target" installed
     INSTALLED
 )
-# renderer is a subset that needs assets, world, platform and core, which come with it, and the
-# packages lodepng, pedantjson, SDL3 and volk.
+# renderer and collision are a subset that needs assets, world, platform and core, which come with
+# them, and the packages lodepng, pedantjson, SDL3 and volk.
 wulfhilde_add_consumer_test("a game links a subset of the installed engine's modules" installed
     INSTALLED
-    OPTIONS -DWULFHILDE_COMPONENTS=renderer
+    OPTIONS -DWULFHILDE_COMPONENTS=renderer$<SEMICOLON>collision
 )
 wulfhilde_add_consumer_test("a game asking for a module the engine lacks is told so" installed
     INSTALLED
     OPTIONS -DWULFHILDE_COMPONENTS=core$<SEMICOLON>flight
-    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world, assets, platform, renderer"
+    FAILS_MATCHING "wulfhilde has no module named flight; its modules are: core, world, assets, platform, renderer, collision"
 )
 wulfhilde_add_consumer_test("a game without a package that a module links is told which" installed
     INSTALLED
