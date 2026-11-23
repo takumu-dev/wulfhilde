@@ -31,6 +31,9 @@ namespace wulfhilde {
 
 namespace {
 
+// The most anisotropic filtering that a device with `samplerAnisotropy` is guaranteed to take.
+constexpr std::size_t max_anisotropy = 16;
+
 // Every sample count that Vulkan can name.
 constexpr std::array<std::size_t, 7> named_sample_counts{1, 2, 4, 8, 16, 32, 64};
 
@@ -74,6 +77,8 @@ std::expected<Renderer, DeviceError> Renderer::create_headless(RendererSettings 
 
 std::expected<Renderer, DeviceError> Renderer::create_for(Window* window,
                                                           RendererSettings settings) {
+    WULFHILDE_ASSERT(settings.anisotropy >= 1 && settings.anisotropy <= max_anisotropy,
+                     "the anisotropy is from 1 to 16");
     auto device = detail::Device::create(settings, window);
     if (!device) {
         return std::unexpected(std::move(device).error());
@@ -93,7 +98,7 @@ std::expected<Renderer, DeviceError> Renderer::create_for(Window* window,
         presentation = std::move(*made);
         window_format = presentation->format();
     }
-    auto drawing = detail::Drawing::create(**device, *samples, window_format);
+    auto drawing = detail::Drawing::create(**device, *samples, settings.anisotropy, window_format);
     if (!drawing) {
         return std::unexpected(std::move(drawing).error());
     }

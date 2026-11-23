@@ -91,7 +91,12 @@ class Renderer {
     ///
     /// Each sector is triangulated into a range of vertices of its own: its walls, and its floor
     /// and ceiling, concave or not. Every surface is drawn opaque, from the front only, in its
-    /// material's base colour under its sector's ambient light.
+    /// material's base colour, its colour texture times its factor, under its sector's ambient
+    /// light. Each of the map's images is uploaded with its mip chain, and repeats across the
+    /// surfaces whose materials read it, laid on them as the map says: on a wall, u runs from the
+    /// wall's start to the right, as the wall is seen from its sector, and v is height; on a floor
+    /// or a ceiling, u and v are X and Y; and each surface's offset, rotation and scale move the
+    /// material from there.
     ///
     /// \param map The map. The renderer keeps a reference to it, so it must outlive the renderer,
     ///            or the next call of `set_map`.

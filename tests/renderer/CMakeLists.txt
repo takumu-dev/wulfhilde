@@ -3,9 +3,20 @@ wulfhilde_add_tests(renderer
         device_error_tests.cpp
         image_comparison_tests.cpp
         image_tests.cpp
+        renderer_settings_tests.cpp
     LIBRARIES
         wulfhilde::renderer
         wulfhilde_image_comparison
+)
+
+# The settings are checked before any device is sought, so these need no GPU.
+wulfhilde_add_precondition_test(renderer "an anisotropy above 16 fires its precondition"
+    SOURCE programs/anisotropy_above_16.cpp
+    LIBRARIES wulfhilde::renderer
+)
+wulfhilde_add_precondition_test(renderer "an anisotropy of 0 fires its precondition"
+    SOURCE programs/anisotropy_of_0.cpp
+    LIBRARIES wulfhilde::renderer
 )
 
 # Each runs under validation, which fails it on any message, in every configuration.
@@ -16,6 +27,7 @@ wulfhilde_add_tests(renderer
         renderer_tests.cpp
         shader_function_tests.cpp
         test_pattern_tests.cpp
+        textured_surface_tests.cpp
         window_tests.cpp
     LIBRARIES
         wulfhilde_renderer_testing

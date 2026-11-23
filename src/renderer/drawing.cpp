@@ -11,7 +11,9 @@
 #include "sector_geometry.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/assets/map_assets.hpp>
+#include <wulfhilde/assets/texture_image.hpp>
 #include <wulfhilde/core/angle.hpp>
+#include <wulfhilde/core/assertion.hpp>
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/matrix4.hpp>
 #include <wulfhilde/core/narrow.hpp>
@@ -25,11 +27,13 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <expected>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -44,6 +48,7 @@ namespace {
 // The C++ twin of the sector shaders' `MaterialShading`.
 struct MaterialShading {
     Color base_color;
+    DescriptorHandle color_texture;
 };
 
 // The C++ twin of the sector shaders' `SectorShading`.
@@ -57,6 +62,7 @@ struct SceneConstants {
     std::uint64_t vertices = 0;
     std::uint64_t materials = 0;
     std::uint64_t sectors = 0;
+    DescriptorHandle texture_sampler;
 };
 
 // The C++ twin of the resolve shaders' push constants.
@@ -149,6 +155,129 @@ constexpr BarrierScope depth_attachment_access{
               VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 };
 
+// The format a texture image is uploaded in, which decodes its texels as its colour space says
+// whenever it is sampled.
+VkFormat texture_format(ColorSpace color_space) {
+    return color_space == ColorSpace::srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+}
+
+// The image that a material without a colour texture is read through, which changes nothing.
+const TextureImage& white_image() {
+    static const TextureImage white{
+        .color_space = ColorSpace::srgb,
+        .levels = {{.width = 1, .height = 1, .texels = {255, 255, 255, 255}}},
+    };
+    return white;
+}
+
+// Makes images on the device and copies their mip chains into them, all in one batch of work,
+// leaving each ready for shaders to sample.
+std::expected<std::vector<GpuImage>, DeviceError>
+upload_textures(Device& device, std::span<const TextureImage* const> images) {
+    std::size_t bytes = 0;
+    for (const auto* image : images) {
+        for (const auto& level : image->levels) {
+            bytes += level.texels.size();
+        }
+    }
+    auto staging =
+        Buffer::create(device.allocator(), device.get(), bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+    if (!staging) {
+        return std::unexpected(std::move(staging).error());
+    }
+
+    std::vector<GpuImage> textures;
+    textures.reserve(images.size());
+    // Each image's copies, one for each level, from where its texels lie in the staging buffer.
+    std::vector<std::vector<VkBufferImageCopy>> copies;
+    copies.reserve(images.size());
+    std::size_t offset = 0;
+    for (const auto* image : images) {
+        WULFHILDE_ASSERT(!image->levels.empty(), "a texture image has at least one mip level");
+        const auto& full = image->levels.front();
+        auto texture =
+            GpuImage::create(device.allocator(), device.get(), texture_format(image->color_space),
+                             {.width = full.width, .height = full.height},
+                             flags_of(VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_USAGE_TRANSFER_DST_BIT),
+                             VK_SAMPLE_COUNT_1_BIT, narrow<std::uint32_t>(image->levels.size()));
+        if (!texture) {
+            return std::unexpected(std::move(texture).error());
+        }
+        textures.push_back(std::move(*texture));
+
+        auto& regions = copies.emplace_back();
+        for (std::uint32_t mip = 0; const auto& level : image->levels) {
+            std::memcpy(staging->memory().subspan(offset).data(), level.texels.data(),
+                        level.texels.size());
+            regions.push_back({
+                .bufferOffset = offset,
+                .imageSubresource =
+                    {
+                        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                        .mipLevel = mip,
+                        .layerCount = 1,
+                    },
+                .imageExtent =
+                    {
+                        .width = narrow<std::uint32_t>(level.width),
+                        .height = narrow<std::uint32_t>(level.height),
+                        .depth = 1,
+                    },
+            });
+            offset += level.texels.size();
+            ++mip;
+        }
+    }
+
+    constexpr BarrierScope copy_write{
+        .stages = VK_PIPELINE_STAGE_2_COPY_BIT,
+        .access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+    };
+    const auto executed = device.execute([&](VkCommandBuffer commands) {
+        for (const auto& [texture, regions] : std::views::zip(textures, copies)) {
+            record_image_barrier(commands, texture.get(), VK_IMAGE_LAYOUT_UNDEFINED,
+                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, no_earlier_work, copy_write);
+            vkCmdCopyBufferToImage(commands, staging->get(), texture.get(),
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                   narrow<std::uint32_t>(regions.size()), regions.data());
+            record_image_barrier(commands, texture.get(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, copy_write,
+                                 {
+                                     .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                     .access = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                                 });
+        }
+    });
+    if (!executed) {
+        return std::unexpected(executed.error());
+    }
+    return textures;
+}
+
+// Makes the sampler that reads every texture: repeating, filtered trilinearly between mip levels,
+// and anisotropically with up to the given number of samples, where more than one.
+std::expected<SamplerHandle, DeviceError> create_texture_sampler(const Device& device,
+                                                                 std::size_t anisotropy) {
+    const VkSamplerCreateInfo info{
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_LINEAR,
+        .minFilter = VK_FILTER_LINEAR,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .anisotropyEnable = anisotropy > 1 ? VK_TRUE : VK_FALSE,
+        .maxAnisotropy = static_cast<float>(anisotropy),
+        .maxLod = VK_LOD_CLAMP_NONE,
+    };
+    VkSampler sampler = VK_NULL_HANDLE;
+    if (const auto error = failure(vkCreateSampler(device.get(), &info, nullptr, &sampler),
+                                   "creating the textures' sampler")) {
+        return std::unexpected(*error);
+    }
+    return SamplerHandle(device.get(), sampler);
+}
+
 } // namespace
 
 struct Drawing::Pipelines {
@@ -163,6 +292,9 @@ struct Drawing::Geometry {
     Buffer materials;
     Buffer sectors;
     std::vector<VertexRange> ranges;
+    // The map's images, in the order of its assets, then the white one that stands in for the
+    // colour texture of a material without one.
+    std::vector<GpuImage> textures;
 };
 
 // The targets of one size: the scene's colour and its depth and stencil, multisampled, and the
@@ -241,7 +373,7 @@ create_resolve_pipeline(const Device& device, VkSampleCountFlagBits samples, Win
 } // namespace
 
 std::expected<std::unique_ptr<Drawing>, DeviceError>
-Drawing::create(Device& device, VkSampleCountFlagBits samples,
+Drawing::create(Device& device, VkSampleCountFlagBits samples, std::size_t anisotropy,
                 std::optional<WindowFormat> window_format) {
     auto scene = create_graphics_pipeline(device, {
                                                       .spirv = sectors_spirv,
@@ -267,26 +399,64 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples,
         }
         present = std::move(*made);
     }
+    auto sampler = create_texture_sampler(device, anisotropy);
+    if (!sampler) {
+        return std::unexpected(std::move(sampler).error());
+    }
+    const auto sampler_descriptor = device.descriptors().add_sampler(sampler->get());
     return std::make_unique<Drawing>(
         Key{}, samples,
-        std::make_unique<Pipelines>(std::move(*scene), std::move(*resolve), std::move(present)));
+        std::make_unique<Pipelines>(std::move(*scene), std::move(*resolve), std::move(present)),
+        std::move(*sampler), sampler_descriptor);
 }
 
-Drawing::Drawing(Key /*key*/, VkSampleCountFlagBits samples,
-                 std::unique_ptr<Pipelines> pipelines) noexcept
-    : samples_(samples), pipelines_(std::move(pipelines)) {}
+Drawing::Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
+                 SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor) noexcept
+    : samples_(samples), pipelines_(std::move(pipelines)),
+      texture_sampler_(std::move(texture_sampler)), sampler_descriptor_(sampler_descriptor) {}
 
 Drawing::~Drawing() = default;
 
-std::expected<void, DeviceError> Drawing::set_map(const Device& device, const Map& map,
+std::expected<void, DeviceError> Drawing::set_map(Device& device, const Map& map,
                                                   const MapAssets& assets) {
+    // Nothing reads the old map's textures now, since every batch of work is waited for.
     geometry_.reset();
-    auto triangles = triangulate(map);
+    auto triangles = triangulate(map, assets.materials);
+
+    std::vector<const TextureImage*> images;
+    images.reserve(assets.images.size() + 1);
+    for (const auto& image : assets.images) {
+        images.push_back(&image);
+    }
+    images.push_back(&white_image());
+    auto textures = upload_textures(device, images);
+    if (!textures) {
+        return std::unexpected(std::move(textures).error());
+    }
+    for (std::size_t index = 0; const auto& texture : *textures) {
+        if (index < texture_descriptors_.size()) {
+            device.descriptors().replace_sampled_image(texture_descriptors_.at(index),
+                                                       texture.view());
+        } else {
+            texture_descriptors_.push_back(device.descriptors().add_sampled_image(texture.view()));
+        }
+        ++index;
+    }
+    // Places left over from a map with more images show the white one, so that none names an image
+    // that is gone.
+    for (const auto descriptor : texture_descriptors_ | std::views::drop(textures->size())) {
+        device.descriptors().replace_sampled_image(descriptor, textures->back().view());
+    }
+    const auto white = texture_descriptors_.at(assets.images.size());
 
     std::vector<MaterialShading> materials;
     materials.reserve(assets.materials.size());
     for (const auto& material : assets.materials) {
-        materials.push_back({.base_color = material.color.factor});
+        materials.push_back({
+            .base_color = material.color.factor,
+            .color_texture =
+                material.color.texture ? texture_descriptors_.at(*material.color.texture) : white,
+        });
     }
     std::vector<SectorShading> sectors;
     sectors.reserve(map.sectors().size());
@@ -307,7 +477,8 @@ std::expected<void, DeviceError> Drawing::set_map(const Device& device, const Ma
         return std::unexpected(std::move(sector_buffer).error());
     }
     geometry_ = std::make_unique<Geometry>(std::move(*vertex_buffer), std::move(*material_buffer),
-                                           std::move(*sector_buffer), std::move(triangles.sectors));
+                                           std::move(*sector_buffer), std::move(triangles.sectors),
+                                           std::move(*textures));
     return {};
 }
 
@@ -332,6 +503,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
         .vertices = geometry_->vertices.address(),
         .materials = geometry_->materials.address(),
         .sectors = geometry_->sectors.address(),
+        .texture_sampler = sampler_descriptor_,
     };
     const ResolveConstants resolve_constants{
         .scene = targets_->scene_descriptor,

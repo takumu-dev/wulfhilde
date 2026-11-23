@@ -102,11 +102,11 @@ void Buffer::reset() noexcept {
     }
 }
 
-std::expected<GpuImage, DeviceError> GpuImage::create(VmaAllocator allocator, VkDevice device,
-                                                      VkFormat format, Extent extent,
-                                                      VkImageUsageFlags usage,
-                                                      VkSampleCountFlagBits samples) {
+std::expected<GpuImage, DeviceError>
+GpuImage::create(VmaAllocator allocator, VkDevice device, VkFormat format, Extent extent,
+                 VkImageUsageFlags usage, VkSampleCountFlagBits samples, std::uint32_t levels) {
     WULFHILDE_ASSERT(extent.width > 0 && extent.height > 0, "an image has at least one pixel");
+    WULFHILDE_ASSERT(levels > 0, "an image has at least one mip level");
     const VkImageCreateInfo image_info{
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
@@ -117,7 +117,7 @@ std::expected<GpuImage, DeviceError> GpuImage::create(VmaAllocator allocator, Vk
                 .height = narrow<std::uint32_t>(extent.height),
                 .depth = 1,
             },
-        .mipLevels = 1,
+        .mipLevels = levels,
         .arrayLayers = 1,
         .samples = samples,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
@@ -143,7 +143,7 @@ std::expected<GpuImage, DeviceError> GpuImage::create(VmaAllocator allocator, Vk
         .subresourceRange =
             {
                 .aspectMask = aspects_of(format),
-                .levelCount = 1,
+                .levelCount = levels,
                 .layerCount = 1,
             },
     };

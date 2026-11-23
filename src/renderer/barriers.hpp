@@ -18,8 +18,9 @@ inline constexpr BarrierScope no_earlier_work{};
 /// signalled after every command takes its place.
 inline constexpr BarrierScope no_later_work{};
 
-/// Records a barrier that moves the whole of a one-level image from one layout to another, after
-/// the work in `before` and ahead of the work in `after`. The aspects are those of its format.
+/// Records a barrier that moves the whole of an image, every mip level of it, from one layout to
+/// another, after the work in `before` and ahead of the work in `after`. The aspects are those of
+/// its format.
 inline void record_image_barrier(VkCommandBuffer commands, VkImage image, VkImageLayout from,
                                  VkImageLayout to, BarrierScope before, BarrierScope after,
                                  VkImageAspectFlags aspects = VK_IMAGE_ASPECT_COLOR_BIT) {
@@ -37,7 +38,7 @@ inline void record_image_barrier(VkCommandBuffer commands, VkImage image, VkImag
         .subresourceRange =
             {
                 .aspectMask = aspects,
-                .levelCount = 1,
+                .levelCount = VK_REMAINING_MIP_LEVELS,
                 .layerCount = 1,
             },
     };

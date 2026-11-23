@@ -26,7 +26,8 @@ struct Wall {
     /// Where the wall ends, which is where the next wall in its loop starts.
     Vector2 end{};
 
-    /// What covers the wall, with u along it from its start and v up.
+    /// What covers the wall, with u along it from its start, to the right as the wall is seen from
+    /// its sector, and v up.
     Surface surface;
 
     /// Game-defined data that the engine keeps and ignores: the JSON text of an object, or empty
