@@ -48,11 +48,14 @@ TEST_CASE("the sectors map is one concave sector", "[viewer]") {
 
     REQUIRE(map.has_value());
     REQUIRE(map->sectors().size() == 1);
-    CHECK(map->sectors().front().loops.front().size() == 6);
+    // Six corners, with the long sides of the arm along X split into walls that lie differently.
+    CHECK(map->sectors().front().loops.front().size() == 9);
     CHECK(map->sector(map->start().location.sector).id == "hall");
     CHECK(map->contains(map->start().location));
 
     const auto assets = wulfhilde::load_map_assets(*root, *map);
     REQUIRE(assets.has_value());
     CHECK(assets->materials.size() == 3);
+    // The floor's, the ceiling's and the walls' debug grids, each read once, as a colour.
+    CHECK(assets->images.size() == 3);
 }
