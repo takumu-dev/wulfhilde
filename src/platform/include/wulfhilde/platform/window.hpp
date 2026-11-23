@@ -69,6 +69,18 @@ class Window {
     /// Returns the size of the window's drawable area now.
     [[nodiscard]] WindowSize size() const;
 
+    /// Asks the desktop to minimise the window, which it reports with a `WindowMinimized` event,
+    /// perhaps only after a while.
+    ///
+    /// \return Nothing, or why the system refused, such as when it can't minimise windows.
+    [[nodiscard]] std::expected<void, PlatformError> minimize();
+
+    /// Asks the desktop to bring a minimised or maximised window back to its normal size, which it
+    /// reports with a `WindowRestored` event, perhaps only after a while.
+    ///
+    /// \return Nothing, or why the system refused, such as when it can't restore windows.
+    [[nodiscard]] std::expected<void, PlatformError> restore();
+
     /// Turns relative mouse mode on or off.
     ///
     /// While it is on and the window has the keyboard's focus, the pointer is hidden and held in

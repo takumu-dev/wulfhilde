@@ -12,6 +12,16 @@
 #include <format>
 #include <utility>
 
+// The tests of minimising a window need one on the desktop.
+#ifndef WULFHILDE_TEST_WINDOWS_OFFSCREEN
+#include <wulfhilde/platform/event.hpp>
+
+#include <algorithm>
+#include <chrono>
+#include <variant>
+#include <vector>
+#endif
+
 namespace {
 
 // Requires a result from the platform to hold a value, failing with its error when it doesn't.
@@ -21,6 +31,26 @@ void require_platform_value(const std::expected<T, wulfhilde::PlatformError>& re
         FAIL(std::format("{}", result.error()));
     }
 }
+
+#ifndef WULFHILDE_TEST_WINDOWS_OFFSCREEN
+// Answers whether the events hold one of a kind.
+template <typename Kind> bool holds(const std::vector<wulfhilde::Event>& events) {
+    return std::ranges::any_of(
+        events, [](const wulfhilde::Event& event) { return std::holds_alternative<Kind>(event); });
+}
+
+// Waits a few seconds at most for an event of a kind, which the desktop may send only after a
+// while, answering whether it came.
+template <typename Kind> bool wait_for(wulfhilde::Platform& platform) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (holds<Kind>(platform.wait_events(std::chrono::milliseconds(100)))) {
+            return true;
+        }
+    }
+    return false;
+}
+#endif
 
 } // namespace
 
@@ -55,6 +85,29 @@ TEST_CASE("relative mouse mode the system can't give is refused, naming why, and
     CHECK(!window->relative_mouse_mode());
     require_platform_value(window->set_relative_mouse_mode(false));
 }
+
+// The offscreen driver has no way to minimise its windows, nor to restore them, so the system
+// refuses both, and a window there can't test the events of either.
+TEST_CASE("a window the system can't minimise or restore is refused, naming why", "[platform]") {
+    auto platform = wulfhilde::Platform::create();
+    require_platform_value(platform);
+    auto window = wulfhilde::Window::create(*platform, {.title = "a window"});
+    require_platform_value(window);
+
+    const auto minimized = window->minimize();
+    const auto restored = window->restore();
+
+    REQUIRE(!minimized.has_value());
+    CHECK(minimized.error().code == wulfhilde::PlatformErrorCode::window_failure);
+    CHECK_THAT(minimized.error().message,
+               Catch::Matchers::StartsWith("the window couldn't minimise: ") &&
+                   !Catch::Matchers::EndsWith(": "));
+    REQUIRE(!restored.has_value());
+    CHECK(restored.error().code == wulfhilde::PlatformErrorCode::window_failure);
+    CHECK_THAT(restored.error().message,
+               Catch::Matchers::StartsWith("the window couldn't restore: ") &&
+                   !Catch::Matchers::EndsWith(": "));
+}
 #else
 // A window on the desktop takes relative mouse mode, which holds the mouse once it has the focus.
 TEST_CASE("a window's relative mouse mode turns on and off", "[platform]") {
@@ -69,6 +122,36 @@ TEST_CASE("a window's relative mouse mode turns on and off", "[platform]") {
 
     require_platform_value(window->set_relative_mouse_mode(false));
     CHECK(!window->relative_mouse_mode());
+}
+
+TEST_CASE("a window reports being minimised, and being restored to its size", "[platform]") {
+    auto platform = wulfhilde::Platform::create();
+    require_platform_value(platform);
+    auto window = wulfhilde::Window::create(
+        *platform, {.title = "a window", .size = {.width = 640, .height = 360}});
+    require_platform_value(window);
+
+    require_platform_value(window->minimize());
+    CHECK(wait_for<wulfhilde::WindowMinimized>(*platform));
+    require_platform_value(window->restore());
+    CHECK(wait_for<wulfhilde::WindowRestored>(*platform));
+
+    CHECK(window->size() == wulfhilde::WindowSize{.width = 640, .height = 360});
+}
+
+TEST_CASE("a window being minimised ends a wait with no time limit", "[platform]") {
+    auto platform = wulfhilde::Platform::create();
+    require_platform_value(platform);
+    auto window = wulfhilde::Window::create(*platform, {.title = "a window"});
+    require_platform_value(window);
+
+    require_platform_value(window->minimize());
+
+    // A wait may also end on what the platform doesn't report, such as the window losing the
+    // focus, so the test waits again until the window is minimised.
+    while (!holds<wulfhilde::WindowMinimized>(platform->wait_events())) {
+    }
+    SUCCEED("the wait ended with the window minimised");
 }
 #endif
 
