@@ -364,12 +364,64 @@ TEST_CASE("an --anisotropy that isn't a whole number is a usage error", "[viewer
     }
 }
 
-TEST_CASE("the --camera, --samples and --anisotropy options need a value after them", "[viewer]") {
-    const std::array<std::pair<std::string_view, std::string_view>, 3> cases{
+TEST_CASE("the --sensitivity option takes how far the eye turns for each count of the mouse, "
+          "0.1 degrees by default",
+          "[viewer]") {
+    const std::array<std::string_view, 1> by_default{"e1m1.map.json"};
+    CHECK(parse_valid(by_default).sensitivity == Angle::degrees(0.1F));
+
+    for (const auto& [written, degrees] :
+         {std::pair{"0.022", 0.022F}, std::pair{"1", 1.0F}, std::pair{"45", 45.0F}}) {
+        CAPTURE(written);
+        const std::array<std::string_view, 3> arguments{"e1m1.map.json", "--sensitivity", written};
+
+        CHECK(parse_valid(arguments).sensitivity == Angle::degrees(degrees));
+    }
+}
+
+TEST_CASE("a --sensitivity of no more than 0 degrees is a usage error", "[viewer]") {
+    for (const std::string_view sensitivity : {"0", "-0", "-0.1"}) {
+        CAPTURE(sensitivity);
+        const std::array<std::string_view, 3> arguments{
+            "e1m1.map.json",
+            "--sensitivity",
+            sensitivity,
+        };
+
+        const auto error = parse_wrong(arguments);
+
+        CHECK(error.code == viewer::UsageErrorCode::out_of_range);
+        CHECK(std::format("{}", error) ==
+              std::format("--sensitivity must be more than 0 degrees, not {}", sensitivity));
+    }
+}
+
+TEST_CASE("a --sensitivity that isn't a number is a usage error", "[viewer]") {
+    for (const std::string_view sensitivity : {"fast", "0.1deg", "nan", "inf", ""}) {
+        CAPTURE(sensitivity);
+        const std::array<std::string_view, 3> arguments{
+            "e1m1.map.json",
+            "--sensitivity",
+            sensitivity,
+        };
+
+        const auto error = parse_wrong(arguments);
+
+        CHECK(error.code == viewer::UsageErrorCode::invalid_value);
+        CHECK(std::format("{}", error) ==
+              std::format("--sensitivity needs a number of degrees, not {}", sensitivity));
+    }
+}
+
+TEST_CASE("the --camera, --samples, --anisotropy and --sensitivity options need a value after "
+          "them",
+          "[viewer]") {
+    const std::array<std::pair<std::string_view, std::string_view>, 4> cases{
         {
             {"--camera", "--camera needs <sector>,<x>,<y>,<z>,<yaw>,<pitch>[,<roll>] after it"},
             {"--samples", "--samples needs a sample count after it"},
             {"--anisotropy", "--anisotropy needs a whole number after it"},
+            {"--sensitivity", "--sensitivity needs a number of degrees after it"},
         },
     };
     for (const auto& [option, message] : cases) {
@@ -383,7 +435,8 @@ TEST_CASE("the --camera, --samples and --anisotropy options need a value after t
     }
 }
 
-TEST_CASE("the --camera, --samples and --anisotropy options each name one value", "[viewer]") {
+TEST_CASE("the --camera, --samples, --anisotropy and --sensitivity options each name one value",
+          "[viewer]") {
     const std::array<std::string_view, 5> cameras{
         "e1m1.map.json", "--camera", "hall,1,2,3,4,5", "--camera", "yard,1,2,3,4,5",
     };
@@ -404,4 +457,11 @@ TEST_CASE("the --camera, --samples and --anisotropy options each name one value"
     const auto anisotropy = parse_wrong(anisotropies);
     CHECK(anisotropy.code == viewer::UsageErrorCode::extra_argument);
     CHECK(std::format("{}", anisotropy) == "a second anisotropy: 16, after 8");
+
+    const std::array<std::string_view, 5> sensitivities{
+        "e1m1.map.json", "--sensitivity", "0.2", "--sensitivity", "0.3",
+    };
+    const auto sensitivity = parse_wrong(sensitivities);
+    CHECK(sensitivity.code == viewer::UsageErrorCode::extra_argument);
+    CHECK(std::format("{}", sensitivity) == "a second sensitivity: 0.3, after 0.2");
 }

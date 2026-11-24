@@ -6,8 +6,14 @@ add_library(wulfhilde_viewer_lib STATIC
     cameras.hpp
     command_line.cpp
     command_line.hpp
+    controller.cpp
+    controller.hpp
+    input.cpp
+    input.hpp
     pacing.cpp
     pacing.hpp
+    tick_clock.cpp
+    tick_clock.hpp
 )
 target_include_directories(wulfhilde_viewer_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(wulfhilde_viewer_lib PUBLIC wulfhilde::wulfhilde)

@@ -1,15 +1,23 @@
 #include "cameras.hpp"
 #include "command_line.hpp"
+#include "controller.hpp"
+#include "input.hpp"
 #include "pacing.hpp"
+#include "tick_clock.hpp"
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/assets/load_map_assets.hpp>
+#include <wulfhilde/core/angle.hpp>
+#include <wulfhilde/core/log_sink.hpp>
 #include <wulfhilde/core/narrow.hpp>
 #include <wulfhilde/platform/platform.hpp>
+#include <wulfhilde/platform/platform_error.hpp>
 #include <wulfhilde/platform/window.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/renderer.hpp>
+#include <wulfhilde/world/map.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -30,15 +38,55 @@ template <typename Error> int fail(const Error& error) {
     return EXIT_FAILURE;
 }
 
-// Draws the map in the window until it is closed, then succeeds, or fails if a frame can't be
-// drawn.
+// Gives the warning of a body that doesn't fit at the start position, if the controller's is one.
+void warn_if_unfit(const wulfhilde::Map& map, const viewer::Controller& controller) {
+    if (!controller.body()) {
+        wulfhilde::log(wulfhilde::LogSeverity::warning, viewer::unfit_start_warning(map));
+    }
+}
+
+// Does what the player asks in a frame, with the ticks due in it, or fails if the mouse can't be
+// taken or let go.
+std::expected<void, wulfhilde::PlatformError> play(const viewer::FrameInput& frame,
+                                                   std::size_t ticks, const wulfhilde::Map& map,
+                                                   wulfhilde::Window& window,
+                                                   viewer::Controller& controller) {
+    if (frame.capture_mouse) {
+        if (auto captured = window.set_relative_mouse_mode(*frame.capture_mouse); !captured) {
+            return captured;
+        }
+    }
+    controller.look(frame.yaw, frame.pitch);
+    if (frame.return_to_start) {
+        controller.return_to_start(map);
+        warn_if_unfit(map, controller);
+    }
+    for (std::size_t tick = 0; tick < ticks; ++tick) {
+        controller.tick(map, frame.actions);
+    }
+    if (frame.print_eye) {
+        std::print("--camera {}\n", viewer::camera_option(map, controller.eye(map)));
+        std::fflush(stdout);
+    }
+    return {};
+}
+
+// Lets the player walk the map in the window until it is closed, then succeeds, or fails if a frame
+// can't be drawn.
 //
 // Each frame is shown at the display's next refresh, which paces the loop. A minimised window has
-// nothing to show one in, so then the viewer rests until something happens instead.
-int show(wulfhilde::Platform& platform, wulfhilde::Renderer& renderer,
-         const wulfhilde::Camera& camera) {
+// nothing to show one in, so then the viewer rests until something happens instead. The ticks due
+// over a long rest are capped, as over any long frame.
+int show(wulfhilde::Platform& platform, wulfhilde::Window& window, wulfhilde::Renderer& renderer,
+         const wulfhilde::Map& map, viewer::Controller controller, wulfhilde::Angle sensitivity) {
+    if (auto captured = window.set_relative_mouse_mode(true); !captured) {
+        return fail(captured.error());
+    }
     viewer::Pacing pacing;
+    viewer::Input input(sensitivity);
+    viewer::TickClock clock;
     auto pace = viewer::Pace::draw;
+    auto last = std::chrono::steady_clock::now();
     while (true) {
         const auto events =
             pace == viewer::Pace::rest ? platform.wait_events() : platform.poll_events();
@@ -46,8 +94,14 @@ int show(wulfhilde::Platform& platform, wulfhilde::Renderer& renderer,
         if (pace == viewer::Pace::quit) {
             return EXIT_SUCCESS;
         }
+        const auto now = std::chrono::steady_clock::now();
+        const auto ticks = clock.advance(now - last);
+        last = now;
+        if (auto played = play(input.follow(events), ticks, map, window, controller); !played) {
+            return fail(played.error());
+        }
         if (pace == viewer::Pace::draw) {
-            if (auto drawn = renderer.draw(camera); !drawn) {
+            if (auto drawn = renderer.draw(viewer::camera_at(controller.eye(map))); !drawn) {
                 return fail(drawn.error());
             }
         }
@@ -108,14 +162,19 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    // A camera that the command line names is placed once there is a map to place it in.
-    const auto camera =
-        command_line->camera
-            ? viewer::camera_from_option(*map, *command_line->camera)
-            : std::expected<wulfhilde::Camera, viewer::UsageError>(viewer::camera_at_start(*map));
-    if (!camera) {
-        std::print(stderr, "wulfhilde-viewer: {}\n\n{}", camera.error(), viewer::usage());
-        return EXIT_FAILURE;
+    // A camera that the command line names is placed once there is a map to place it in, and is a
+    // viewpoint without a body.
+    auto controller = viewer::Controller::at_start(*map);
+    if (const auto& option = command_line->camera) {
+        const auto camera = viewer::camera_from_option(*map, *option);
+        if (!camera) {
+            std::print(stderr, "wulfhilde-viewer: {}\n\n{}", camera.error(), viewer::usage());
+            return EXIT_FAILURE;
+        }
+        controller = viewer::Controller::at_camera(camera->location, option->yaw, option->pitch,
+                                                   option->roll);
+    } else {
+        warn_if_unfit(*map, controller);
     }
 
     auto platform = wulfhilde::Platform::create();
@@ -143,5 +202,5 @@ int main(int argc, char** argv) {
         return fail(set.error());
     }
 
-    return show(*platform, *renderer, *camera);
+    return show(*platform, *window, *renderer, *map, controller, command_line->sensitivity);
 }

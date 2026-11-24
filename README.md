@@ -11,8 +11,8 @@ game links the modules it needs and keeps `main` and its frame loop to itself.
 
 It is at an early stage. Today it holds six modules, `core`, `world`, `assets`, `platform`,
 `renderer` and `collision`, which a game builds against as a package or a subproject, and
-`wulfhilde-viewer`, the map-preview tool, which draws a map in a window, or reports every problem
-in it and its assets.
+`wulfhilde-viewer`, the map-preview tool, which lets you walk a map in a window, or reports every
+problem in it and its assets.
 
 ## Modules
 
@@ -44,8 +44,10 @@ named by its asset path without `.png`, whose colour space is the one the proper
 needs. `schema/material.schema.json` is the material's JSON Schema, installed beside the map's.
 
 The viewer opens a map's file, with the content root defaulting to the file's own directory, and
-draws the map in a window from the eye of someone at its start position, or from a camera given as
-a sector's id, a point in metres and a facing in degrees:
+lets you walk the map in first person from its start position: W, A, S and D walk, Shift runs,
+Space jumps and the mouse looks. R returns to the start position, and C prints where you see from
+as a `--camera` option, which looks from there without walking. Esc lets the mouse go, and a click
+takes it back:
 
 ```sh
 wulfhilde-viewer tests/content/sectors.map.json
@@ -53,8 +55,10 @@ wulfhilde-viewer content/maps/e1m1.map.json --content content
 wulfhilde-viewer tests/content/sectors.map.json --camera hall,11,1,1.65,165,-5 --fullscreen
 ```
 
-`wulfhilde-viewer --help` lists its options, among them how many samples each pixel takes and how
-many times anisotropic filtering samples a texture. Closing the window quits.
+`wulfhilde-viewer --help` lists its options, among them the mouse's sensitivity, how many samples
+each pixel takes and how many times anisotropic filtering samples a texture. Closing the window
+quits. If the player's body doesn't fit at the start position, the viewer warns of it and looks
+from there without a body.
 
 A map with mistakes in it has every problem of the first phase that finds any reported, each as
 `file:line:column: message (pointer)`, a form that terminals and editors link to. The phases are

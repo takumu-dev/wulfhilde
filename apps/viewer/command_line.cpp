@@ -132,6 +132,19 @@ std::expected<std::size_t, UsageError> parse_anisotropy(std::string_view text) {
     return *anisotropy;
 }
 
+std::expected<wulfhilde::Angle, UsageError> parse_sensitivity(std::string_view text) {
+    const auto degrees = read_number<float>(text);
+    if (!degrees || !std::isfinite(*degrees)) {
+        return usage_error(UsageErrorCode::invalid_value,
+                           std::format("--sensitivity needs a number of degrees, not {}", text));
+    }
+    if (*degrees <= 0.0F) {
+        return usage_error(UsageErrorCode::out_of_range,
+                           std::format("--sensitivity must be more than 0 degrees, not {}", text));
+    }
+    return wulfhilde::Angle::degrees(*degrees);
+}
+
 /// Returns a path as an absolute one in normal form, with no separator at its end, or an empty path
 /// if the working directory can't be found.
 std::filesystem::path normal_absolute(const std::filesystem::path& path) {
@@ -167,6 +180,7 @@ struct WrittenArguments {
     std::optional<std::string_view> camera;
     std::optional<std::string_view> samples;
     std::optional<std::string_view> anisotropy;
+    std::optional<std::string_view> sensitivity;
 };
 
 /// An option that takes the argument after it as its value, which it may be given once: what must
@@ -178,7 +192,7 @@ struct ValueOption {
     std::optional<std::string_view> WrittenArguments::* value;
 };
 
-constexpr std::array<ValueOption, 4> value_options{
+constexpr std::array<ValueOption, 5> value_options{
     {
         {
             .name = "--content",
@@ -203,6 +217,12 @@ constexpr std::array<ValueOption, 4> value_options{
             .needs = "a whole number",
             .value_name = "anisotropy",
             .value = &WrittenArguments::anisotropy,
+        },
+        {
+            .name = "--sensitivity",
+            .needs = "a number of degrees",
+            .value_name = "sensitivity",
+            .value = &WrittenArguments::sensitivity,
         },
     },
 };
@@ -257,25 +277,35 @@ read_arguments(std::span<const std::string_view> arguments) {
 
 std::string_view usage() noexcept {
     return "usage: wulfhilde-viewer <map> [--content <dir>] [--camera <camera>] [--fullscreen]\n"
-           "                        [--samples <n>] [--anisotropy <n>]\n"
+           "                        [--samples <n>] [--anisotropy <n>] [--sensitivity <degrees>]\n"
            "       wulfhilde-viewer --help\n"
            "\n"
            "The map-preview tool of the wulfhilde engine. It loads a map's file, ending "
            ".map.json,\n"
-           "and draws the map in a window of 1280x720, from the eye of someone at its start\n"
-           "position. It reports every problem it finds in the map instead, each as\n"
-           "file:line:column. Closing the window quits.\n"
+           "and lets you walk the map in a window of 1280x720, from its start position. It\n"
+           "reports every problem it finds in the map instead, each as file:line:column.\n"
+           "\n"
+           "keys:\n"
+           "  W, A, S, D         walk forward, left, back and right\n"
+           "  Shift              run\n"
+           "  Space              jump\n"
+           "  the mouse          look about\n"
+           "  R                  return to the start position\n"
+           "  C                  print where you see from, as a --camera option\n"
+           "  Esc                let the mouse go; a click in the window takes it back\n"
+           "Closing the window quits.\n"
            "\n"
            "options:\n"
            "  --content <dir>    the content root that holds the map and its assets; by "
            "default,\n"
            "                     the map file's directory\n"
            "  --camera <sector>,<x>,<y>,<z>,<yaw>,<pitch>[,<roll>]\n"
-           "                     draw from a camera instead: a sector's id, a point in its\n"
-           "                     coordinates in metres, and a facing in degrees, with yaw and "
+           "                     look from a camera instead, without walking: a sector's id, a\n"
+           "                     point in its coordinates in metres, and a facing in degrees, "
+           "with\n"
+           "                     yaw and roll from -180 to 180, pitch from -90 to 90, and no "
            "roll\n"
-           "                     from -180 to 180, pitch from -90 to 90, and no roll by "
-           "default\n"
+           "                     by default\n"
            "  --fullscreen       cover the display instead of opening a window\n"
            "  --samples <n>      how many samples each pixel takes, to smooth edges: 1, 2, 4, "
            "8,\n"
@@ -283,6 +313,9 @@ std::string_view usage() noexcept {
            "  --anisotropy <n>   how many times textures are sampled along a surface seen at a\n"
            "                     grazing angle, to keep it sharp: from 1, which filters\n"
            "                     trilinearly alone, to 16; 16 by default\n"
+           "  --sensitivity <degrees>\n"
+           "                     how far the view turns for each count the mouse moves, more\n"
+           "                     than 0; 0.1 by default\n"
            "  --help             print this usage and exit\n";
 }
 
@@ -317,6 +350,13 @@ parse_command_line(std::span<const std::string_view> arguments) {
             return std::unexpected(anisotropy.error());
         }
         command_line.anisotropy = *anisotropy;
+    }
+    if (written->sensitivity) {
+        const auto sensitivity = parse_sensitivity(*written->sensitivity);
+        if (!sensitivity) {
+            return std::unexpected(sensitivity.error());
+        }
+        command_line.sensitivity = *sensitivity;
     }
 
     if (!written->map) {

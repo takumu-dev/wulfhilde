@@ -3,6 +3,7 @@
 #include "cameras.hpp"
 
 #include "command_line.hpp"
+#include "controller.hpp"
 #include "math_printing.hpp"  // IWYU pragma: keep
 #include "world_printing.hpp" // IWYU pragma: keep
 #include <wulfhilde/assets/content_root.hpp>
@@ -16,8 +17,10 @@
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <expected>
 #include <format>
+#include <string_view>
 #include <utility>
 
 namespace {
@@ -43,17 +46,68 @@ void check_facing(const wulfhilde::Camera& camera, Angle yaw, Angle pitch, Angle
 
 } // namespace
 
-TEST_CASE("the viewer draws from 1.65 m above the start position's feet, at a 60 degree field "
-          "of view",
+TEST_CASE("the viewer draws from the eye, at a 60 degree field of view", "[viewer]") {
+    const auto map = sectors_map();
+    const viewer::Eye eye{
+        .location =
+            {
+                .sector = map.start().location.sector,
+                .point = {.x = 3.0F, .y = 1.0F, .z = 2.0F},
+            },
+        .facing = wulfhilde::Rotation::from_yaw_pitch_roll(Angle::degrees(30.0F),
+                                                           Angle::degrees(-20.0F), Angle{}),
+    };
+
+    const auto camera = viewer::camera_at(eye);
+
+    CHECK(camera.location == eye.location);
+    check_facing(camera, Angle::degrees(30.0F), Angle::degrees(-20.0F), Angle{});
+    CHECK(camera.vertical_field_of_view == Angle::degrees(60.0F));
+}
+
+TEST_CASE("the eye is written as --camera takes it, to the millimetre and the hundredth of a "
+          "degree, with a roll only if it has one",
           "[viewer]") {
     const auto map = sectors_map();
+    const auto hall = map.start().location.sector;
 
-    const auto camera = viewer::camera_at_start(map);
+    const viewer::Eye upright{
+        .location = {.sector = hall, .point = {.x = 2.0F, .y = 2.0F, .z = 1.65F}},
+        .facing = wulfhilde::Rotation::identity(),
+    };
+    CHECK(viewer::camera_option(map, upright) == "hall,2,2,1.65,0,0");
 
-    CHECK(camera.location.sector == map.start().location.sector);
-    CHECK(camera.location.point == wulfhilde::Vector3{.x = 2.0F, .y = 2.0F, .z = 1.65F});
-    check_facing(camera, map.start().yaw, map.start().pitch, Angle::degrees(0.0F));
-    CHECK(camera.vertical_field_of_view == Angle::degrees(60.0F));
+    const viewer::Eye rolled{
+        .location = {.sector = hall, .point = {.x = 11.23456F, .y = 0.0004F, .z = -0.5F}},
+        .facing = wulfhilde::Rotation::from_yaw_pitch_roll(
+            Angle::degrees(-165.5F), Angle::degrees(12.346F), Angle::degrees(-90.0F)),
+    };
+    CHECK(viewer::camera_option(map, rolled) == "hall,11.235,0,-0.5,-165.5,12.35,-90");
+}
+
+TEST_CASE("the eye written as --camera takes it is read back as the same camera", "[viewer]") {
+    const auto map = sectors_map();
+    const viewer::Eye eye{
+        .location =
+            {
+                .sector = map.start().location.sector,
+                .point = {.x = 7.25F, .y = 1.5F, .z = 1.65F},
+            },
+        .facing = wulfhilde::Rotation::from_yaw_pitch_roll(
+            Angle::degrees(135.0F), Angle::degrees(-30.0F), Angle::degrees(45.0F)),
+    };
+    const auto written = viewer::camera_option(map, eye);
+    const std::array<std::string_view, 3> arguments{"sectors.map.json", "--camera", written};
+
+    const auto command_line = viewer::parse_command_line(arguments);
+    REQUIRE(command_line.has_value());
+    REQUIRE(command_line->camera.has_value());
+    const auto camera =
+        viewer::camera_from_option(map, command_line->camera.value_or(viewer::CameraOption{}));
+
+    REQUIRE(camera.has_value());
+    CHECK(camera->location == eye.location);
+    CHECK(wulfhilde::approx_equal(camera->orientation, eye.facing, Angle::degrees(0.01F)));
 }
 
 TEST_CASE("a --camera is placed in its sector of the map, at a 60 degree field of view",

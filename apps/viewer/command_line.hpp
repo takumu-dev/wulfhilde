@@ -61,6 +61,9 @@ struct CommandLine {
     /// How many times anisotropic filtering samples a texture: from 1, trilinear filtering alone,
     /// to 16.
     std::size_t anisotropy = 16;
+
+    /// How far the eye turns for each count the mouse moves.
+    wulfhilde::Angle sensitivity = wulfhilde::Angle::degrees(0.1F);
 };
 
 /// What kind of mistake makes a command line one the viewer can't follow.

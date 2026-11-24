@@ -2,8 +2,14 @@ wulfhilde_add_tests(viewer
     SOURCES
         cameras_tests.cpp
         command_line_tests.cpp
+        controller_tests.cpp
+        input_tests.cpp
         pacing_tests.cpp
+        scripted_walk.cpp
+        scripted_walk.hpp
         test_maps_tests.cpp
+        tick_clock_tests.cpp
+        walks_tests.cpp
     LIBRARIES
         wulfhilde_viewer_lib
 )
