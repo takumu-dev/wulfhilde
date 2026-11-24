@@ -5,6 +5,7 @@
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/asset_path.hpp>
+#include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
@@ -111,6 +112,29 @@ void check_ambient(Problems& problems, std::string_view pointer,
     }
 }
 
+/// Checks that each of an exposure's values is a finite number, and that its range's minimum is no
+/// higher than its maximum.
+void check_exposure(Problems& problems, const Exposure& exposure) {
+    bool finite = true;
+    for (const auto& [name, value] : {
+             std::pair{"min", exposure.min},
+             std::pair{"max", exposure.max},
+             std::pair{"compensation", exposure.compensation},
+         }) {
+        if (!std::isfinite(value)) {
+            problems.add(MapProblemCode::exposure_out_of_range, child("/exposure", name),
+                         std::format("{} isn't an exposure, which is a finite number", value));
+            finite = false;
+        }
+    }
+    if (finite && exposure.min > exposure.max) {
+        problems.add(MapProblemCode::exposure_out_of_range, "/exposure/min",
+                     std::format("the exposure range's minimum, {} EV100, is above its maximum, "
+                                 "{} EV100",
+                                 exposure.min, exposure.max));
+    }
+}
+
 void check_floor_or_ceiling(Problems& problems, std::string_view pointer,
                             const FloorOrCeilingDescription& floor_or_ceiling) {
     check_coordinate(problems, child(pointer, "height"), floor_or_ceiling.height);
@@ -213,6 +237,7 @@ void check_sector(Problems& problems, std::string_view pointer, const SectorDesc
 std::vector<MapProblem> find_problems(const MapDescription& description) {
     Problems problems;
     check_ambient(problems, "/ambient", description.ambient);
+    check_exposure(problems, description.exposure);
     std::unordered_map<std::string_view, std::size_t> sectors_by_id;
     for (std::size_t i = 0; const auto& sector : description.sectors) {
         const auto pointer = child("/sectors", i);

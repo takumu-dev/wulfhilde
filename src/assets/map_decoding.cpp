@@ -8,6 +8,7 @@
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
+#include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/map_description.hpp>
 
 #include <pedantjson/pedantjson.hpp>
@@ -35,6 +36,20 @@ std::optional<AmbientLight> read_ambient(const Field& field, JsonFile& file) {
     };
     ambient->finish();
     return light;
+}
+
+std::optional<Exposure> read_exposure(const Field& field, JsonFile& file) {
+    auto object = ReadObject{.noun = "exposure"}(field, file);
+    if (!object) {
+        return std::nullopt;
+    }
+    Exposure exposure;
+    exposure.min = object->optional("min", read_number).value_or(exposure.min);
+    exposure.max = object->optional("max", read_number).value_or(exposure.max);
+    exposure.compensation =
+        object->optional("compensation", read_number).value_or(exposure.compensation);
+    object->finish();
+    return exposure;
 }
 
 /// Reads the members that say which material covers a surface and how it lies there, which a wall's
@@ -157,7 +172,10 @@ std::optional<MapDescription> decode_map(JsonFile& file) {
     std::ignore = map.required("version", read_number);
     std::ignore = map.optional("$schema", read_string);
 
-    MapDescription description{.ambient = map.optional("ambient", read_ambient)};
+    MapDescription description{
+        .ambient = map.optional("ambient", read_ambient),
+        .exposure = map.optional("exposure", read_exposure).value_or(Exposure{}),
+    };
     if (const auto sectors = map.required("sectors", read_array)) {
         for (const auto& sector : *sectors) {
             description.sectors.push_back(read_sector(sector, file).value_or(SectorDescription{}));

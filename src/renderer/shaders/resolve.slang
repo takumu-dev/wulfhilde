@@ -5,12 +5,13 @@
 import agx;
 import bindless;
 import color;
+import exposure;
 
 struct ResolveConstants {
     // The scene's colour target, by its index among the bindless set's sampled images.
     uint2 scene;
-    // What the scene's luminance, in nits, is multiplied by for AgX, which takes 0.18 as mid-grey.
-    float exposure;
+    // The frame's exposure, in EV100, which metering has left there.
+    float* ev100;
 };
 
 [vk::push_constant] ConstantBuffer<ResolveConstants> resolve;
@@ -29,8 +30,8 @@ float4 cover(uint vertex : SV_VulkanVertexID) : SV_Position {
     return float4(corner * 2.0 - 1.0, 0.0, 1.0);
 }
 
-float3 displayed(float3 luminance) {
-    return agx(luminance * resolve.exposure);
+float3 displayed(float3 luminance, float exposure) {
+    return agx(luminance * exposure);
 }
 
 float4 written(float3 color) {
@@ -42,9 +43,10 @@ float4 written(float3 color) {
 float4 resolve_samples(float4 position : SV_Position) : SV_Target {
     let scene = DescriptorHandle<Texture2DMS<float4>>(resolve.scene);
     let pixel = int2(position.xy);
+    let exposure = exposure_of(*resolve.ev100);
     var sum = float3(0.0);
     for (int sample = 0; sample < sample_count; ++sample) {
-        sum += displayed(scene.Load(pixel, sample).rgb);
+        sum += displayed(scene.Load(pixel, sample).rgb, exposure);
     }
     return written(sum / float(sample_count));
 }
@@ -53,5 +55,6 @@ float4 resolve_samples(float4 position : SV_Position) : SV_Target {
 [shader("fragment")]
 float4 resolve_sample(float4 position : SV_Position) : SV_Target {
     let scene = DescriptorHandle<Texture2D<float4>>(resolve.scene);
-    return written(displayed(scene.Load(int3(int2(position.xy), 0)).rgb));
+    return written(
+        displayed(scene.Load(int3(int2(position.xy), 0)).rgb, exposure_of(*resolve.ev100)));
 }

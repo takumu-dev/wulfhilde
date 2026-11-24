@@ -1,5 +1,5 @@
 // What a renderer draws with on its device, and how it draws a map: its pipelines, the geometry of
-// the map that is set, and the targets of the size last drawn.
+// the map that is set, the targets of the size last drawn, and the exposure it has adapted to.
 #pragma once
 
 #include "bindless_descriptors.hpp"
@@ -12,9 +12,9 @@
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
 #include <wulfhilde/renderer/image.hpp>
+#include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/map.hpp>
 
-#include <cstddef>
 #include <expected>
 #include <memory>
 #include <optional>
@@ -23,10 +23,12 @@
 namespace wulfhilde::detail {
 
 /// Draws a map on one device: each sector's surfaces into a multisampled scene in linear light,
-/// textured and filtered anisotropically, then the AgX pass, which resolves the scene's samples
-/// into an sRGB image, or into a window's image to show.
+/// textured and filtered anisotropically, then metering, which moves the exposure toward what a
+/// histogram of the scene's light meters, then the AgX pass, which resolves the scene's samples
+/// into an sRGB image, or into a window's image to show. An image is drawn as a frame is.
 class Drawing {
     struct Pipelines;
+    struct Metering;
     struct Geometry;
     struct Targets;
 
@@ -37,16 +39,18 @@ class Drawing {
 
   public:
     /// Makes every pipeline for a sample count that the device takes for its scene targets, and
-    /// for the format of a window's images if there is a window, and the sampler that reads every
-    /// texture, with anisotropic filtering of 1 to 16 samples.
+    /// for the format of a window's images if there is a window, the sampler that reads every
+    /// texture, with the settings' anisotropic filtering, and what metering keeps between frames,
+    /// to expose as the settings say.
     [[nodiscard]] static std::expected<std::unique_ptr<Drawing>, DeviceError>
-    create(Device& device, VkSampleCountFlagBits samples, std::size_t anisotropy,
+    create(Device& device, VkSampleCountFlagBits samples, const RendererSettings& settings,
            std::optional<WindowFormat> window_format = std::nullopt);
 
-    /// Takes the pipelines and the sampler that `create` made, with the sampler's place in the
-    /// bindless set.
+    /// Takes the pipelines, the sampler and what metering keeps that `create` made, with the
+    /// sampler's place in the bindless set.
     Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
-            SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor) noexcept;
+            SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor,
+            std::unique_ptr<Metering> metering) noexcept;
 
     Drawing(const Drawing&) = delete;
     Drawing(Drawing&&) = delete;
@@ -55,7 +59,8 @@ class Drawing {
     ~Drawing();
 
     /// Triangulates a map and uploads its geometry, its shading and its textures with their mip
-    /// chains to the device this was made on, in place of any set before.
+    /// chains to the device this was made on, in place of any set before, and meters within its
+    /// exposure range from the next frame on, taking that frame's exposure at once.
     [[nodiscard]] std::expected<void, DeviceError> set_map(Device& device, const Map& map,
                                                            const MapAssets& assets);
 
@@ -73,15 +78,22 @@ class Drawing {
     // Makes the targets anew unless they are of the extent already.
     [[nodiscard]] std::expected<void, DeviceError> fit_targets(Device& device, Extent extent);
 
-    // Records the scene's pass, then the AgX pass with a pipeline into an output image's view,
-    // which is in the colour attachment layout and stays so.
+    // How far the exposure moves toward what the next frame meters: all the way for the first
+    // frame after a map is set, and otherwise as far as the adaptation speed takes it in the time
+    // since the last frame, which it notes.
+    [[nodiscard]] float next_blend();
+
+    // Records the scene's pass, then metering, unless the exposure is pinned, moving the exposure
+    // by a blend toward what it meters, then the AgX pass with a pipeline into an output image's
+    // view, which is in the colour attachment layout and stays so.
     void record_passes(const Device& device, VkCommandBuffer commands, const Camera& camera,
-                       VkPipeline resolve, VkImageView output) const;
+                       float blend, VkPipeline resolve, VkImageView output) const;
 
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     std::unique_ptr<Pipelines> pipelines_;
     SamplerHandle texture_sampler_;
     DescriptorHandle sampler_descriptor_;
+    std::unique_ptr<Metering> metering_;
     std::unique_ptr<Geometry> geometry_;
     std::unique_ptr<Targets> targets_;
     // The place of the scene's colour target in the bindless set, kept for the targets of each new

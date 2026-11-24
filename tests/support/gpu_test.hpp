@@ -9,14 +9,28 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <expected>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-// The settings a `gpu` test makes its renderer or device with.
-inline constexpr wulfhilde::RendererSettings gpu_test_settings{.validation = true};
+// The settings a `gpu` test makes its renderer or device with. Exposure is pinned where a mid-grey
+// surface under 250 lux of white ambient light shows as a mid-grey, so that brighter light shows
+// brighter.
+inline constexpr wulfhilde::RendererSettings gpu_test_settings{
+    .validation = true,
+    .pinned_exposure = 6.0F,
+};
+
+// The settings an `image` test renders with: those a game ships with, under validation, but with
+// exposure taking at once what each image meters, so that a reference shows the map as it looks
+// once exposure has settled.
+inline constexpr wulfhilde::RendererSettings image_test_settings{
+    .validation = true,
+    .exposure_adaptation_speed = std::numeric_limits<float>::infinity(),
+};
 
 // Requires a result from the renderer to hold a value, failing with its error when it doesn't.
 template <typename T> void require_value(const std::expected<T, wulfhilde::DeviceError>& result) {

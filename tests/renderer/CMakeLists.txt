@@ -18,6 +18,14 @@ wulfhilde_add_precondition_test(renderer "an anisotropy of 0 fires its precondit
     SOURCE programs/anisotropy_of_0.cpp
     LIBRARIES wulfhilde::renderer
 )
+wulfhilde_add_precondition_test(renderer "a negative exposure adaptation speed fires its precondition"
+    SOURCE programs/negative_adaptation_speed.cpp
+    LIBRARIES wulfhilde::renderer
+)
+wulfhilde_add_precondition_test(renderer "a pinned exposure that isn't a finite number fires its precondition"
+    SOURCE programs/infinite_pinned_exposure.cpp
+    LIBRARIES wulfhilde::renderer
+)
 
 # Each runs under validation, which fails it on any message, in every configuration.
 wulfhilde_add_tests(renderer
@@ -36,6 +44,7 @@ wulfhilde_add_tests(renderer
 wulfhilde_add_shaders(wulfhilde_renderer_gpu_tests
     SOURCES
         shaders/agx_tests.slang
+        shaders/exposure_tests.slang
         shaders/luminance_tests.slang
         shaders/matrix_layout_tests.slang
         shaders/srgb_tests.slang

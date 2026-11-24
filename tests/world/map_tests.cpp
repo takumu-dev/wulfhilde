@@ -5,6 +5,7 @@
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
+#include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/surface.hpp>
@@ -17,6 +18,7 @@
 
 using wulfhilde::AmbientLight;
 using wulfhilde::Angle;
+using wulfhilde::Exposure;
 using wulfhilde::Location;
 using wulfhilde::MaterialId;
 using wulfhilde::SectorId;
@@ -123,6 +125,17 @@ TEST_CASE("a sector's ambient light is its own, or else the map's, or else black
     description.ambient = dusk;
     CHECK(make_map(description).sector(SectorId{0}).ambient == dusk);
     CHECK(make_map(description).sector(SectorId{1}).ambient == candlelight);
+}
+
+TEST_CASE("a map's exposure is its own, or else from 1 to 16 EV100 with no compensation",
+          "[world]") {
+    CHECK(make_map(hall_map()).exposure() ==
+          Exposure{.min = 1.0F, .max = 16.0F, .compensation = 0.0F});
+
+    auto description = hall_map();
+    description.exposure = {.min = -2.0F, .max = 9.5F, .compensation = 1.5F};
+    CHECK(make_map(description).exposure() ==
+          Exposure{.min = -2.0F, .max = 9.5F, .compensation = 1.5F});
 }
 
 TEST_CASE("the map, its sectors and its walls keep their properties, which the engine ignores",

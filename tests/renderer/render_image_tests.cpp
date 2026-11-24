@@ -12,6 +12,8 @@
 #include <wulfhilde/renderer/renderer.hpp>
 #include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
+#include <wulfhilde/world/exposure.hpp>
+#include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/map_description.hpp>
 
@@ -24,8 +26,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <functional>
+#include <limits>
 #include <map>
 #include <set>
 #include <string>
@@ -39,7 +43,7 @@ using wulfhilde::Angle;
 using wulfhilde::Vector2;
 using wulfhilde::Vector3;
 
-// The ambient light of every test map: white, at an illuminance under which the renderer's pinned
+// The ambient light of every test map: white, at an illuminance under which the tests' pinned
 // exposure shows a mid-grey surface as a mid-grey.
 constexpr wulfhilde::AmbientLight white_light{
     .color = {.r = 1.0F, .g = 1.0F, .b = 1.0F},
@@ -86,6 +90,14 @@ wulfhilde::MapDescription box_map() {
             },
         .start = {.sector = "box", .point = {.x = 2.0F, .y = 2.0F}},
     };
+}
+
+// The box under white ambient light of an illuminance, seen at a map's exposures.
+wulfhilde::MapDescription box_under(float lux, wulfhilde::Exposure exposure = {}) {
+    auto description = box_map();
+    description.ambient = wulfhilde::AmbientLight{.color = white_light.color, .lux = lux};
+    description.exposure = exposure;
+    return description;
 }
 
 // Makes a map from a description that must be valid.
@@ -138,6 +150,22 @@ wulfhilde::Camera camera_at(const wulfhilde::Map& map, Vector3 point, Angle yaw,
         .orientation = wulfhilde::Rotation::from_yaw_pitch_roll(yaw, pitch, Angle::degrees(0.0F)),
         .vertical_field_of_view = vertical_field_of_view,
     };
+}
+
+// A camera in the middle of the box, facing its blue east wall.
+wulfhilde::Camera facing_east(const wulfhilde::Map& map) {
+    return camera_at(map, {.x = 2.0F, .y = 2.0F, .z = 1.5F}, Angle::degrees(0.0F));
+}
+
+// The settings of a renderer that exposes automatically, taking at once what each image meters.
+constexpr wulfhilde::RendererSettings instant_exposure{
+    .validation = true,
+    .exposure_adaptation_speed = std::numeric_limits<float>::infinity(),
+};
+
+// The settings of a renderer that sees every image at an exposure, in EV100.
+constexpr wulfhilde::RendererSettings pinned_at(float ev100) {
+    return {.validation = true, .pinned_exposure = ev100};
 }
 
 // Renders an image, which must succeed.
@@ -228,6 +256,23 @@ bool draws_with(const wulfhilde::Map& map, std::size_t sample_count) {
         render(*renderer, camera_at(map, {.x = 2.0F, .y = 2.0F, .z = 1.5F}, Angle::degrees(0.0F)));
     CHECK(shows(center_of(image), blue));
     return true;
+}
+
+// Checks that a renderer exposing automatically shows a map's box exactly as one pinned at an
+// exposure shows the same map at the default exposures.
+void check_seen_as_pinned(wulfhilde::MapDescription description, float ev100) {
+    auto unranged_description = description;
+    unranged_description.exposure = {};
+    const auto ranged = make_map(std::move(description));
+    const auto unranged = make_map(std::move(unranged_description));
+    auto automatic = renderer_of(ranged, instant_exposure);
+    auto pinned = renderer_of(unranged, pinned_at(ev100));
+
+    const auto seen = render(automatic, facing_east(ranged));
+    const auto expected = render(pinned, facing_east(unranged));
+
+    CAPTURE(describe(center_of(seen)), describe(center_of(expected)));
+    CHECK(std::ranges::equal(seen.pixels(), expected.pixels()));
 }
 
 } // namespace
@@ -501,4 +546,84 @@ TEST_CASE_METHOD(GpuTest,
     CAPTURE(describe(unlit), describe(normal), describe(brighter));
     CHECK(unlit == black);
     CHECK(normal.at(2) < brighter.at(2));
+}
+
+TEST_CASE_METHOD(GpuTest, "automatic exposure shows a box under 100 times the light as bright",
+                 "[renderer]") {
+    const auto blue_under = [](float lux, const wulfhilde::RendererSettings& settings) {
+        const auto map = make_map(box_under(lux));
+        auto renderer = renderer_of(map, settings);
+        return center_of(render(renderer, facing_east(map)));
+    };
+
+    const auto dim = blue_under(250.0F, instant_exposure);
+    const auto bright = blue_under(25'000.0F, instant_exposure);
+    const auto pinned_dim = blue_under(250.0F, pinned_at(6.0F));
+    const auto pinned_bright = blue_under(25'000.0F, pinned_at(6.0F));
+
+    CAPTURE(describe(dim), describe(bright), describe(pinned_dim), describe(pinned_bright));
+    CHECK(shows(dim, blue));
+    CHECK(std::abs(int{dim.at(2)} - int{bright.at(2)}) <= 2);
+    // At one exposure, the brighter box is far brighter: its blue is as bright as it gets, and AgX
+    // lifts its red toward white.
+    CHECK(pinned_bright.at(0) > pinned_dim.at(0) + 64);
+}
+
+TEST_CASE_METHOD(GpuTest,
+                 "automatic exposure stays within the map's range, so a range of one EV100 shows "
+                 "the map at that exposure, however bright its light",
+                 "[renderer]") {
+    for (const float lux : {2.5F, 250.0F, 25'000.0F}) {
+        CAPTURE(lux);
+        check_seen_as_pinned(box_under(lux, {.min = 6.0F, .max = 6.0F}), 6.0F);
+    }
+}
+
+TEST_CASE_METHOD(GpuTest, "a map's compensation brightens its metered exposure by as many stops",
+                 "[renderer]") {
+    check_seen_as_pinned(box_under(250.0F, {.min = 6.0F, .max = 6.0F, .compensation = 1.0F}), 5.0F);
+}
+
+TEST_CASE_METHOD(GpuTest,
+                 "exposure moves toward what each image meters at the adaptation speed, from what "
+                 "the first image after a map is set meters",
+                 "[renderer]") {
+    // Two boxes apart, one under 100 times the light of the other.
+    auto description = box_map();
+    description.sectors.at(0).ambient = white_light;
+    auto bright_box = sector("bright",
+                             {
+                                 {.x = 10.0F, .y = 0.0F},
+                                 {.x = 14.0F, .y = 0.0F},
+                                 {.x = 14.0F, .y = 4.0F},
+                                 {.x = 10.0F, .y = 4.0F},
+                             },
+                             {"south", "east", "north", "west"});
+    bright_box.ambient = wulfhilde::AmbientLight{.color = white_light.color, .lux = 25'000.0F};
+    description.sectors.push_back(std::move(bright_box));
+    const auto map = make_map(std::move(description));
+    const auto dim_camera = facing_east(map);
+    auto bright_camera = dim_camera;
+    bright_camera.location = {
+        .sector = map.find_sector("bright").value_or(wulfhilde::SectorId(0)),
+        .point = {.x = 12.0F, .y = 2.0F, .z = 1.5F},
+    };
+    const auto dim_then_bright = [&](float speed) {
+        auto renderer = renderer_of(map, {.validation = true, .exposure_adaptation_speed = speed});
+        const auto dim = center_of(render(renderer, dim_camera));
+        const auto bright = center_of(render(renderer, bright_camera));
+        return std::pair{dim, bright};
+    };
+
+    const auto [instant_dim, instant_bright] =
+        dim_then_bright(std::numeric_limits<float>::infinity());
+    const auto [frozen_dim, frozen_bright] = dim_then_bright(0.0F);
+
+    CAPTURE(describe(instant_dim), describe(instant_bright), describe(frozen_dim),
+            describe(frozen_bright));
+    CHECK(std::abs(int{instant_dim.at(2)} - int{instant_bright.at(2)}) <= 2);
+    CHECK(frozen_dim == instant_dim);
+    // Never moving from the dim box's exposure, the bright box shows far brighter, its red lifted
+    // toward white.
+    CHECK(frozen_bright.at(0) > frozen_dim.at(0) + 64);
 }

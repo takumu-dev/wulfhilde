@@ -20,11 +20,13 @@
 namespace {
 
 #include "agx_tests_spirv.h"
+#include "exposure_tests_spirv.h"
 #include "luminance_tests_spirv.h"
 #include "matrix_layout_tests_spirv.h"
 #include "srgb_tests_spirv.h"
 
 using AgxTable = wulfhilde::detail::TableConstants;
+using ExposureTable = wulfhilde::detail::TableConstants;
 using LuminanceTable = wulfhilde::detail::TableConstants;
 using MatrixTable = wulfhilde::detail::TableConstants;
 using SrgbTable = wulfhilde::detail::TableConstants;
@@ -35,6 +37,7 @@ struct MatrixRow {
 };
 
 #include "agx_tests_layout.hpp"           // IWYU pragma: keep
+#include "exposure_tests_layout.hpp"      // IWYU pragma: keep
 #include "luminance_tests_layout.hpp"     // IWYU pragma: keep
 #include "matrix_layout_tests_layout.hpp" // IWYU pragma: keep
 #include "srgb_tests_layout.hpp"          // IWYU pragma: keep
@@ -156,4 +159,33 @@ TEST_CASE_METHOD(GpuTest,
     check(displayed.at(3), {.x = 0.996502F, .y = 0.996978F, .z = 0.997007F});
     // A bright orange keeps its hue, red over green over blue, short of white.
     check(displayed.at(4), {.x = 0.949165F, .y = 0.476594F, .z = 0.275492F});
+}
+
+TEST_CASE_METHOD(GpuTest, "a luminance meters at the EV100 of a light meter calibrated at 12.5",
+                 "[renderer]") {
+    const std::array luminances{0.125F, 1.0F, 128.0F, 0.0F};
+
+    const auto ev100s = run_table<float>(exposure_tests_spirv, "ev100_of_luminances", luminances);
+
+    using Catch::Matchers::WithinAbs;
+    CHECK_THAT(ev100s.at(0), WithinAbs(0.0, 1e-5));
+    CHECK_THAT(ev100s.at(1), WithinAbs(3.0, 1e-5));
+    CHECK_THAT(ev100s.at(2), WithinAbs(10.0, 1e-5));
+    // No light meters as the darkest exposure there is, log2 of 1e-10, not as minus infinity.
+    CHECK_THAT(ev100s.at(3), WithinAbs(-33.219281, 1e-4));
+}
+
+TEST_CASE_METHOD(GpuTest,
+                 "an exposure takes the luminance that saturates a sensor at its EV100 to 1",
+                 "[renderer]") {
+    const std::array ev100s{0.0F, 6.0F, -1.0F, 10.0F};
+
+    const auto exposures = run_table<float>(exposure_tests_spirv, "exposure_of_ev100s", ev100s);
+
+    // A sensor saturates at 1.2 times 2 to the EV100 nits.
+    using Catch::Matchers::WithinRel;
+    CHECK_THAT(exposures.at(0), WithinRel(0.8333333, 1e-5));
+    CHECK_THAT(exposures.at(1), WithinRel(0.0130208, 1e-5));
+    CHECK_THAT(exposures.at(2), WithinRel(1.6666667, 1e-5));
+    CHECK_THAT(exposures.at(3), WithinRel(0.000813802, 1e-5));
 }

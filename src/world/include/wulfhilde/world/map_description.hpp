@@ -7,6 +7,7 @@
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
+#include <wulfhilde/world/exposure.hpp>
 
 #include <optional>
 #include <string>
@@ -119,6 +120,9 @@ struct StartPositionDescription {
 struct MapDescription {
     /// The ambient light of every sector that doesn't set its own, or nothing for black.
     std::optional<AmbientLight> ambient{};
+
+    /// The exposures the map is seen at.
+    Exposure exposure{};
 
     /// The map's sectors.
     std::vector<SectorDescription> sectors{};

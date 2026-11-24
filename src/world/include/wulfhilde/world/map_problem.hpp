@@ -35,6 +35,8 @@ enum class MapProblemCode : std::uint8_t {
     color_out_of_range,      ///< A component of a light's colour is outside 0 to 1, or not a
                              ///< number.
     light_level_out_of_range, ///< A light level is below 0, or not a finite number.
+    exposure_out_of_range,    ///< An exposure isn't a finite number, or an exposure range's
+                              ///< minimum is above its maximum.
     missing_file,             ///< No file is at the map's asset path.
     unreadable_file,          ///< The map's file is there, but can't be read.
     syntax_error,             ///< The map's file isn't JSON.

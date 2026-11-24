@@ -40,7 +40,11 @@ class Presentation;
 ///
 /// It draws a map in linear light into a multisampled target of 16-bit floats, with 32-bit float
 /// depth, reversed so that it is 1 at the near plane, 5 cm from the eye, and 0 infinitely far
-/// away. AgX then tone-maps each sample, averages a pixel's samples, and writes the image in sRGB.
+/// away. It meters the exposure from a histogram of the luminance of each pixel's first sample,
+/// within the map's exposure range, and moves the exposure toward that, less the map's
+/// compensation, at the adaptation speed its settings give, unless they pin it. AgX then
+/// tone-maps each sample at that exposure, averages a pixel's samples, and writes the image in
+/// sRGB.
 class Renderer {
   public:
     /// Creates a renderer that draws frames into a window, and images too.
@@ -116,6 +120,9 @@ class Renderer {
     [[nodiscard]] std::expected<void, DeviceError> draw(const Camera& camera);
 
     /// Draws an image of the map that is set, as a camera sees it.
+    ///
+    /// An image is drawn as a frame is, and its exposure adapts from the frame or image before it,
+    /// as a frame's does.
     ///
     /// \param camera Where the image is seen from, in a sector of the map that is set.
     /// \param extent The image's size, neither side of it zero.

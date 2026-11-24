@@ -95,6 +95,7 @@ std::expected<Map, MapLoadError> Map::create(MapDescription description) {
         .yaw = description.start.yaw,
         .pitch = description.start.pitch,
     }};
+    map.exposure_ = description.exposure;
     map.properties_ = std::move(description.properties);
     const auto ambient = description.ambient.value_or(AmbientLight{});
     MaterialInterner materials;
