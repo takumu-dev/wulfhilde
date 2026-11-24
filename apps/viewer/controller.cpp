@@ -52,7 +52,8 @@ constexpr float jump_height = 1.0F;
 /// How fast a jump leaves the ground along the body's gravity up, in metres per second: the square
 /// root of twice gravity times the jump's height, so gravity stops it at that height.
 constexpr float jump_speed = 4.4294469F;
-static_assert(std::abs((jump_speed * jump_speed) - (2.0F * gravity * jump_height)) < 1e-5F);
+static_assert((jump_speed * jump_speed) - (2.0F * gravity * jump_height) < 1e-5F &&
+              (2.0F * gravity * jump_height) - (jump_speed * jump_speed) < 1e-5F);
 
 /// The body's greatest speed, in metres per second, in any direction, since a tilted portal can
 /// turn a fall sideways. In one tick, it moves the body less than its radius.

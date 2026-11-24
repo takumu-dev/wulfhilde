@@ -30,7 +30,7 @@ std::size_t TickClock::advance(std::chrono::nanoseconds elapsed) noexcept {
     // Clamping the frame before counting it keeps a frame of years from overflowing the count.
     const auto counted =
         std::clamp(elapsed, std::chrono::nanoseconds{0}, longest_frame).count() * ticks_per_second;
-    owed_ = std::min(owed_ + counted, most_owed);
+    owed_ = std::min<std::int64_t>(owed_ + counted, most_owed);
     const auto due = owed_ / tick_length;
     owed_ %= tick_length;
     return wulfhilde::narrow<std::size_t>(due);
