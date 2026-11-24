@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <expected>
 #include <format>
@@ -79,6 +80,10 @@ std::expected<Renderer, DeviceError> Renderer::create_for(Window* window,
                                                           RendererSettings settings) {
     WULFHILDE_ASSERT(settings.anisotropy >= 1 && settings.anisotropy <= max_anisotropy,
                      "the anisotropy is from 1 to 16");
+    WULFHILDE_ASSERT(settings.exposure_adaptation_speed >= 0.0F,
+                     "the exposure adaptation speed is 0 or more");
+    WULFHILDE_ASSERT(!settings.pinned_exposure || std::isfinite(*settings.pinned_exposure),
+                     "a pinned exposure is a finite number");
     auto device = detail::Device::create(settings, window);
     if (!device) {
         return std::unexpected(std::move(device).error());
@@ -98,7 +103,7 @@ std::expected<Renderer, DeviceError> Renderer::create_for(Window* window,
         presentation = std::move(*made);
         window_format = presentation->format();
     }
-    auto drawing = detail::Drawing::create(**device, *samples, settings.anisotropy, window_format);
+    auto drawing = detail::Drawing::create(**device, *samples, settings, window_format);
     if (!drawing) {
         return std::unexpected(std::move(drawing).error());
     }

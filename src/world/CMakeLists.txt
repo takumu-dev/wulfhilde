@@ -2,6 +2,7 @@ wulfhilde_add_module(world
     HEADERS
         include/wulfhilde/world/ambient_light.hpp
         include/wulfhilde/world/asset_path.hpp
+        include/wulfhilde/world/exposure.hpp
         include/wulfhilde/world/ids.hpp
         include/wulfhilde/world/location.hpp
         include/wulfhilde/world/map.hpp

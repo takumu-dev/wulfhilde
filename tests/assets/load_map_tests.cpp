@@ -6,6 +6,7 @@
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
+#include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/map_problem.hpp>
@@ -25,6 +26,7 @@
 using wulfhilde::AmbientLight;
 using wulfhilde::Angle;
 using wulfhilde::ContentRoot;
+using wulfhilde::Exposure;
 using wulfhilde::load_map;
 using wulfhilde::Map;
 using wulfhilde::MapProblemCode;
@@ -113,6 +115,7 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     CHECK(map.start().location.point == wulfhilde::Vector3{.x = 11.0F, .y = 0.25F, .z = 0.0F});
     CHECK(map.start().yaw == Angle::degrees(180.0F));
     CHECK(map.start().pitch == Angle::degrees(-10.0F));
+    CHECK(map.exposure() == Exposure{.min = -2.5F, .max = 12.0F, .compensation = 0.5F});
     CHECK(map.properties() == "{}");
 }
 
@@ -121,6 +124,7 @@ TEST_CASE("a map's file may leave out every optional member", "[assets]") {
 
     CHECK(map.start().pitch == Angle{});
     CHECK(map.sector(SectorId{0}).ambient == AmbientLight{});
+    CHECK(map.exposure() == Exposure{});
     CHECK(map.sector(SectorId{0}).properties.empty());
     CHECK(map.properties().empty());
 }

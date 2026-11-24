@@ -7,6 +7,7 @@
 #include "math_printing.hpp"
 #include <wulfhilde/core/id.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
+#include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 #include <wulfhilde/world/surface.hpp>
@@ -45,6 +46,13 @@ template <> struct Catch::StringMaker<wulfhilde::AmbientLight> {
         return std::format("{} at {} lux",
                            Catch::StringMaker<wulfhilde::Color>::convert(ambient.color),
                            ambient.lux);
+    }
+};
+
+template <> struct Catch::StringMaker<wulfhilde::Exposure> {
+    static std::string convert(const wulfhilde::Exposure& exposure) {
+        return std::format("{} to {} EV100, compensated by {} stops", exposure.min, exposure.max,
+                           exposure.compensation);
     }
 };
 

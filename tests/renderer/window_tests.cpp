@@ -23,7 +23,7 @@
 
 namespace {
 
-// White ambient light, under which the renderer's pinned exposure shows a mid-grey as a mid-grey.
+// White ambient light, under which the tests' pinned exposure shows a mid-grey as a mid-grey.
 constexpr wulfhilde::AmbientLight white_light{
     .color = {.r = 1.0F, .g = 1.0F, .b = 1.0F},
     .lux = 250.0F,

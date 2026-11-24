@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 
 namespace wulfhilde {
 
@@ -34,6 +35,24 @@ struct RendererSettings {
     /// the renderer comes up on takes 16. Any other value breaks a precondition of the renderer's
     /// creation.
     std::size_t anisotropy = 16;
+
+    /// How fast exposure follows what the camera sees, 0 or more, per second.
+    ///
+    /// Each frame or image is metered from a histogram of its own light, within the map's exposure
+    /// range, and the exposure moves toward what it meters, so a sunlit yard and a dark corridor
+    /// both stay readable. A second later, e to the minus this of the gap is left: at 2, about
+    /// 14%. Infinity takes each frame's metered exposure at once, and 0 never moves from the
+    /// first. The first frame or image after a map is set always takes its own. Any value below 0,
+    /// or not a number, breaks a precondition of the renderer's creation.
+    float exposure_adaptation_speed = 2.0F;
+
+    /// An exposure to see every frame and image at, in EV100, in place of automatic exposure, or
+    /// none to expose automatically.
+    ///
+    /// The map's exposure range and compensation don't apply to it. A game's tests that measure
+    /// light pin it, so that brighter light shows brighter. A value that isn't a finite number
+    /// breaks a precondition of the renderer's creation.
+    std::optional<float> pinned_exposure{};
 };
 
 } // namespace wulfhilde

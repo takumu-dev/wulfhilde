@@ -23,9 +23,13 @@
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
 #include <wulfhilde/renderer/image.hpp>
+#include <wulfhilde/renderer/renderer_settings.hpp>
+#include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/map.hpp>
 
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -42,6 +46,7 @@ namespace wulfhilde::detail {
 
 namespace {
 
+#include "metering_spirv.h"
 #include "resolve_spirv.h"
 #include "sectors_spirv.h"
 
@@ -68,24 +73,35 @@ struct SceneConstants {
 // The C++ twin of the resolve shaders' push constants.
 struct ResolveConstants {
     DescriptorHandle scene;
-    float exposure = 0.0F;
+    std::uint64_t ev100 = 0;
 };
 
-#include "resolve_layout.hpp" // IWYU pragma: keep
-#include "sectors_layout.hpp" // IWYU pragma: keep
+// The C++ twin of the metering shaders' push constants.
+struct MeteringConstants {
+    DescriptorHandle scene;
+    std::uint64_t histogram = 0;
+    std::uint64_t ev100 = 0;
+    std::array<std::uint32_t, 2> extent{};
+    float min_ev100 = 0.0F;
+    float max_ev100 = 0.0F;
+    float compensation = 0.0F;
+    float blend = 0.0F;
+};
+
+#include "metering_layout.hpp" // IWYU pragma: keep
+#include "resolve_layout.hpp"  // IWYU pragma: keep
+#include "sectors_layout.hpp"  // IWYU pragma: keep
 
 // How near the eye a surface can be and still be drawn, in metres. Depth is reversed, so a fixed
 // near plane loses no precision far away, and there is no far plane at all.
 constexpr float near_plane = 0.05F;
 
-// The exposure, in EV at ISO 100, until it is worked out from what the camera sees. A mid-grey
-// surface under 250 lux of ambient light shows as a mid-grey.
-constexpr float pinned_exposure_ev100 = 6.0F;
+// The bins of the histogram that metering counts pixels into, as the metering shaders have them.
+constexpr std::size_t histogram_bins = 256;
 
-// What luminance in nits is multiplied by for AgX, which takes 0.18 as mid-grey, at an exposure:
-// the luminance that just saturates a camera's sensor, by the usual calibration of 12.5 and a
-// sensor saturating at 1.2 times its nominal response, maps to 1.
-float exposure_of(float ev100) { return 1.0F / (1.2F * std::exp2(ev100)); }
+// The pixels on each side of the tile that one group of the histogram's shaders counts, as they
+// have it.
+constexpr std::uint32_t histogram_tile = 16;
 
 constexpr VkBufferUsageFlags shader_buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
@@ -282,9 +298,47 @@ std::expected<SamplerHandle, DeviceError> create_texture_sampler(const Device& d
 
 struct Drawing::Pipelines {
     PipelineHandle scene;
+    // Metering: counting the scene's pixels into the histogram, then the exposure it meters.
+    PipelineHandle gather;
+    PipelineHandle meter;
     PipelineHandle resolve;
     // The AgX pass into a window's images, or none without a window.
     PipelineHandle present;
+};
+
+// What metering keeps between frames: the histogram, which it leaves empty, and the exposure in
+// EV100 that each frame is seen at, which it moves, or which stays where it is pinned.
+struct Drawing::Metering {
+    Buffer histogram;
+    Buffer ev100;
+    float adaptation_speed = 0.0F;
+    bool pinned = false;
+    // The exposures of the map that is set.
+    Exposure exposure;
+    // When the last frame was metered, or none before the first frame after a map is set.
+    std::optional<std::chrono::steady_clock::time_point> last_frame;
+
+    // Makes the histogram, empty, and the exposure, where it is pinned if it is.
+    static std::expected<std::unique_ptr<Metering>, DeviceError>
+    create(const Device& device, const RendererSettings& settings) {
+        auto histogram =
+            Buffer::create(device.allocator(), device.get(), histogram_bins * sizeof(std::uint32_t),
+                           shader_buffer_usage);
+        if (!histogram) {
+            return std::unexpected(std::move(histogram).error());
+        }
+        auto ev100 =
+            Buffer::create(device.allocator(), device.get(), sizeof(float), shader_buffer_usage);
+        if (!ev100) {
+            return std::unexpected(std::move(ev100).error());
+        }
+        std::ranges::fill(histogram->memory(), std::byte{0});
+        const float pinned_ev100 = settings.pinned_exposure.value_or(0.0F);
+        std::memcpy(ev100->memory().data(), &pinned_ev100, sizeof(pinned_ev100));
+        return std::make_unique<Metering>(std::move(*histogram), std::move(*ev100),
+                                          settings.exposure_adaptation_speed,
+                                          settings.pinned_exposure.has_value());
+    }
 };
 
 struct Drawing::Geometry {
@@ -373,7 +427,7 @@ create_resolve_pipeline(const Device& device, VkSampleCountFlagBits samples, Win
 } // namespace
 
 std::expected<std::unique_ptr<Drawing>, DeviceError>
-Drawing::create(Device& device, VkSampleCountFlagBits samples, std::size_t anisotropy,
+Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSettings& settings,
                 std::optional<WindowFormat> window_format) {
     auto scene = create_graphics_pipeline(device, {
                                                       .spirv = sectors_spirv,
@@ -387,6 +441,17 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, std::size_t aniso
     if (!scene) {
         return std::unexpected(std::move(scene).error());
     }
+    // A scene of one sample a pixel isn't a multisampled image, so it is read another way.
+    auto gather = create_compute_pipeline(device, metering_spirv,
+                                          samples == VK_SAMPLE_COUNT_1_BIT ? "gather_sample"
+                                                                           : "gather_samples");
+    if (!gather) {
+        return std::unexpected(std::move(gather).error());
+    }
+    auto meter = create_compute_pipeline(device, metering_spirv, "meter_exposure");
+    if (!meter) {
+        return std::unexpected(std::move(meter).error());
+    }
     auto resolve = create_resolve_pipeline(device, samples, {.format = output_format});
     if (!resolve) {
         return std::unexpected(std::move(resolve).error());
@@ -399,21 +464,28 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, std::size_t aniso
         }
         present = std::move(*made);
     }
-    auto sampler = create_texture_sampler(device, anisotropy);
+    auto sampler = create_texture_sampler(device, settings.anisotropy);
     if (!sampler) {
         return std::unexpected(std::move(sampler).error());
+    }
+    auto metering = Metering::create(device, settings);
+    if (!metering) {
+        return std::unexpected(std::move(metering).error());
     }
     const auto sampler_descriptor = device.descriptors().add_sampler(sampler->get());
     return std::make_unique<Drawing>(
         Key{}, samples,
-        std::make_unique<Pipelines>(std::move(*scene), std::move(*resolve), std::move(present)),
-        std::move(*sampler), sampler_descriptor);
+        std::make_unique<Pipelines>(std::move(*scene), std::move(*gather), std::move(*meter),
+                                    std::move(*resolve), std::move(present)),
+        std::move(*sampler), sampler_descriptor, std::move(*metering));
 }
 
 Drawing::Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
-                 SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor) noexcept
+                 SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor,
+                 std::unique_ptr<Metering> metering) noexcept
     : samples_(samples), pipelines_(std::move(pipelines)),
-      texture_sampler_(std::move(texture_sampler)), sampler_descriptor_(sampler_descriptor) {}
+      texture_sampler_(std::move(texture_sampler)), sampler_descriptor_(sampler_descriptor),
+      metering_(std::move(metering)) {}
 
 Drawing::~Drawing() = default;
 
@@ -479,6 +551,8 @@ std::expected<void, DeviceError> Drawing::set_map(Device& device, const Map& map
     geometry_ = std::make_unique<Geometry>(std::move(*vertex_buffer), std::move(*material_buffer),
                                            std::move(*sector_buffer), std::move(triangles.sectors),
                                            std::move(*textures));
+    metering_->exposure = map.exposure();
+    metering_->last_frame.reset();
     return {};
 }
 
@@ -496,8 +570,19 @@ std::expected<void, DeviceError> Drawing::fit_targets(Device& device, Extent ext
     return {};
 }
 
+float Drawing::next_blend() {
+    const auto now = std::chrono::steady_clock::now();
+    const auto last = std::exchange(metering_->last_frame, now);
+    const auto speed = metering_->adaptation_speed;
+    if (!last || std::isinf(speed)) {
+        return 1.0F;
+    }
+    const std::chrono::duration<float> elapsed = now - *last;
+    return 1.0F - std::exp(-speed * elapsed.count());
+}
+
 void Drawing::record_passes(const Device& device, VkCommandBuffer commands, const Camera& camera,
-                            VkPipeline resolve, VkImageView output) const {
+                            float blend, VkPipeline resolve, VkImageView output) const {
     const SceneConstants scene_constants{
         .view_projection = view_projection(camera, targets_->extent),
         .vertices = geometry_->vertices.address(),
@@ -507,9 +592,25 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
     };
     const ResolveConstants resolve_constants{
         .scene = targets_->scene_descriptor,
-        .exposure = exposure_of(pinned_exposure_ev100),
+        .ev100 = metering_->ev100.address(),
     };
     const auto size = vulkan_extent(targets_->extent);
+    const bool meters = !metering_->pinned;
+    constexpr BarrierScope metering_access{
+        .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        .access = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+    };
+    if (meters) {
+        // The frame before may still be metering into the histogram and the exposure, or reading
+        // the exposure in its AgX pass.
+        record_memory_barrier(commands,
+                              {
+                                  .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
+                                            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                  .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                              },
+                              metering_access);
+    }
 
     record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
@@ -555,9 +656,36 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
     record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, color_attachment_write,
                          {
-                             .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                             .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
+                                       VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                              .access = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                          });
+    if (meters) {
+        const MeteringConstants metering_constants{
+            .scene = targets_->scene_descriptor,
+            .histogram = metering_->histogram.address(),
+            .ev100 = metering_->ev100.address(),
+            .extent = {size.width, size.height},
+            .min_ev100 = metering_->exposure.min,
+            .max_ev100 = metering_->exposure.max,
+            .compensation = metering_->exposure.compensation,
+            .blend = blend,
+        };
+        const auto metering_bytes = std::as_bytes(std::span(&metering_constants, 1));
+        device.record_binding(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipelines_->gather.get(),
+                              metering_bytes);
+        vkCmdDispatch(commands, (size.width + histogram_tile - 1) / histogram_tile,
+                      (size.height + histogram_tile - 1) / histogram_tile, 1);
+        record_memory_barrier(commands, metering_access, metering_access);
+        device.record_binding(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipelines_->meter.get(),
+                              metering_bytes);
+        vkCmdDispatch(commands, 1, 1, 1);
+        record_memory_barrier(commands, metering_access,
+                              {
+                                  .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                  .access = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+                              });
+    }
     const VkRenderingAttachmentInfo output_attachment{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = output,
@@ -586,11 +714,13 @@ std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Ca
         return std::unexpected(std::move(fitted).error());
     }
     const auto size = vulkan_extent(extent);
+    const auto blend = next_blend();
     const auto executed = device.execute([&](VkCommandBuffer commands) {
         record_image_barrier(commands, targets_->output.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
                              color_attachment_write);
-        record_passes(device, commands, camera, pipelines_->resolve.get(), targets_->output.view());
+        record_passes(device, commands, camera, blend, pipelines_->resolve.get(),
+                      targets_->output.view());
 
         record_image_barrier(
             commands, targets_->output.get(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -622,6 +752,7 @@ std::expected<void, DeviceError> Drawing::draw(Device& device, const Camera& cam
     if (auto fitted = fit_targets(device, frame.extent); !fitted) {
         return fitted;
     }
+    const auto blend = next_blend();
     return device.execute(
         [&](VkCommandBuffer commands) {
             // The image is written once the semaphore that the submission waits for at this stage
@@ -630,7 +761,7 @@ std::expected<void, DeviceError> Drawing::draw(Device& device, const Camera& cam
                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                  {.stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT},
                                  color_attachment_write);
-            record_passes(device, commands, camera, pipelines_->present.get(), frame.view);
+            record_passes(device, commands, camera, blend, pipelines_->present.get(), frame.view);
             // The semaphore that the submission signals, after every command, makes the image's
             // new layout visible to the present that waits for it.
             record_image_barrier(commands, frame.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,

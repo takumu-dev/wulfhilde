@@ -15,10 +15,10 @@ namespace wulfhilde {
 
 /// Why a map couldn't be made or loaded: every problem found.
 ///
-/// `Map::create` reports every problem in a description: the map's ambient light's first, then
-/// sector by sector in the description's order, and then the start position's. A load of a map's
-/// file finds problems in phases, and reports every problem of the first phase that finds any, in
-/// the order of their positions in the file.
+/// `Map::create` reports every problem in a description: the map's ambient light's first, then its
+/// exposure's, then sector by sector in the description's order, and then the start position's. A
+/// load of a map's file finds problems in phases, and reports every problem of the first phase that
+/// finds any, in the order of their positions in the file.
 struct MapLoadError {
     /// The map's file, as its asset path with the extension of a map, such as
     /// `maps/e1m1.map.json`, or empty for a map made from a description built in code.

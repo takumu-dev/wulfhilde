@@ -4,6 +4,7 @@
 #pragma once
 
 #include <wulfhilde/core/vector3.hpp>
+#include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map_description.hpp>
@@ -53,6 +54,9 @@ class Map {
 
     /// Returns where the player starts.
     [[nodiscard]] const StartPosition& start() const noexcept { return start_; }
+
+    /// Returns the exposures the map is seen at.
+    [[nodiscard]] const Exposure& exposure() const noexcept { return exposure_; }
 
     /// Finds a sector by its id, the name the map's description gives it.
     ///
@@ -123,6 +127,9 @@ class Map {
 
     /// Where the player starts.
     StartPosition start_;
+
+    /// The exposures the map is seen at.
+    Exposure exposure_;
 
     /// The map's game-defined data.
     std::string properties_;

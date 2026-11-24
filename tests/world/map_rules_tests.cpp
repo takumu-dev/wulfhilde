@@ -2,6 +2,7 @@
 #include "descriptions.hpp"
 #include "world_printing.hpp" // IWYU pragma: keep
 #include <wulfhilde/world/ambient_light.hpp>
+#include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
@@ -384,5 +385,49 @@ TEST_CASE("an ambient light may be black, white, and of no lux at all", "[world]
     description.ambient = AmbientLight{.color = {.r = 1.0F, .g = 1.0F, .b = 1.0F}, .lux = 0.0F};
     description.sectors.at(0).ambient = AmbientLight{.lux = 1e5F};
 
+    CHECK(problems_in(description).empty());
+}
+
+TEST_CASE("an exposure that isn't a finite number is a problem at it", "[world]") {
+    for (const float bad : {
+             std::numeric_limits<float>::infinity(),
+             -std::numeric_limits<float>::infinity(),
+             std::numeric_limits<float>::quiet_NaN(),
+         }) {
+        CAPTURE(bad);
+        auto description = hall_map();
+        description.exposure = {.min = bad, .max = 16.0F, .compensation = bad};
+
+        CHECK(problems_in(description) ==
+              std::vector<Problem>{
+                  {MapProblemCode::exposure_out_of_range, "/exposure/min"},
+                  {MapProblemCode::exposure_out_of_range, "/exposure/compensation"},
+              });
+    }
+    auto description = hall_map();
+    description.exposure.max = std::numeric_limits<float>::infinity();
+    CHECK(only_problem_in(description).message ==
+          "inf isn't an exposure, which is a finite number");
+}
+
+TEST_CASE("an exposure range whose minimum is above its maximum is a problem at its minimum",
+          "[world]") {
+    auto description = hall_map();
+    description.exposure = {.min = 9.0F, .max = 4.0F};
+
+    const auto problem = only_problem_in(description);
+    CHECK(problem.code == MapProblemCode::exposure_out_of_range);
+    CHECK(problem.pointer == "/exposure/min");
+    CHECK(problem.message ==
+          "the exposure range's minimum, 9 EV100, is above its maximum, 4 EV100");
+}
+
+TEST_CASE("an exposure range may be a single exposure, below 0 EV100, and compensated either way",
+          "[world]") {
+    auto description = hall_map();
+    description.exposure = {.min = -3.0F, .max = -3.0F, .compensation = -2.0F};
+    CHECK(problems_in(description).empty());
+
+    description.exposure = {.min = -6.0F, .max = 20.0F, .compensation = 4.5F};
     CHECK(problems_in(description).empty());
 }

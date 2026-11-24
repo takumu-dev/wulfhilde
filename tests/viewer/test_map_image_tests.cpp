@@ -101,7 +101,7 @@ void check_camera(wulfhilde::Renderer& renderer, const wulfhilde::Map& map, std:
 TEST_CASE_METHOD(GpuTest, "every test map's cameras see what their references show", "[viewer]") {
     const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
     REQUIRE(root.has_value());
-    auto renderer = wulfhilde::Renderer::create_headless(gpu_test_settings);
+    auto renderer = wulfhilde::Renderer::create_headless(image_test_settings);
     require_value(renderer);
 
     for (const auto& [map_path, cameras] : test_map_cameras()) {
