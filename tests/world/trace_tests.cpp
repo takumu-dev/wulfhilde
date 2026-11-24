@@ -1,4 +1,4 @@
-// Traces within one sector, which stop at its walls, its floor or its ceiling.
+// Traces through sectors, which stop at their walls, floors and ceilings, and cross openings.
 #include <wulfhilde/world/trace.hpp>
 
 #include "descriptions.hpp"
@@ -11,6 +11,7 @@
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/surface_ref.hpp>
 
+#include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <optional>
@@ -165,4 +166,106 @@ TEST_CASE("a trace with no motion stays where it is", "[world]") {
     const auto trace = trace_in_hall(map, {.x = 2.0F, .y = 2.0F, .z = 1.0F}, {});
     CHECK(trace.end == Location{.sector = hall, .point = {.x = 2.0F, .y = 2.0F, .z = 1.0F}});
     CHECK(trace.surface == std::nullopt);
+}
+
+namespace {
+
+constexpr SectorId gallery{1};
+
+// The walls of the doorway map that traces through the doorway meet: the hall's door and the
+// solid wall west of it, and the gallery's north wall.
+constexpr WallId hall_door{3};
+constexpr WallId hall_north_west{4};
+constexpr WallId gallery_north{10};
+
+} // namespace
+
+TEST_CASE("a trace through an opening carries on into the sector beyond", "[world]") {
+    const auto map = make_map(doorway_map());
+    const auto trace = map.trace({.sector = hall, .point = {.x = 2.0F, .y = 2.0F, .z = 1.5F}},
+                                 {.x = 0.5F, .y = 4.0F});
+
+    CHECK(trace.end == Location{.sector = gallery, .point = {.x = 2.5F, .y = 6.0F, .z = 1.5F}});
+    CHECK(trace.surface == std::nullopt);
+    CHECK(approx_equal(trace.transform, RigidTransform::identity(), Angle{}, 0.0F));
+}
+
+TEST_CASE("a trace through an opening stops at what it meets in the sector beyond", "[world]") {
+    auto description = doorway_map();
+    description.sectors.at(1).floor.height = 0.5F;
+    const auto map = make_map(description);
+
+    const auto wall =
+        map.trace({.sector = hall, .point = {.x = 2.0F, .y = 2.0F, .z = 1.5F}}, {.y = 10.0F});
+    CHECK(wall.end == Location{.sector = gallery, .point = {.x = 2.0F, .y = 8.0F, .z = 1.5F}});
+    CHECK(wall.surface == SurfaceRef{gallery_north});
+
+    // It crosses at y = 4 m, 0.6 m high, and reaches the gallery's floor at y = 4.5 m.
+    const auto floor = map.trace({.sector = hall, .point = {.x = 2.0F, .y = 2.0F, .z = 1.0F}},
+                                 {.y = 4.0F, .z = -0.8F});
+    CHECK(floor.end.sector == gallery);
+    CHECK(approx_equal(floor.end.point, {.x = 2.0F, .y = 4.5F, .z = 0.5F}, 1e-6F));
+    CHECK(floor.surface == SurfaceRef{SectorFloor{gallery}});
+}
+
+namespace {
+
+// The doorway map with the gallery's floor at 0.5 m and its ceiling at 2.5 m, so that the hall's
+// door has a lower strip and an upper strip.
+Map strips_map() {
+    auto description = doorway_map();
+    description.sectors.at(1).floor.height = 0.5F;
+    description.sectors.at(1).ceiling.height = 2.5F;
+    return make_map(description);
+}
+
+} // namespace
+
+TEST_CASE("a trace that reaches a wall portal above or below its opening meets the strip there",
+          "[world]") {
+    const auto map = strips_map();
+    for (const auto height : {0.25F, 2.75F}) {
+        CAPTURE(height);
+        const auto trace = trace_in_hall(map, {.x = 2.0F, .y = 2.0F, .z = height}, {.y = 4.0F});
+        CHECK(trace.end.point == Vector3{.x = 2.0F, .y = 4.0F, .z = height});
+        CHECK(trace.surface == SurfaceRef{hall_door});
+    }
+}
+
+TEST_CASE("a trace that reaches an opening at its bottom or its top crosses it", "[world]") {
+    const auto map = strips_map();
+    for (const auto height : {0.5F, 2.5F}) {
+        CAPTURE(height);
+        const auto trace =
+            map.trace({.sector = hall, .point = {.x = 2.0F, .y = 2.0F, .z = height}}, {.y = 4.0F});
+        CHECK(trace.end.sector == gallery);
+        CHECK(trace.surface == std::nullopt);
+    }
+}
+
+TEST_CASE("a trace beside an opening stops at the solid wall beside it", "[world]") {
+    const auto map = make_map(doorway_map());
+    const auto trace = trace_in_hall(map, {.x = 0.5F, .y = 2.0F, .z = 1.5F}, {.y = 4.0F});
+    CHECK(trace.end.point == Vector3{.x = 0.5F, .y = 4.0F, .z = 1.5F});
+    CHECK(trace.surface == SurfaceRef{hall_north_west});
+}
+
+TEST_CASE("a trace through the corner where an opening meets a solid wall stops at the solid wall",
+          "[world]") {
+    const auto map = make_map(doorway_map());
+    const auto trace =
+        trace_in_hall(map, {.x = 0.0F, .y = 3.0F, .z = 1.5F}, {.x = 2.0F, .y = 2.0F});
+    CHECK(approx_equal(trace.end.point, {.x = 1.0F, .y = 4.0F, .z = 1.5F}, 1e-6F));
+    CHECK(trace.surface == SurfaceRef{hall_north_west});
+}
+
+TEST_CASE("a trace through an opening and back returns to the sector it started in", "[world]") {
+    const auto map = make_map(doorway_map());
+    const auto there =
+        map.trace({.sector = hall, .point = {.x = 2.0F, .y = 3.0F, .z = 1.5F}}, {.y = 2.0F});
+    REQUIRE(there.end.sector == gallery);
+
+    const auto back = map.trace(there.end, {.y = -2.0F});
+    CHECK(back.end == Location{.sector = hall, .point = {.x = 2.0F, .y = 3.0F, .z = 1.5F}});
+    CHECK(back.surface == std::nullopt);
 }

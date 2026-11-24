@@ -21,10 +21,49 @@
           { "start": [7.5, 4], "surface": { "material": "materials/grid/wall", "offset": [4.5, 0], "rotation": 180 } },
           { "start": [4, 4], "surface": { "material": "materials/grid/wall" } },
           { "start": [4, 10], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hall-door", "start": [3, 10], "surface": { "material": "materials/grid/wall" } },
+          { "start": [1, 10], "surface": { "material": "materials/grid/wall" } },
           { "start": [0, 10], "surface": { "material": "materials/grid/wall" } }
         ]
       ]
+    },
+    {
+      "id": "gallery",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [0, 10], "surface": { "material": "materials/grid/wall" } },
+          { "id": "gallery-door", "start": [1, 10], "surface": { "material": "materials/grid/wall" } },
+          { "start": [3, 10], "surface": { "material": "materials/grid/wall" } },
+          { "id": "gallery-east", "start": [4, 10], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4, 14], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, 14], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "bay",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 5, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [4, 10], "surface": { "material": "materials/grid/wall" } },
+          { "start": [8, 10], "surface": { "material": "materials/grid/wall" } },
+          { "start": [8, 14], "surface": { "material": "materials/grid/wall" } },
+          {
+            "id": "bay-west",
+            "start": [4, 14],
+            "surface": { "material": "materials/grid/wall" },
+            "upper": { "material": "materials/grid/upper_strip" }
+          }
+        ]
+      ]
     }
+  ],
+  "portals": [
+    { "a": { "wall": "hall-door" }, "b": { "wall": "gallery-door" } },
+    { "a": { "wall": "gallery-east" }, "b": { "wall": "bay-west" } }
   ],
   "start": { "sector": "hall", "point": [2, 2, 0], "yaw": 0 }
 }

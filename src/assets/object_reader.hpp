@@ -17,6 +17,7 @@
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace wulfhilde::detail {
@@ -114,6 +115,23 @@ struct ReadObject {
     ///
     /// \return A reader of it, or nothing if it isn't an object.
     std::optional<ObjectReader> operator()(const Field& field, JsonFile& file) const;
+};
+
+/// Reports a member that may not sit beside another, for `ObjectReader::optional` to read.
+struct ReportConflict {
+    /// What the object that has both is, for messages.
+    std::string_view noun;
+
+    /// The member written beside it.
+    std::string_view other;
+
+    /// The member that conflicts with it.
+    std::string_view name;
+
+    /// Reports the member, whatever its value.
+    ///
+    /// \return Nothing, always.
+    std::optional<std::monostate> operator()(const Field& field, JsonFile& file) const;
 };
 
 /// Reads a value as an array.

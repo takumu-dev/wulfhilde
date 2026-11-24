@@ -3,6 +3,7 @@
 #include "file_format.hpp"
 #include "json_file.hpp"
 #include "object_reader.hpp"
+#include <wulfhilde/assets/asset_problem.hpp>
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/vector2.hpp>
@@ -13,10 +14,12 @@
 
 #include <pedantjson/pedantjson.hpp>
 
+#include <array>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace wulfhilde::detail {
@@ -98,8 +101,11 @@ std::optional<WallDescription> read_wall(const Field& field, JsonFile& file) {
         return std::nullopt;
     }
     WallDescription description{
+        .id = wall->optional("id", read_string),
         .start = wall->required("start", read_vector2).value_or(Vector2{}),
         .surface = wall->required("surface", read_surface).value_or(SurfaceDescription{}),
+        .upper = wall->optional("upper", read_surface),
+        .lower = wall->optional("lower", read_surface),
         .properties = wall->optional("properties", read_properties).value_or(""),
     };
     wall->finish();
@@ -142,6 +148,62 @@ std::optional<SectorDescription> read_sector(const Field& field, JsonFile& file)
     return description;
 }
 
+/// Each kind of portal side, with the name of the member that names it.
+constexpr std::array portal_side_kinds{
+    std::pair{PortalSideKind::wall, std::string_view{"wall"}},
+    std::pair{PortalSideKind::floor, std::string_view{"floor"}},
+    std::pair{PortalSideKind::ceiling, std::string_view{"ceiling"}},
+};
+
+/// Reads a side of a portal, an object whose one member names a wall, or a sector for its floor
+/// or ceiling.
+std::optional<PortalSideDescription> read_portal_side(const Field& field, JsonFile& file) {
+    constexpr std::string_view noun = "portal side";
+    auto side = ReadObject{.noun = noun}(field, file);
+    if (!side) {
+        return std::nullopt;
+    }
+    std::optional<PortalSideDescription> description;
+    // The member that names the side, of those that may.
+    std::string_view named;
+    for (const auto& [kind, name] : portal_side_kinds) {
+        if (!side->has(name)) {
+            continue;
+        }
+        if (description) {
+            std::ignore =
+                side->optional(name, ReportConflict{.noun = noun, .other = named, .name = name});
+        } else {
+            description = PortalSideDescription{
+                .kind = kind,
+                .id = side->required(name, read_string).value_or(""),
+            };
+            named = name;
+        }
+    }
+    if (!description) {
+        side->report(AssetProblemCode::missing_member,
+                     R"(the portal side has no "wall", "floor" or "ceiling", which it must have )"
+                     "one of");
+    }
+    side->finish();
+    return description.value_or(PortalSideDescription{});
+}
+
+std::optional<PortalDescription> read_portal(const Field& field, JsonFile& file) {
+    auto portal = ReadObject{.noun = "portal"}(field, file);
+    if (!portal) {
+        return std::nullopt;
+    }
+    PortalDescription description{
+        .a = portal->required("a", read_portal_side).value_or(PortalSideDescription{}),
+        .b = portal->required("b", read_portal_side).value_or(PortalSideDescription{}),
+        .properties = portal->optional("properties", read_properties).value_or(""),
+    };
+    portal->finish();
+    return description;
+}
+
 std::optional<StartPositionDescription> read_start(const Field& field, JsonFile& file) {
     auto start = ReadObject{.noun = "start position"}(field, file);
     if (!start) {
@@ -179,6 +241,11 @@ std::optional<MapDescription> decode_map(JsonFile& file) {
     if (const auto sectors = map.required("sectors", read_array)) {
         for (const auto& sector : *sectors) {
             description.sectors.push_back(read_sector(sector, file).value_or(SectorDescription{}));
+        }
+    }
+    if (const auto portals = map.optional("portals", read_array)) {
+        for (const auto& portal : *portals) {
+            description.portals.push_back(read_portal(portal, file).value_or(PortalDescription{}));
         }
     }
     description.start = map.required("start", read_start).value_or(StartPositionDescription{});

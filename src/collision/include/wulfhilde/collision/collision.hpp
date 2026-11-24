@@ -16,7 +16,10 @@ namespace wulfhilde {
 /// Moves a body through a map at a velocity for a time, stopping it at what it meets and sliding it
 /// along.
 ///
-/// Walls stop the body and the floor and ceiling hold it between them. The move runs in substeps
+/// Walls stop the body and the floor and ceiling hold it between them. Where a wall is a side of a
+/// portal, the part of the body that comes through its opening is in the sector beyond, whose
+/// surfaces stop it there, and the strips above and below the opening stop it as a wall does. The
+/// body's sector changes only when its centre crosses an opening. The move runs in substeps
 /// shorter than the body's radius, each followed by a push-out of whatever the body overlaps, so
 /// it can't pass through a wall, however thin. What it meets clips its velocity, so it slides
 /// along a wall and stops in a corner. It holds no state: everything it needs is passed in, and

@@ -82,3 +82,59 @@ inline wulfhilde::Map corridor_map() {
                                              {.x = 0.0F, .y = 1.0F},
                                          }));
 }
+
+// The hall with a doorway 2 m wide in its north wall, from (1, 4) to (3, 4), into a sector beyond
+// it, at heights of its own, whose loop runs from the door's corners on through the given points.
+//
+// The hall's walls run anticlockwise from the corner at the origin, its door the fourth; the
+// sector beyond's run from the door's west corner, its door the first.
+inline wulfhilde::Map doorway_map(float floor_beyond, float ceiling_beyond,
+                                  std::initializer_list<wulfhilde::Vector2> beyond) {
+    auto hall = sector_through("hall", 0.0F, 3.0F,
+                               {
+                                   {.x = 0.0F, .y = 0.0F},
+                                   {.x = 4.0F, .y = 0.0F},
+                                   {.x = 4.0F, .y = 4.0F},
+                                   {.x = 3.0F, .y = 4.0F},
+                                   {.x = 1.0F, .y = 4.0F},
+                                   {.x = 0.0F, .y = 4.0F},
+                               });
+    hall.loops.front().at(3).id = "hall-door";
+
+    std::vector<wulfhilde::Vector2> points{{.x = 1.0F, .y = 4.0F}, {.x = 3.0F, .y = 4.0F}};
+    points.insert(points.end(), beyond);
+    auto far = sector_through("beyond", floor_beyond, ceiling_beyond, {});
+    for (const auto& point : points) {
+        far.loops.front().push_back({.start = point, .surface = {.material = "test/wall"}});
+    }
+    far.loops.front().front().id = "beyond-door";
+
+    wulfhilde::MapDescription description{
+        .sectors = {std::move(hall), std::move(far)},
+        .portals = {{.a = {.id = "hall-door"}, .b = {.id = "beyond-door"}}},
+        .start = {.sector = "hall", .point = {.x = 2.0F, .y = 2.0F}},
+    };
+    auto map = wulfhilde::Map::create(std::move(description));
+    if (!map) {
+        FAIL(std::format("the description has problems:\n{}", map.error()));
+    }
+    return *std::move(map);
+}
+
+// The hall with a doorway into the gallery, a square sector 4 m on a side from (0, 4) to (4, 8),
+// wider than the doorway, with the hall's floor and ceiling.
+inline wulfhilde::Map gallery_map() {
+    return doorway_map(0.0F, 3.0F,
+                       {
+                           {.x = 4.0F, .y = 4.0F},
+                           {.x = 4.0F, .y = 8.0F},
+                           {.x = 0.0F, .y = 8.0F},
+                           {.x = 0.0F, .y = 4.0F},
+                       });
+}
+
+// The hall with a doorway into a corridor as wide as the doorway, 4 m long, from (1, 4) to
+// (3, 8), at heights of its own.
+inline wulfhilde::Map corridor_beyond_map(float floor = 0.0F, float ceiling = 3.0F) {
+    return doorway_map(floor, ceiling, {{.x = 3.0F, .y = 8.0F}, {.x = 1.0F, .y = 8.0F}});
+}

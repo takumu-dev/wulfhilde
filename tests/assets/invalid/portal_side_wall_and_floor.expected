@@ -1,0 +1,1 @@
+portal_side_wall_and_floor.map.json:37:44: the portal side has both "wall" and "floor", but may have only one of them (/portals/0/a/floor)

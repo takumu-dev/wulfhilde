@@ -1,0 +1,2 @@
+loader_only/wall_in_two_portals.map.json:38:22: the wall /sectors/1/loops/0/1 is already a side of /portals/0 (/portals/1/a/wall)
+loader_only/wall_in_two_portals.map.json:38:55: the wall /sectors/0/loops/0/3 is already a side of /portals/0 (/portals/1/b/wall)

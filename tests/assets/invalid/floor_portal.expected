@@ -1,0 +1,1 @@
+floor_portal.map.json:38:5: the portal links a ceiling to a floor, which this version of the engine doesn't support (/portals/1)
