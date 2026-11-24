@@ -44,6 +44,7 @@ wulfhilde_add_tests(renderer
 wulfhilde_add_shaders(wulfhilde_renderer_gpu_tests
     SOURCES
         shaders/agx_tests.slang
+        shaders/exposure_tests.slang
         shaders/luminance_tests.slang
         shaders/matrix_layout_tests.slang
         shaders/srgb_tests.slang
