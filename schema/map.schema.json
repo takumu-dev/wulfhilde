@@ -124,11 +124,11 @@
       "$ref": "#/$defs/pair"
     },
     "rotation": {
-      "description": "How far the material is turned in the surface's plane, in degrees. Defaults to 0.",
+      "description": "How far the material is turned in the surface's plane, in degrees, from +u toward +v, about the point its offset moves its origin to. Its scale applies along its own turned axes. Defaults to 0.",
       "$ref": "#/$defs/angle"
     },
     "surface": {
-      "description": "The material that covers a wall, and how it lies on it: u runs along the wall from its start, and v is height.",
+      "description": "The material that covers a wall, and how it lies on it: u runs along the wall from its start, to the right as the wall is seen from its sector, and v is height.",
       "type": "object",
       "required": ["material"],
       "additionalProperties": false,

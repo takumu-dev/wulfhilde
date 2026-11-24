@@ -22,7 +22,7 @@ in it and its assets.
 | `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, and asked whether a location is in its sector, the heights there and where a trace stops. It opens no files |
 | `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file and its materials, with their PNG textures decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
 | `platform` | `core` | the system's windows, keyboard and mouse, through SDL3, which no public header names: a window that can be resized or cover the display, with relative mouse mode, and events of the window, the keys by their USB HID codes, and the mouse |
-| `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, drawn in linear light with multisampling and tone-mapped with AgX, into a window frame after frame or into an image in memory |
+| `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, their materials' textures laid on them as the map says and filtered anisotropically, drawn in linear light with multisampling and tone-mapped with AgX, into a window frame after frame or into an image in memory |
 | `collision` | `world` | moving bodies through a map: a capsule, tilted or upright, stopped by walls and held between floor and ceiling, which slides along what it meets and stands on what its own gravity pulls it onto, through two stateless functions, `move` and `settle`, that any of a game's bodies can use |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
@@ -53,7 +53,8 @@ wulfhilde-viewer content/maps/e1m1.map.json --content content
 wulfhilde-viewer tests/content/sectors.map.json --camera hall,11,1,1.65,165,-5 --fullscreen
 ```
 
-`wulfhilde-viewer --help` lists its options. Closing the window quits.
+`wulfhilde-viewer --help` lists its options, among them how many samples each pixel takes and how
+many times anisotropic filtering samples a texture. Closing the window quits.
 
 A map with mistakes in it has every problem of the first phase that finds any reported, each as
 `file:line:column: message (pointer)`, a form that terminals and editors link to. The phases are

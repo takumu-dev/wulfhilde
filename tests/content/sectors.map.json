@@ -11,8 +11,14 @@
       "loops": [
         [
           { "start": [0, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4.6, 0], "surface": { "material": "materials/grid/wall", "offset": [4.6, 0] } },
+          {
+            "start": [8.3, 0],
+            "surface": { "material": "materials/grid/wall", "offset": [8.3, 0], "scale": [0.5, 0.5], "rotation": 90 }
+          },
           { "start": [12, 0], "surface": { "material": "materials/grid/wall" } },
-          { "start": [12, 4], "surface": { "material": "materials/grid/wall" } },
+          { "start": [12, 4], "surface": { "material": "materials/grid/wall", "scale": [2, 2] } },
+          { "start": [7.5, 4], "surface": { "material": "materials/grid/wall", "offset": [4.5, 0], "rotation": 180 } },
           { "start": [4, 4], "surface": { "material": "materials/grid/wall" } },
           { "start": [4, 10], "surface": { "material": "materials/grid/wall" } },
           { "start": [0, 10], "surface": { "material": "materials/grid/wall" } }

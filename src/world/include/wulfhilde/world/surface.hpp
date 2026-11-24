@@ -24,7 +24,8 @@ struct Surface {
     /// What the material's size is multiplied by, along u and v.
     Vector2 scale{.x = 1.0F, .y = 1.0F};
 
-    /// How far the material is turned in the surface's plane.
+    /// How far the material is turned in the surface's plane, from +u toward +v, about the point
+    /// `offset` moves its origin to. `scale` applies along the material's own turned axes.
     Angle rotation{};
 
     /// Compares two surfaces exactly.

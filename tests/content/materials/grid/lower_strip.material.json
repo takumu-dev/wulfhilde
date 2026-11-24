@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../../schema/material.schema.json",
+  "format": "wulfhilde-material",
+  "version": 1,
+  "color": { "texture": "materials/grid/lower_strip" },
+  "roughness": { "factor": 0.8 },
+  "metallic": { "factor": 0 },
+  "size": [1, 1]
+}
