@@ -94,8 +94,8 @@ class Buffer {
     std::span<std::byte> memory_;
 };
 
-/// A two-dimensional image in the device's own memory, with one mip level, and a view of all of
-/// it.
+/// A two-dimensional image in the device's own memory, with one mip level or more, and a view of
+/// all of it.
 class GpuImage {
   public:
     /// Creates an image, its contents undefined.
@@ -107,9 +107,12 @@ class GpuImage {
     /// \param extent The image's size, neither side zero.
     /// \param usage What the image is used for.
     /// \param samples How many samples each pixel holds.
+    /// \param levels How many mip levels it has, at least one, each half the size of the one
+    ///               before, rounded down, and never less than one pixel on a side.
     [[nodiscard]] static std::expected<GpuImage, DeviceError>
     create(VmaAllocator allocator, VkDevice device, VkFormat format, Extent extent,
-           VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
+           VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT,
+           std::uint32_t levels = 1);
 
     GpuImage(GpuImage&& other) noexcept;
     GpuImage& operator=(GpuImage&& other) noexcept;

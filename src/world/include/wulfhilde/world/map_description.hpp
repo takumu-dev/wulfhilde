@@ -17,8 +17,9 @@ namespace wulfhilde {
 /// What a surface carries: the material that covers it, and how the material lies on it.
 ///
 /// The material's textures repeat at the material's own real-world size, times `scale`. On a wall,
-/// u runs along the wall from its start and v is height, so textures line up across neighbouring
-/// walls. On a floor or a ceiling, u and v run along X and Y.
+/// u runs along the wall from its start, to the right as the wall is seen from its sector, and v is
+/// height, so textures line up across neighbouring walls. On a floor or a ceiling, u and v run
+/// along X and Y.
 struct SurfaceDescription {
     /// The asset path of the material: `/`-separated segments of lowercase `a`–`z`, `0`–`9`, `_`
     /// and `-`, relative to the content root and without an extension.
@@ -30,7 +31,8 @@ struct SurfaceDescription {
     /// What the material's size is multiplied by, along u and v.
     Vector2 scale{.x = 1.0F, .y = 1.0F};
 
-    /// How far the material is turned in the surface's plane.
+    /// How far the material is turned in the surface's plane, from +u toward +v, about the point
+    /// `offset` moves its origin to. `scale` applies along the material's own turned axes.
     Angle rotation{};
 };
 
@@ -63,7 +65,8 @@ struct FloorOrCeilingDescription {
     /// What the material's size is multiplied by, along X and Y.
     Vector2 scale{.x = 1.0F, .y = 1.0F};
 
-    /// How far the material is turned in the surface's plane.
+    /// How far the material is turned in the surface's plane, from +X toward +Y, about the point
+    /// `offset` moves its origin to. `scale` applies along the material's own turned axes.
     Angle rotation{};
 };
 

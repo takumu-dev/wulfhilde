@@ -317,11 +317,59 @@ TEST_CASE("a --samples count that isn't a whole number is a usage error", "[view
     }
 }
 
-TEST_CASE("the --camera and --samples options need a value after them", "[viewer]") {
-    const std::array<std::pair<std::string_view, std::string_view>, 2> cases{
+TEST_CASE("the --anisotropy option takes a whole number from 1 to 16, 16 by default", "[viewer]") {
+    const std::array<std::string_view, 1> by_default{"e1m1.map.json"};
+    CHECK(parse_valid(by_default).anisotropy == 16);
+
+    for (std::size_t anisotropy = 1; anisotropy <= 16; ++anisotropy) {
+        CAPTURE(anisotropy);
+        const auto value = std::format("{}", anisotropy);
+        const std::array<std::string_view, 3> arguments{"e1m1.map.json", "--anisotropy", value};
+
+        CHECK(parse_valid(arguments).anisotropy == anisotropy);
+    }
+}
+
+TEST_CASE("an --anisotropy outside 1 to 16 is a usage error", "[viewer]") {
+    for (const std::string_view anisotropy : {"0", "17", "64"}) {
+        CAPTURE(anisotropy);
+        const std::array<std::string_view, 3> arguments{
+            "e1m1.map.json",
+            "--anisotropy",
+            anisotropy,
+        };
+
+        const auto error = parse_wrong(arguments);
+
+        CHECK(error.code == viewer::UsageErrorCode::out_of_range);
+        CHECK(std::format("{}", error) ==
+              std::format("--anisotropy must be from 1 to 16, not {}", anisotropy));
+    }
+}
+
+TEST_CASE("an --anisotropy that isn't a whole number is a usage error", "[viewer]") {
+    for (const std::string_view anisotropy : {"sixteen", "16x", "-4", "4.0", ""}) {
+        CAPTURE(anisotropy);
+        const std::array<std::string_view, 3> arguments{
+            "e1m1.map.json",
+            "--anisotropy",
+            anisotropy,
+        };
+
+        const auto error = parse_wrong(arguments);
+
+        CHECK(error.code == viewer::UsageErrorCode::invalid_value);
+        CHECK(std::format("{}", error) ==
+              std::format("--anisotropy needs a whole number, not {}", anisotropy));
+    }
+}
+
+TEST_CASE("the --camera, --samples and --anisotropy options need a value after them", "[viewer]") {
+    const std::array<std::pair<std::string_view, std::string_view>, 3> cases{
         {
             {"--camera", "--camera needs <sector>,<x>,<y>,<z>,<yaw>,<pitch>[,<roll>] after it"},
             {"--samples", "--samples needs a sample count after it"},
+            {"--anisotropy", "--anisotropy needs a whole number after it"},
         },
     };
     for (const auto& [option, message] : cases) {
@@ -335,7 +383,7 @@ TEST_CASE("the --camera and --samples options need a value after them", "[viewer
     }
 }
 
-TEST_CASE("the --camera and --samples options each name one value", "[viewer]") {
+TEST_CASE("the --camera, --samples and --anisotropy options each name one value", "[viewer]") {
     const std::array<std::string_view, 5> cameras{
         "e1m1.map.json", "--camera", "hall,1,2,3,4,5", "--camera", "yard,1,2,3,4,5",
     };
@@ -349,4 +397,11 @@ TEST_CASE("the --camera and --samples options each name one value", "[viewer]") 
     const auto count = parse_wrong(samples);
     CHECK(count.code == viewer::UsageErrorCode::extra_argument);
     CHECK(std::format("{}", count) == "a second sample count: 4, after 8");
+
+    const std::array<std::string_view, 5> anisotropies{
+        "e1m1.map.json", "--anisotropy", "8", "--anisotropy", "16",
+    };
+    const auto anisotropy = parse_wrong(anisotropies);
+    CHECK(anisotropy.code == viewer::UsageErrorCode::extra_argument);
+    CHECK(std::format("{}", anisotropy) == "a second anisotropy: 16, after 8");
 }

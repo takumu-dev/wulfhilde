@@ -132,7 +132,10 @@ int main(int argc, char** argv) {
     if (!window) {
         return fail(window.error());
     }
-    auto renderer = wulfhilde::Renderer::create(*window, {.sample_count = command_line->samples});
+    auto renderer = wulfhilde::Renderer::create(*window, {
+                                                             .sample_count = command_line->samples,
+                                                             .anisotropy = command_line->anisotropy,
+                                                         });
     if (!renderer) {
         return fail(renderer.error());
     }

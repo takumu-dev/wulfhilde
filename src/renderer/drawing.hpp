@@ -4,6 +4,7 @@
 
 #include "bindless_descriptors.hpp"
 #include "device.hpp"
+#include "owned_handle.hpp"
 #include "presentation.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/assets/map_assets.hpp>
@@ -17,12 +18,13 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace wulfhilde::detail {
 
 /// Draws a map on one device: each sector's surfaces into a multisampled scene in linear light,
-/// then the AgX pass, which resolves the scene's samples into an sRGB image, or into a window's
-/// image to show.
+/// textured and filtered anisotropically, then the AgX pass, which resolves the scene's samples
+/// into an sRGB image, or into a window's image to show.
 class Drawing {
     struct Pipelines;
     struct Geometry;
@@ -35,14 +37,16 @@ class Drawing {
 
   public:
     /// Makes every pipeline for a sample count that the device takes for its scene targets, and
-    /// for the format of a window's images if there is a window.
+    /// for the format of a window's images if there is a window, and the sampler that reads every
+    /// texture, with anisotropic filtering of 1 to 16 samples.
     [[nodiscard]] static std::expected<std::unique_ptr<Drawing>, DeviceError>
-    create(Device& device, VkSampleCountFlagBits samples,
+    create(Device& device, VkSampleCountFlagBits samples, std::size_t anisotropy,
            std::optional<WindowFormat> window_format = std::nullopt);
 
-    /// Takes the pipelines that `create` made.
-    Drawing(Key /*key*/, VkSampleCountFlagBits samples,
-            std::unique_ptr<Pipelines> pipelines) noexcept;
+    /// Takes the pipelines and the sampler that `create` made, with the sampler's place in the
+    /// bindless set.
+    Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
+            SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor) noexcept;
 
     Drawing(const Drawing&) = delete;
     Drawing(Drawing&&) = delete;
@@ -50,9 +54,9 @@ class Drawing {
     Drawing& operator=(Drawing&&) = delete;
     ~Drawing();
 
-    /// Triangulates a map and uploads its geometry and shading to the device this was made on, in
-    /// place of any set before.
-    [[nodiscard]] std::expected<void, DeviceError> set_map(const Device& device, const Map& map,
+    /// Triangulates a map and uploads its geometry, its shading and its textures with their mip
+    /// chains to the device this was made on, in place of any set before.
+    [[nodiscard]] std::expected<void, DeviceError> set_map(Device& device, const Map& map,
                                                            const MapAssets& assets);
 
     /// Draws the map that is set as a camera sees it, on the device this was made on, and reads
@@ -76,11 +80,16 @@ class Drawing {
 
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     std::unique_ptr<Pipelines> pipelines_;
+    SamplerHandle texture_sampler_;
+    DescriptorHandle sampler_descriptor_;
     std::unique_ptr<Geometry> geometry_;
     std::unique_ptr<Targets> targets_;
     // The place of the scene's colour target in the bindless set, kept for the targets of each new
     // size, so that resizing never fills the set.
     std::optional<DescriptorHandle> scene_descriptor_;
+    // The places of the textures in the bindless set, kept for the textures of each map set after,
+    // so that setting maps never fills the set.
+    std::vector<DescriptorHandle> texture_descriptors_;
 };
 
 } // namespace wulfhilde::detail

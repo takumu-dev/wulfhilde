@@ -24,6 +24,16 @@ struct RendererSettings {
     /// guarantees. Any count the device supports for both the renderer's colour target and its
     /// depth and stencil is accepted, and any other fails the renderer's creation.
     std::size_t sample_count = 4;
+
+    /// How many times anisotropic filtering samples a texture, from 1 to 16, fixed for the
+    /// renderer's life.
+    ///
+    /// Textures are filtered trilinearly between their mip levels, and anisotropically along the
+    /// longer side of a pixel's footprint, so a floor or a wall seen at a grazing angle stays sharp
+    /// where trilinear filtering alone would blur it. 1 is trilinear filtering alone. Every device
+    /// the renderer comes up on takes 16. Any other value breaks a precondition of the renderer's
+    /// creation.
+    std::size_t anisotropy = 16;
 };
 
 } // namespace wulfhilde

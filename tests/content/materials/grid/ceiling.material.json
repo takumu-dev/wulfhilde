@@ -2,7 +2,8 @@
   "$schema": "../../../../schema/material.schema.json",
   "format": "wulfhilde-material",
   "version": 1,
-  "color": { "factor": [0.75, 0.75, 0.7] },
+  "color": { "texture": "materials/grid/ceiling" },
   "roughness": { "factor": 0.8 },
-  "metallic": { "factor": 0 }
+  "metallic": { "factor": 0 },
+  "size": [1, 1]
 }

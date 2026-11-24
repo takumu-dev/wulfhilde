@@ -34,6 +34,9 @@ constexpr std::string_view camera_form = "<sector>,<x>,<y>,<z>,<yaw>,<pitch>[,<r
 /// Every sample count that Vulkan can name.
 constexpr std::array<std::size_t, 7> sample_counts{1, 2, 4, 8, 16, 32, 64};
 
+/// The most anisotropic filtering the renderer takes.
+constexpr std::size_t max_anisotropy = 16;
+
 /// Reads the whole of a text as a number of a type, or nothing if any of it doesn't read.
 template <typename T> std::optional<T> read_number(std::string_view text) {
     T value{};
@@ -115,6 +118,20 @@ std::expected<std::size_t, UsageError> parse_samples(std::string_view text) {
     return *samples;
 }
 
+std::expected<std::size_t, UsageError> parse_anisotropy(std::string_view text) {
+    const auto anisotropy = read_number<std::size_t>(text);
+    if (!anisotropy) {
+        return usage_error(UsageErrorCode::invalid_value,
+                           std::format("--anisotropy needs a whole number, not {}", text));
+    }
+    if (*anisotropy < 1 || *anisotropy > max_anisotropy) {
+        return usage_error(
+            UsageErrorCode::out_of_range,
+            std::format("--anisotropy must be from 1 to {}, not {}", max_anisotropy, text));
+    }
+    return *anisotropy;
+}
+
 /// Returns a path as an absolute one in normal form, with no separator at its end, or an empty path
 /// if the working directory can't be found.
 std::filesystem::path normal_absolute(const std::filesystem::path& path) {
@@ -149,6 +166,7 @@ struct WrittenArguments {
     std::optional<std::string_view> content;
     std::optional<std::string_view> camera;
     std::optional<std::string_view> samples;
+    std::optional<std::string_view> anisotropy;
 };
 
 /// An option that takes the argument after it as its value, which it may be given once: what must
@@ -160,7 +178,7 @@ struct ValueOption {
     std::optional<std::string_view> WrittenArguments::* value;
 };
 
-constexpr std::array<ValueOption, 3> value_options{
+constexpr std::array<ValueOption, 4> value_options{
     {
         {
             .name = "--content",
@@ -179,6 +197,12 @@ constexpr std::array<ValueOption, 3> value_options{
             .needs = "a sample count",
             .value_name = "sample count",
             .value = &WrittenArguments::samples,
+        },
+        {
+            .name = "--anisotropy",
+            .needs = "a whole number",
+            .value_name = "anisotropy",
+            .value = &WrittenArguments::anisotropy,
         },
     },
 };
@@ -233,7 +257,7 @@ read_arguments(std::span<const std::string_view> arguments) {
 
 std::string_view usage() noexcept {
     return "usage: wulfhilde-viewer <map> [--content <dir>] [--camera <camera>] [--fullscreen]\n"
-           "                        [--samples <n>]\n"
+           "                        [--samples <n>] [--anisotropy <n>]\n"
            "       wulfhilde-viewer --help\n"
            "\n"
            "The map-preview tool of the wulfhilde engine. It loads a map's file, ending "
@@ -256,6 +280,9 @@ std::string_view usage() noexcept {
            "  --samples <n>      how many samples each pixel takes, to smooth edges: 1, 2, 4, "
            "8,\n"
            "                     16, 32 or 64, of those the GPU can take; 4 by default\n"
+           "  --anisotropy <n>   how many times textures are sampled along a surface seen at a\n"
+           "                     grazing angle, to keep it sharp: from 1, which filters\n"
+           "                     trilinearly alone, to 16; 16 by default\n"
            "  --help             print this usage and exit\n";
 }
 
@@ -283,6 +310,13 @@ parse_command_line(std::span<const std::string_view> arguments) {
             return std::unexpected(samples.error());
         }
         command_line.samples = *samples;
+    }
+    if (written->anisotropy) {
+        const auto anisotropy = parse_anisotropy(*written->anisotropy);
+        if (!anisotropy) {
+            return std::unexpected(anisotropy.error());
+        }
+        command_line.anisotropy = *anisotropy;
     }
 
     if (!written->map) {
