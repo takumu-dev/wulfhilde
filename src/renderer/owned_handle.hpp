@@ -112,6 +112,7 @@ using FenceHandle = OwnedHandle<VkDevice, VkFence, vkDestroyFence>;
 using ImageViewHandle = OwnedHandle<VkDevice, VkImageView, vkDestroyImageView>;
 using PipelineHandle = OwnedHandle<VkDevice, VkPipeline, vkDestroyPipeline>;
 using PipelineLayoutHandle = OwnedHandle<VkDevice, VkPipelineLayout, vkDestroyPipelineLayout>;
+using QueryPoolHandle = OwnedHandle<VkDevice, VkQueryPool, vkDestroyQueryPool>;
 using SamplerHandle = OwnedHandle<VkDevice, VkSampler, vkDestroySampler>;
 using SemaphoreHandle = OwnedHandle<VkDevice, VkSemaphore, vkDestroySemaphore>;
 using ShaderModuleHandle = OwnedHandle<VkDevice, VkShaderModule, vkDestroyShaderModule>;

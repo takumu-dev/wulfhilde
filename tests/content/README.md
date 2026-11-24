@@ -10,7 +10,9 @@ wulfhilde-viewer tests/content/sectors.map.json
 Every map here passes `schema/map.schema.json`, and every material `schema/material.schema.json`,
 which the `lint` preset checks. The viewer's tests load each map and its assets through the assets
 module, and render each map's cameras, comparing each image with its reference in
-`tests/viewer/references/<map>/<camera>.png`.
+`tests/viewer/references/<map>/<camera>.png`. Each map has a timed benchmark walk, which
+`wulfhilde-viewer <map> --benchmark <walk>` plays, apart from the goal-based walks of the viewer's
+tests; the walks are a table in `apps/viewer/benchmark_walks.cpp`.
 
 The debug-grid materials in `materials/grid/` are written by `write_debug_content.py`, which
 needs Python 3 and nothing beyond its standard library, and their files are committed. There is
@@ -48,6 +50,8 @@ north side, from x = 12: a wall at twice the size, then from x = 7.5 one turned 
   rotation.
 - **Cameras**: `mapping`, from the far end of the arm along X back toward the corner where the arm
   along Y opens, showing both split sides of the arm, the floor and the ceiling.
+- **Benchmark walk**: `tour`, 13 s: down the arm along X to where `mapping` stands, back down it,
+  up the arm along Y to its end, and back to the start, facing as the start faces.
 - **Needs eyes**: the grids stay sharp along the floor and the walls far down the arm, and blur
   there with `--anisotropy 1`; every label reads the right way round, except on the ceiling, which
   is mirrored, and on the walls turned 90° and 180°.

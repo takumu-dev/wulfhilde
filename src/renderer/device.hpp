@@ -16,6 +16,7 @@
 #include <expected>
 #include <memory>
 #include <span>
+#include <string>
 #include <utility>
 
 namespace wulfhilde::detail {
@@ -51,6 +52,10 @@ class Device {
         std::uint32_t api_version = 0;
         bool takes_spirv_directly = false;
         VkSampleCountFlags sample_counts = 0;
+        std::string name;
+        std::string driver;
+        float timestamp_period = 0.0F;
+        std::uint64_t timestamp_mask = 0;
         DeviceHandle device;
         Allocator allocator;
         VkQueue queue = VK_NULL_HANDLE;
@@ -111,6 +116,21 @@ class Device {
     /// tested, and read by the tone-mapping pass.
     [[nodiscard]] VkSampleCountFlags sample_counts() const noexcept { return parts_.sample_counts; }
 
+    /// The device's name, as its driver gives it.
+    [[nodiscard]] const std::string& name() const noexcept { return parts_.name; }
+
+    /// The device's driver: its name, then what it says of itself, such as its version.
+    [[nodiscard]] const std::string& driver() const noexcept { return parts_.driver; }
+
+    /// How many nanoseconds each step of a timestamp counts, or 0 when the queue writes none.
+    [[nodiscard]] float timestamp_period() const noexcept { return parts_.timestamp_period; }
+
+    /// The bits of a timestamp that the queue writes, which wrap around past the highest.
+    [[nodiscard]] std::uint64_t timestamp_mask() const noexcept { return parts_.timestamp_mask; }
+
+    /// How many bytes of device memory the device's allocator holds.
+    [[nodiscard]] std::size_t allocated_bytes() const { return parts_.allocator.allocated_bytes(); }
+
     /// Records the binding of a pipeline, with the bindless set and push constants that every
     /// pipeline shares.
     ///
@@ -126,17 +146,31 @@ class Device {
     template <std::invocable<VkCommandBuffer> Record>
     [[nodiscard]] std::expected<void, DeviceError>
     execute(Record&& record, const Synchronization& synchronization = {}) {
+        if (auto submitted = submit(std::forward<Record>(record), synchronization); !submitted) {
+            return submitted;
+        }
+        return wait();
+    }
+
+    /// Records commands with `record` and submits them, to run once the semaphore to wait for is
+    /// signalled, without waiting for them. Nothing else is recorded until `wait` has waited.
+    template <std::invocable<VkCommandBuffer> Record>
+    [[nodiscard]] std::expected<void, DeviceError>
+    submit(Record&& record, const Synchronization& synchronization = {}) {
         if (auto begun = begin_commands(); !begun) {
             return begun;
         }
         std::forward<Record>(record)(parts_.commands);
-        return finish_commands(synchronization);
+        return submit_commands(synchronization);
     }
+
+    /// Waits until the commands last submitted finish.
+    [[nodiscard]] std::expected<void, DeviceError> wait() const;
 
   private:
     [[nodiscard]] std::expected<void, DeviceError> begin_commands() const;
     [[nodiscard]] std::expected<void, DeviceError>
-    finish_commands(const Synchronization& synchronization);
+    submit_commands(const Synchronization& synchronization);
 
     Parts parts_;
 };

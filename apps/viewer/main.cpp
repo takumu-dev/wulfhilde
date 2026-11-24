@@ -1,3 +1,6 @@
+#include "benchmark.hpp"
+#include "benchmark_record.hpp"
+#include "benchmark_walks.hpp"
 #include "cameras.hpp"
 #include "command_line.hpp"
 #include "controller.hpp"
@@ -7,6 +10,7 @@
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/assets/load_map_assets.hpp>
+#include <wulfhilde/assets/map_assets.hpp>
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/log_sink.hpp>
 #include <wulfhilde/core/narrow.hpp>
@@ -15,6 +19,7 @@
 #include <wulfhilde/platform/window.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/renderer.hpp>
+#include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/map.hpp>
 
 #include <chrono>
@@ -23,9 +28,11 @@
 #include <cstdlib>
 #include <expected>
 #include <format>
+#include <optional>
 #include <print>
 #include <ranges>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -108,6 +115,121 @@ int show(wulfhilde::Platform& platform, wulfhilde::Window& window, wulfhilde::Re
     }
 }
 
+// Loads the map the command line names, timing its stages, or reports each of its problems at its
+// file, line and column.
+std::optional<wulfhilde::Map> load_reported_map(const wulfhilde::ContentRoot& root,
+                                                const viewer::CommandLine& command_line,
+                                                wulfhilde::MapLoadTimes& times) {
+    auto map = wulfhilde::load_map(root, command_line.map_asset_path, times);
+    if (!map) {
+        // A problem names its file within the content root, which becomes a path from where the
+        // viewer was started, so that a terminal or an editor finds it.
+        auto error = std::move(map.error());
+        error.file = (command_line.content / error.file).lexically_normal().generic_string();
+        std::print(stderr, "{}\n", error);
+        return std::nullopt;
+    }
+    return std::move(*map);
+}
+
+// Loads a map's assets, or reports each of their problems at its file.
+std::optional<wulfhilde::MapAssets> load_reported_assets(const wulfhilde::ContentRoot& root,
+                                                         const wulfhilde::Map& map,
+                                                         const viewer::CommandLine& command_line) {
+    auto assets = wulfhilde::load_map_assets(root, map);
+    if (!assets) {
+        // As a map's problems do, each names its file as a path from where the viewer was started,
+        // and a problem in the map, whose file the map doesn't know, names the map's.
+        auto error = std::move(assets.error());
+        for (auto& problem : error.problems) {
+            problem.file =
+                problem.file.empty()
+                    ? command_line.map.generic_string()
+                    : (command_line.content / problem.file).lexically_normal().generic_string();
+        }
+        std::print(stderr, "{}\n", error);
+        return std::nullopt;
+    }
+    return std::move(*assets);
+}
+
+// Plays the map's benchmark walk of a name headless, measuring each frame, and writes the record to
+// stdout, then succeeds, or fails if anything on the way does.
+//
+// The device comes up first, so that loading is timed from the map's file opened to its first frame
+// drawn.
+int benchmark(const wulfhilde::ContentRoot& root, const viewer::CommandLine& command_line,
+              std::string_view walk_name) {
+    const auto walk = viewer::find_benchmark_walk(command_line.map_asset_path, walk_name);
+    if (!walk) {
+        std::print(stderr, "wulfhilde-viewer: {}\n\n{}", walk.error(), viewer::usage());
+        return EXIT_FAILURE;
+    }
+    const wulfhilde::RendererSettings settings{
+        .sample_count = command_line.samples,
+        .anisotropy = command_line.anisotropy,
+        .measures_frames = true,
+    };
+    auto renderer = wulfhilde::Renderer::create_headless(settings);
+    if (!renderer) {
+        return fail(renderer.error());
+    }
+
+    const auto opened = std::chrono::steady_clock::now();
+    auto stage_start = opened;
+    const auto end_stage = [&stage_start] {
+        const auto now = std::chrono::steady_clock::now();
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(
+            now - std::exchange(stage_start, now));
+    };
+    viewer::LoadTimes load;
+    wulfhilde::MapLoadTimes map_times;
+    const auto map = load_reported_map(root, command_line, map_times);
+    if (!map) {
+        return EXIT_FAILURE;
+    }
+    load.parse = map_times.parse;
+    load.map_create = map_times.create;
+    static_cast<void>(end_stage());
+    const auto assets = load_reported_assets(root, *map, command_line);
+    if (!assets) {
+        return EXIT_FAILURE;
+    }
+    load.assets = end_stage();
+    if (auto set = renderer->set_map(*map, *assets); !set) {
+        return fail(set.error());
+    }
+    load.upload = end_stage();
+    const auto start = viewer::Controller::at_start(*map);
+    warn_if_unfit(*map, start);
+    if (auto first =
+            renderer->measure_frame(viewer::camera_at(start.eye(*map)), viewer::benchmark_extent);
+        !first) {
+        return fail(first.error());
+    }
+    load.first_frame = end_stage();
+    load.total = std::chrono::duration_cast<std::chrono::nanoseconds>(stage_start - opened);
+
+    auto frames = viewer::play_benchmark(*renderer, viewer::walk_benchmark(*map, *walk));
+    if (!frames) {
+        return fail(frames.error());
+    }
+    std::print("{}", viewer::format_record({
+                         .map = command_line.map_asset_path,
+                         .walk = std::string(walk->name),
+                         .extent = viewer::benchmark_extent,
+                         .samples = settings.sample_count,
+                         .anisotropy = settings.anisotropy,
+                         .device = std::string(renderer->device_name()),
+                         .driver = std::string(renderer->driver()),
+                         .os = viewer::operating_system(),
+                         .conditions = command_line.conditions,
+                         .load = load,
+                         .frames = std::move(*frames),
+                     }));
+    return EXIT_SUCCESS;
+}
+
 } // namespace
 
 // NOLINTNEXTLINE(bugprone-exception-escape): nothing is caught, so a failure ends the program.
@@ -137,28 +259,17 @@ int main(int argc, char** argv) {
         return fail(root.error());
     }
 
-    auto map = wulfhilde::load_map(*root, command_line->map_asset_path);
-    if (!map) {
-        // A problem names its file within the content root, which becomes a path from where the
-        // viewer was started, so that a terminal or an editor finds it.
-        auto error = std::move(map.error());
-        error.file = (command_line->content / error.file).lexically_normal().generic_string();
-        std::print(stderr, "{}\n", error);
-        return EXIT_FAILURE;
+    if (command_line->benchmark) {
+        return benchmark(*root, *command_line, *command_line->benchmark);
     }
 
-    auto assets = wulfhilde::load_map_assets(*root, *map);
+    wulfhilde::MapLoadTimes times;
+    auto map = load_reported_map(*root, *command_line, times);
+    if (!map) {
+        return EXIT_FAILURE;
+    }
+    const auto assets = load_reported_assets(*root, *map, *command_line);
     if (!assets) {
-        // As a map's problems do, each names its file as a path from where the viewer was started,
-        // and a problem in the map, whose file the map doesn't know, names the map's.
-        auto error = std::move(assets.error());
-        for (auto& problem : error.problems) {
-            problem.file =
-                problem.file.empty()
-                    ? command_line->map.generic_string()
-                    : (command_line->content / problem.file).lexically_normal().generic_string();
-        }
-        std::print(stderr, "{}\n", error);
         return EXIT_FAILURE;
     }
 

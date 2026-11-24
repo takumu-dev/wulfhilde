@@ -12,7 +12,7 @@ game links the modules it needs and keeps `main` and its frame loop to itself.
 It is at an early stage. Today it holds six modules, `core`, `world`, `assets`, `platform`,
 `renderer` and `collision`, which a game builds against as a package or a subproject, and
 `wulfhilde-viewer`, the map-preview tool, which lets you walk a map in a window, or reports every
-problem in it and its assets.
+problem in it and its assets, or measures what drawing it costs.
 
 ## Modules
 
@@ -22,7 +22,7 @@ problem in it and its assets.
 | `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, and asked whether a location is in its sector, the heights there and where a trace stops. It opens no files |
 | `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file and its materials, with their PNG textures decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
 | `platform` | `core` | the system's windows, keyboard and mouse, through SDL3, which no public header names: a window that can be resized or cover the display, with relative mouse mode, and events of the window, the keys by their USB HID codes, and the mouse |
-| `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, their materials' textures laid on them as the map says and filtered anisotropically, drawn in linear light with multisampling, exposed automatically within the map's range and tone-mapped with AgX, into a window frame after frame or into an image in memory |
+| `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, their materials' textures laid on them as the map says and filtered anisotropically, drawn in linear light with multisampling, exposed automatically within the map's range and tone-mapped with AgX, into a window frame after frame or into an image in memory, or measuring each pass of a frame on the GPU with timestamp queries |
 | `collision` | `world` | moving bodies through a map: a capsule, tilted or upright, stopped by walls and held between floor and ceiling, which slides along what it meets and stands on what its own gravity pulls it onto, through two stateless functions, `move` and `settle`, that any of a game's bodies can use |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
@@ -60,6 +60,19 @@ each pixel takes and how many times anisotropic filtering samples a texture. Clo
 quits. If the player's body doesn't fit at the start position, the viewer warns of it and looks
 from there without a body.
 
+`--benchmark <walk>` measures instead of showing: it plays the map's timed benchmark walk of that
+name headless at 1920x1080, drawing a frame every 4 ticks, and writes one JSON record to stdout. The
+record holds each frame's CPU time, its GPU time and that of each of its passes, its views, shadow
+maps and draws, each with its 50th and 99th percentiles and its maximum; then the time loading took
+by stage, the peak GPU memory, the device, its driver, the operating system, the sample count, the
+anisotropy, and what `--conditions` says of how it was run. It needs a GPU with timestamp queries,
+and refuses to run on one without. The test maps' benchmark walks are listed in
+`tests/content/README.md`:
+
+```sh
+wulfhilde-viewer tests/content/sectors.map.json --benchmark tour --conditions "on mains" > tour.json
+```
+
 A map with mistakes in it has every problem of the first phase that finds any reported, each as
 `file:line:column: message (pointer)`, a form that terminals and editors link to. The phases are
 the file's syntax, then its structure, then the map's own rules, so no problem is a knock-on of
@@ -86,7 +99,7 @@ cmake --workflow --preset gcc-debug
 
 | Preset | Configuration |
 |---|---|
-| `gcc-debug`, `gcc-release` | GCC; the release build has the engine and the viewer without exceptions |
+| `gcc-debug`, `gcc-release` | GCC; the release build has the engine and the viewer without exceptions, and plays each benchmark walk in full |
 | `clang-debug`, `clang-release` | Clang with libstdc++ |
 | `libcxx-debug`, `libcxx-release` | Clang with libc++ |
 | `sanitize` | Clang with AddressSanitizer and UndefinedBehaviorSanitizer |
@@ -101,7 +114,9 @@ The tests carry one CTest label each: `unit` for tests that need only the CPU, `
 run on a Vulkan device under its validation layers, and `image` for tests that compare what the
 renderer draws with a reference image. To run some of them, use for example
 `ctest --preset gcc-debug -L unit`. Only `gcc-release` runs the `image` tests, since their
-references are rendered by lavapipe in CI's Linux image, which draws alike on every machine.
+references are rendered by lavapipe in CI's Linux image, which draws alike on every machine. It
+also plays each benchmark walk in full through the viewer, which takes minutes on lavapipe, as the
+option `WULFHILDE_BENCHMARK_TESTS` asks.
 
 ## Using the engine in a game
 

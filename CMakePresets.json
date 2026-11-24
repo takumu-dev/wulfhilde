@@ -104,8 +104,9 @@
       "name": "gcc-release",
       "inherits": ["gcc", "release"],
       "displayName": "GCC, release, engine without exceptions",
-      "description": "The engine and the viewer build with exceptions disabled, as a game might build them. The tests keep exceptions for Catch2. THIRD_PARTY_NOTICES.md lists the ports this build ships.",
+      "description": "The engine and the viewer build with exceptions disabled, as a game might build them. The tests keep exceptions for Catch2. THIRD_PARTY_NOTICES.md lists the ports this build ships, and the viewer plays each benchmark walk in full.",
       "cacheVariables": {
+        "WULFHILDE_BENCHMARK_TESTS": true,
         "WULFHILDE_CHECK_NOTICES": true,
         "WULFHILDE_EXCEPTIONS": false
       }

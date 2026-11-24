@@ -11,6 +11,7 @@
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
+#include <wulfhilde/renderer/frame_measurement.hpp>
 #include <wulfhilde/renderer/image.hpp>
 #include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/map.hpp>
@@ -40,17 +41,17 @@ class Drawing {
   public:
     /// Makes every pipeline for a sample count that the device takes for its scene targets, and
     /// for the format of a window's images if there is a window, the sampler that reads every
-    /// texture, with the settings' anisotropic filtering, and what metering keeps between frames,
-    /// to expose as the settings say.
+    /// texture, with the settings' anisotropic filtering, what metering keeps between frames, to
+    /// expose as the settings say, and the timestamps that measure a frame if the settings ask.
     [[nodiscard]] static std::expected<std::unique_ptr<Drawing>, DeviceError>
     create(Device& device, VkSampleCountFlagBits samples, const RendererSettings& settings,
            std::optional<WindowFormat> window_format = std::nullopt);
 
-    /// Takes the pipelines, the sampler and what metering keeps that `create` made, with the
-    /// sampler's place in the bindless set.
+    /// Takes the pipelines, the sampler, what metering keeps and the timestamps that `create`
+    /// made, with the sampler's place in the bindless set.
     Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
             SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor,
-            std::unique_ptr<Metering> metering) noexcept;
+            std::unique_ptr<Metering> metering, QueryPoolHandle timestamps) noexcept;
 
     Drawing(const Drawing&) = delete;
     Drawing(Drawing&&) = delete;
@@ -69,6 +70,16 @@ class Drawing {
     [[nodiscard]] std::expected<Image, DeviceError>
     render_image(Device& device, const Camera& camera, Extent extent);
 
+    /// Whether this measures frames, which only one made with timestamps does.
+    [[nodiscard]] bool measures_frames() const noexcept {
+        return timestamps_.get() != VK_NULL_HANDLE;
+    }
+
+    /// Draws the map that is set as a camera sees it, on the device this was made on, into the
+    /// output image, which is never read back, and measures what that cost once it is done.
+    [[nodiscard]] std::expected<FrameMeasurement, DeviceError>
+    measure_frame(Device& device, const Camera& camera, Extent extent);
+
     /// Draws the map that is set as a camera sees it into a window's image, on the device this was
     /// made on, once the image is acquired, leaving it ready to present.
     [[nodiscard]] std::expected<void, DeviceError> draw(Device& device, const Camera& camera,
@@ -85,15 +96,19 @@ class Drawing {
 
     // Records the scene's pass, then metering, unless the exposure is pinned, moving the exposure
     // by a blend toward what it meters, then the AgX pass with a pipeline into an output image's
-    // view, which is in the colour attachment layout and stays so.
+    // view, which is in the colour attachment layout and stays so. With timestamps, it writes one
+    // before the passes and one after each.
     void record_passes(const Device& device, VkCommandBuffer commands, const Camera& camera,
-                       float blend, VkPipeline resolve, VkImageView output) const;
+                       float blend, VkPipeline resolve, VkImageView output,
+                       VkQueryPool timestamps = VK_NULL_HANDLE) const;
 
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     std::unique_ptr<Pipelines> pipelines_;
     SamplerHandle texture_sampler_;
     DescriptorHandle sampler_descriptor_;
     std::unique_ptr<Metering> metering_;
+    // The timestamps a measured frame writes, or none when this doesn't measure frames.
+    QueryPoolHandle timestamps_;
     std::unique_ptr<Geometry> geometry_;
     std::unique_ptr<Targets> targets_;
     // The place of the scene's colour target in the bindless set, kept for the targets of each new
