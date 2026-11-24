@@ -38,6 +38,18 @@ struct WindowResized {
     constexpr bool operator==(const WindowResized&) const noexcept = default;
 };
 
+/// The window was minimised, leaving nothing of it to see until it is restored.
+struct WindowMinimized {
+    /// Compares two events exactly.
+    constexpr bool operator==(const WindowMinimized&) const noexcept = default;
+};
+
+/// The window came back to its normal size from being minimised, or from being maximised.
+struct WindowRestored {
+    /// Compares two events exactly.
+    constexpr bool operator==(const WindowRestored&) const noexcept = default;
+};
+
 /// A key went down. A key held until it repeats sends this only once.
 struct KeyPressed {
     /// The key.
@@ -85,7 +97,7 @@ struct MouseButtonReleased {
 };
 
 /// One thing that happened, of those the platform reports.
-using Event = std::variant<WindowClosed, WindowResized, KeyPressed, KeyReleased, MouseMoved,
-                           MouseButtonPressed, MouseButtonReleased>;
+using Event = std::variant<WindowClosed, WindowResized, WindowMinimized, WindowRestored, KeyPressed,
+                           KeyReleased, MouseMoved, MouseButtonPressed, MouseButtonReleased>;
 
 } // namespace wulfhilde

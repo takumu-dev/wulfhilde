@@ -54,6 +54,22 @@ WindowSize Window::size() const {
     return {.width = narrow<std::size_t>(width), .height = narrow<std::size_t>(height)};
 }
 
+std::expected<void, PlatformError> Window::minimize() {
+    if (!SDL_MinimizeWindow(native_->get())) {
+        return std::unexpected(
+            detail::sdl_error(PlatformErrorCode::window_failure, "the window couldn't minimise"));
+    }
+    return {};
+}
+
+std::expected<void, PlatformError> Window::restore() {
+    if (!SDL_RestoreWindow(native_->get())) {
+        return std::unexpected(
+            detail::sdl_error(PlatformErrorCode::window_failure, "the window couldn't restore"));
+    }
+    return {};
+}
+
 std::expected<void, PlatformError> Window::set_relative_mouse_mode(bool enabled) {
     if (!SDL_SetWindowRelativeMouseMode(native_->get(), enabled)) {
         return std::unexpected(detail::sdl_error(

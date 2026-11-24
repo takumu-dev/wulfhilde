@@ -7,6 +7,7 @@
 #include <wulfhilde/platform/key.hpp>
 #include <wulfhilde/platform/platform_error.hpp>
 
+#include <chrono>
 #include <expected>
 #include <vector>
 
@@ -49,6 +50,23 @@ class Platform {
     ///
     /// \return The events, which are none when nothing has happened.
     [[nodiscard]] std::vector<Event> poll_events();
+
+    /// Waits for something to happen, then takes every event that has happened since the last call,
+    /// oldest first, as `poll_events` does.
+    ///
+    /// What ends the wait may be something the platform doesn't report, such as the pointer moving
+    /// outside relative mouse mode, so there may be no events.
+    ///
+    /// \return The events, which are none when nothing the platform reports has happened.
+    [[nodiscard]] std::vector<Event> wait_events();
+
+    /// Waits for something to happen, as `wait_events()` does, but gives up after a while, taking
+    /// nothing.
+    ///
+    /// \param timeout How long to wait at most, neither negative nor longer than 24 days.
+    /// \return The events, which are none when nothing the platform reports has happened, as when
+    ///         the time is up.
+    [[nodiscard]] std::vector<Event> wait_events(std::chrono::milliseconds timeout);
 
     /// Answers whether a key is held down, as of the events taken last.
     ///

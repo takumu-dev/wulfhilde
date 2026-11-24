@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <format>
 #include <utility>
 
@@ -29,6 +30,22 @@ TEST_CASE("a platform comes up with no key down and nothing to report", "[platfo
     CHECK(platform->poll_events().empty());
     CHECK(!platform->is_key_down(wulfhilde::Key::w));
     CHECK(!platform->is_key_down(wulfhilde::Key::left_shift));
+}
+
+TEST_CASE("a wait that nothing ends returns nothing once its time is up, with no key down",
+          "[platform]") {
+    auto platform = wulfhilde::Platform::create();
+    if (!platform) {
+        FAIL(std::format("{}", platform.error()));
+    }
+    const auto timeout = std::chrono::milliseconds(50);
+    const auto start = std::chrono::steady_clock::now();
+
+    const auto events = platform->wait_events(timeout);
+
+    CHECK(events.empty());
+    CHECK(std::chrono::steady_clock::now() - start >= timeout);
+    CHECK(!platform->is_key_down(wulfhilde::Key::w));
 }
 
 TEST_CASE("a platform comes up again once the one before it is gone", "[platform]") {

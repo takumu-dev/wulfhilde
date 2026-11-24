@@ -15,7 +15,9 @@
 #include <SDL3/SDL_scancode.h>
 #include <SDL3/SDL_video.h>
 
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <optional>
 #include <span>
@@ -65,6 +67,10 @@ std::optional<Event> event_of(const SDL_Event& event) {
                     .height = narrow<std::size_t>(event.window.data2),
                 },
         };
+    case SDL_EVENT_WINDOW_MINIMIZED:
+        return WindowMinimized{};
+    case SDL_EVENT_WINDOW_RESTORED:
+        return WindowRestored{};
     case SDL_EVENT_KEY_DOWN:
         if (event.key.repeat) {
             return std::nullopt;
@@ -92,6 +98,21 @@ std::optional<Event> event_of(const SDL_Event& event) {
     }
     default:
         return std::nullopt;
+    }
+}
+
+// Adds the engine's event for one of SDL's to the events, if the platform reports it.
+void take_event(const SDL_Event& event, std::vector<Event>& events) {
+    if (auto reported = event_of(event)) {
+        events.push_back(*reported);
+    }
+}
+
+// Adds the engine's event for each of SDL's that is waiting to the events.
+void take_waiting_events(std::vector<Event>& events) {
+    SDL_Event event{};
+    while (SDL_PollEvent(&event)) {
+        take_event(event, events);
     }
 }
 
@@ -131,11 +152,27 @@ Platform::~Platform() {
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static): only a live platform reaches SDL
 std::vector<Event> Platform::poll_events() {
     std::vector<Event> events;
-    SDL_Event event{};
-    while (SDL_PollEvent(&event)) {
-        if (auto reported = event_of(event)) {
-            events.push_back(*reported);
-        }
+    take_waiting_events(events);
+    return events;
+}
+
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static): only a live platform reaches SDL
+std::vector<Event> Platform::wait_events() {
+    std::vector<Event> events;
+    if (SDL_Event event{}; SDL_WaitEvent(&event)) {
+        take_event(event, events);
+        take_waiting_events(events);
+    }
+    return events;
+}
+
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static): only a live platform reaches SDL
+std::vector<Event> Platform::wait_events(std::chrono::milliseconds timeout) {
+    WULFHILDE_ASSERT(timeout >= std::chrono::milliseconds::zero(), "a wait's time isn't negative");
+    std::vector<Event> events;
+    if (SDL_Event event{}; SDL_WaitEventTimeout(&event, narrow<std::int32_t>(timeout.count()))) {
+        take_event(event, events);
+        take_waiting_events(events);
     }
     return events;
 }
