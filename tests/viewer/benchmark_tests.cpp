@@ -132,7 +132,7 @@ void check_measures(const pedantjson::Object& record, std::size_t frame_count) {
         check_spread(object_member(record, name), frame_count);
     }
     const auto passes = object_member(record, "gpu_ms_by_pass");
-    CHECK(passes.size() == 3);
+    CHECK(passes.size() == 4);
     for (const auto& pass : passes) {
         CAPTURE(pass.key.name());
         check_spread(object_of(pass.value), frame_count);
