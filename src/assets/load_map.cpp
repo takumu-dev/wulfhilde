@@ -14,6 +14,7 @@
 #include <pedantjson/pedantjson.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <expected>
 #include <format>
@@ -109,8 +110,23 @@ std::vector<MapProblem> place_problems(std::vector<MapProblem> problems,
 } // namespace
 
 std::expected<Map, MapLoadError> load_map(const ContentRoot& root, std::string_view path) {
+    MapLoadTimes times;
+    return load_map(root, path, times);
+}
+
+std::expected<Map, MapLoadError> load_map(const ContentRoot& root, std::string_view path,
+                                          MapLoadTimes& times) {
+    times = {};
+    // Each stage's time is written as it ends, so a load that fails still has the stages it took.
+    auto stage_start = std::chrono::steady_clock::now();
+    const auto end_stage = [&stage_start](std::chrono::nanoseconds& time) {
+        const auto now = std::chrono::steady_clock::now();
+        time = std::chrono::duration_cast<std::chrono::nanoseconds>(now - stage_start);
+        stage_start = now;
+    };
     MapLoadError error{.file = std::format("{}{}", path, map_extension)};
-    const auto fail = [&error](MapProblem problem) {
+    const auto fail = [&error, &end_stage, &times](MapProblem problem) {
+        end_stage(times.parse);
         error.problems.push_back(std::move(problem));
         return std::unexpected(std::move(error));
     };
@@ -139,6 +155,7 @@ std::expected<Map, MapLoadError> load_map(const ContentRoot& root, std::string_v
     // Phase 2: the structure, beginning with whether the file is a map of this version at all.
     detail::JsonFile file(error.file, *text, *document);
     auto description = detail::decode_map(file);
+    end_stage(times.parse);
     if (!description || file.has_problems()) {
         for (auto& problem : std::move(file).take_problems()) {
             error.problems.push_back(map_problem(std::move(problem)));
@@ -148,6 +165,7 @@ std::expected<Map, MapLoadError> load_map(const ContentRoot& root, std::string_v
 
     // Phase 3: the map's own rules, positioned by the values they point at.
     auto map = Map::create(std::move(*description));
+    end_stage(times.create);
     if (!map) {
         error.problems = place_problems(std::move(map.error().problems), *document);
         return std::unexpected(std::move(error));

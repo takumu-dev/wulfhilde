@@ -18,6 +18,7 @@
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <format>
 #include <optional>
@@ -217,4 +218,26 @@ TEST_CASE("a map's file is found through a symbolic link in its content root", "
     const auto map = load_valid(open_root(directory), "linked");
 
     CHECK(map.find_sector("hall") == SectorId{0});
+}
+
+TEST_CASE("loading a map times its parse and the making of the map, apart", "[assets]") {
+    const auto root = open_root(test_files() / "valid");
+    wulfhilde::MapLoadTimes times;
+
+    const auto map = load_map(root, "everything", times);
+
+    REQUIRE(map.has_value());
+    CHECK(times.parse > std::chrono::nanoseconds{});
+    CHECK(times.create > std::chrono::nanoseconds{});
+}
+
+TEST_CASE("a map whose file doesn't parse is timed only as far as its parse", "[assets]") {
+    const auto root = open_root(test_files() / "invalid");
+    wulfhilde::MapLoadTimes times;
+
+    const auto map = load_map(root, "syntax_error", times);
+
+    REQUIRE(!map.has_value());
+    CHECK(times.parse > std::chrono::nanoseconds{});
+    CHECK(times.create == std::chrono::nanoseconds{});
 }

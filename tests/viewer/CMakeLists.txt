@@ -1,5 +1,7 @@
 wulfhilde_add_tests(viewer
     SOURCES
+        benchmark_record_tests.cpp
+        benchmark_walks_tests.cpp
         cameras_tests.cpp
         command_line_tests.cpp
         controller_tests.cpp
@@ -14,6 +16,22 @@ wulfhilde_add_tests(viewer
         wulfhilde_viewer_lib
 )
 target_compile_definitions(wulfhilde_viewer_tests PRIVATE
+    "WULFHILDE_TEST_CONTENT=\"${PROJECT_SOURCE_DIR}/tests/content\""
+)
+
+# The benchmark's record is read back with the strict JSON parser the engine reads maps with.
+find_package(pedantjson CONFIG REQUIRED)
+wulfhilde_add_tests(viewer
+    LABEL gpu
+    SOURCES
+        benchmark_tests.cpp
+        scripted_walk.cpp
+        scripted_walk.hpp
+    LIBRARIES
+        wulfhilde_viewer_lib
+        pedantjson::pedantjson
+)
+target_compile_definitions(wulfhilde_viewer_gpu_tests PRIVATE
     "WULFHILDE_TEST_CONTENT=\"${PROJECT_SOURCE_DIR}/tests/content\""
 )
 
@@ -108,3 +126,28 @@ wulfhilde_add_program_test(viewer "a map outside its content root is a usage err
     EXPECTED_RESULT 1
     STDERR_MATCHES "^wulfhilde-viewer: [^ ]*/sectors\\.map\\.json isn't in the content root, .+usage: wulfhilde-viewer "
 )
+wulfhilde_add_program_test(viewer "a benchmark walk the map lacks is a usage error, naming those it has"
+    PROGRAM wulfhilde-viewer
+    ARGUMENTS "${PROJECT_SOURCE_DIR}/tests/content/sectors.map.json" --benchmark marathon
+    EXPECTED_RESULT 1
+    STDERR_MATCHES "^wulfhilde-viewer: --benchmark names no benchmark walk of sectors: marathon, only tour.+usage: wulfhilde-viewer "
+)
+
+# Each benchmark walk in full, as --benchmark plays it: headless at 1920x1080, writing its record to
+# stdout. They take minutes on lavapipe, so only builds with WULFHILDE_BENCHMARK_TESTS run them.
+if(WULFHILDE_BENCHMARK_TESTS)
+    wulfhilde_add_program_test(viewer "the sectors tour plays in full at 1920x1080 and writes its record"
+        PROGRAM wulfhilde-viewer
+        ARGUMENTS
+            "${PROJECT_SOURCE_DIR}/tests/content/sectors.map.json"
+            --benchmark tour
+            --conditions "in CTest"
+        STDOUT_MATCHES "^{.+\"walk\": \"tour\",.+\"width\": 1920,.+\"height\": 1080,.+\"conditions\": \"in CTest\",.+\"load_ms\": {\"parse\": [0-9.]+,.+\"frame_count\": 1170,.+\"gpu_ms_by_pass\": {.+\"draws\": {\"p50\": [0-9]+, .+}.}.$"
+    )
+    set_tests_properties("viewer: the sectors tour plays in full at 1920x1080 and writes its record"
+        PROPERTIES
+            LABELS gpu
+            ENVIRONMENT "${WULFHILDE_TEST_ENVIRONMENT}"
+            ENVIRONMENT_MODIFICATION "${WULFHILDE_GPU_TEST_ENVIRONMENT}"
+    )
+endif()

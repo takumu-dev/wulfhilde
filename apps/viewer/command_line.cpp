@@ -181,6 +181,8 @@ struct WrittenArguments {
     std::optional<std::string_view> samples;
     std::optional<std::string_view> anisotropy;
     std::optional<std::string_view> sensitivity;
+    std::optional<std::string_view> benchmark;
+    std::optional<std::string_view> conditions;
 };
 
 /// An option that takes the argument after it as its value, which it may be given once: what must
@@ -192,7 +194,7 @@ struct ValueOption {
     std::optional<std::string_view> WrittenArguments::* value;
 };
 
-constexpr std::array<ValueOption, 5> value_options{
+constexpr std::array<ValueOption, 7> value_options{
     {
         {
             .name = "--content",
@@ -224,8 +226,47 @@ constexpr std::array<ValueOption, 5> value_options{
             .value_name = "sensitivity",
             .value = &WrittenArguments::sensitivity,
         },
+        {
+            .name = "--benchmark",
+            .needs = "a benchmark walk's name",
+            .value_name = "benchmark walk",
+            .value = &WrittenArguments::benchmark,
+        },
+        {
+            .name = "--conditions",
+            .needs = "a description",
+            .value_name = "description of conditions",
+            .value = &WrittenArguments::conditions,
+        },
     },
 };
+
+/// Finds an option given with another it doesn't go with, which a benchmark has no use for.
+std::optional<UsageError> conflicting_options(const WrittenArguments& written) {
+    const auto conflict = [](std::string message) {
+        return UsageError{
+            .code = UsageErrorCode::conflicting_options,
+            .message = std::move(message),
+        };
+    };
+    if (!written.benchmark) {
+        if (written.conditions) {
+            return conflict("--conditions describes a benchmark, so it needs --benchmark");
+        }
+        return std::nullopt;
+    }
+    if (written.camera) {
+        return conflict(
+            "--benchmark plays its walk from the start position, so it takes no --camera");
+    }
+    if (written.fullscreen) {
+        return conflict("--benchmark draws no window, so it takes no --fullscreen");
+    }
+    if (written.sensitivity) {
+        return conflict("--benchmark takes no mouse, so it takes no --sensitivity");
+    }
+    return std::nullopt;
+}
 
 /// The option that takes a value, by its name, or none.
 const ValueOption* value_option(std::string_view name) {
@@ -278,12 +319,15 @@ read_arguments(std::span<const std::string_view> arguments) {
 std::string_view usage() noexcept {
     return "usage: wulfhilde-viewer <map> [--content <dir>] [--camera <camera>] [--fullscreen]\n"
            "                        [--samples <n>] [--anisotropy <n>] [--sensitivity <degrees>]\n"
+           "       wulfhilde-viewer <map> --benchmark <walk> [--content <dir>] [--samples <n>]\n"
+           "                        [--anisotropy <n>] [--conditions <text>]\n"
            "       wulfhilde-viewer --help\n"
            "\n"
            "The map-preview tool of the wulfhilde engine. It loads a map's file, ending "
            ".map.json,\n"
            "and lets you walk the map in a window of 1280x720, from its start position. It\n"
-           "reports every problem it finds in the map instead, each as file:line:column.\n"
+           "reports every problem it finds in the map instead, each as file:line:column. With\n"
+           "--benchmark, it measures what drawing the map costs, playing a timed walk headless.\n"
            "\n"
            "keys:\n"
            "  W, A, S, D         walk forward, left, back and right\n"
@@ -316,6 +360,12 @@ std::string_view usage() noexcept {
            "  --sensitivity <degrees>\n"
            "                     how far the view turns for each count the mouse moves, more\n"
            "                     than 0; 0.1 by default\n"
+           "  --benchmark <walk>\n"
+           "                     play the map's benchmark walk of that name headless at\n"
+           "                     1920x1080, measuring each frame, and write its record to stdout\n"
+           "                     as JSON; the GPU must have timestamp queries\n"
+           "  --conditions <text>\n"
+           "                     how the benchmark is run, such as on mains power, for its record\n"
            "  --help             print this usage and exit\n";
 }
 
@@ -328,6 +378,13 @@ parse_command_line(std::span<const std::string_view> arguments) {
     CommandLine command_line{.help = written->help, .fullscreen = written->fullscreen};
     if (command_line.help) {
         return command_line;
+    }
+    if (auto conflict = conflicting_options(*written)) {
+        return std::unexpected(std::move(*conflict));
+    }
+    if (written->benchmark) {
+        command_line.benchmark = std::string(*written->benchmark);
+        command_line.conditions = std::string(written->conditions.value_or(""));
     }
 
     if (written->camera) {

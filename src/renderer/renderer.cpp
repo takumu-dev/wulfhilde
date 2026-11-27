@@ -10,6 +10,7 @@
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
+#include <wulfhilde/renderer/frame_measurement.hpp>
 #include <wulfhilde/renderer/image.hpp>
 #include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/map.hpp>
@@ -138,6 +139,10 @@ Renderer::~Renderer() {
     drawing_.reset();
 }
 
+std::string_view Renderer::device_name() const noexcept { return device_->name(); }
+
+std::string_view Renderer::driver() const noexcept { return device_->driver(); }
+
 std::expected<void, DeviceError> Renderer::set_map(const Map& map, const MapAssets& assets) {
     WULFHILDE_ASSERT(assets.materials.size() == map.materials().size(),
                      "the assets hold a material for each of the map's");
@@ -173,6 +178,17 @@ std::expected<Image, DeviceError> Renderer::render_image(const Camera& camera, E
                      "the camera is in a sector of the map that is set");
     WULFHILDE_ASSERT(extent.width > 0 && extent.height > 0, "an image has at least one pixel");
     return drawing_->render_image(*device_, camera, extent);
+}
+
+std::expected<FrameMeasurement, DeviceError> Renderer::measure_frame(const Camera& camera,
+                                                                     Extent extent) {
+    WULFHILDE_ASSERT(drawing_->measures_frames(),
+                     "only a renderer made to measure frames measures one");
+    WULFHILDE_ASSERT(map_ != nullptr, "a map is set before a frame of it is measured");
+    WULFHILDE_ASSERT(camera.location.sector.index() < map_->sectors().size(),
+                     "the camera is in a sector of the map that is set");
+    WULFHILDE_ASSERT(extent.width > 0 && extent.height > 0, "a frame has at least one pixel");
+    return drawing_->measure_frame(*device_, camera, extent);
 }
 
 } // namespace wulfhilde

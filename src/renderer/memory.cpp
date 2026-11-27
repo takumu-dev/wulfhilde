@@ -7,9 +7,11 @@
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <ranges>
 #include <utility>
 
 namespace wulfhilde::detail {
@@ -37,6 +39,18 @@ std::expected<Allocator, DeviceError> Allocator::create(VkInstance instance,
         return std::unexpected(*error);
     }
     return Allocator(allocator);
+}
+
+std::size_t Allocator::allocated_bytes() const {
+    const VkPhysicalDeviceMemoryProperties* properties = nullptr;
+    vmaGetMemoryProperties(allocator_, &properties);
+    std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};
+    vmaGetHeapBudgets(allocator_, budgets.data());
+    std::size_t bytes = 0;
+    for (const auto& budget : budgets | std::views::take(properties->memoryHeapCount)) {
+        bytes += narrow<std::size_t>(budget.statistics.blockBytes);
+    }
+    return bytes;
 }
 
 void Allocator::reset() noexcept {

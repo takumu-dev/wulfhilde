@@ -7,6 +7,7 @@
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/map_load_error.hpp>
 
+#include <chrono>
 #include <expected>
 #include <string_view>
 
@@ -14,6 +15,16 @@ namespace wulfhilde {
 
 /// The extension of a map's file, which follows the map's asset path, as in `maps/e1m1.map.json`.
 inline constexpr std::string_view map_extension = ".map.json";
+
+/// How long the stages of loading a map took, on the CPU, for a program that measures its loading.
+struct MapLoadTimes {
+    /// Reading the map's file, parsing it, and reading the map's description from it.
+    std::chrono::nanoseconds parse{};
+
+    /// Making the map from its description, which checks the map's own rules, or none if the load
+    /// stopped before it.
+    std::chrono::nanoseconds create{};
+};
 
 /// Loads a map from its file, a strict JSON file ending `.map.json`, and makes the map.
 ///
@@ -36,5 +47,14 @@ inline constexpr std::string_view map_extension = ".map.json";
 /// \return The map, or the file's name and every problem of the first phase that found any.
 [[nodiscard]] std::expected<Map, MapLoadError> load_map(const ContentRoot& root,
                                                         std::string_view path);
+
+/// Loads a map from its file, as `load_map(root, path)` does, and times the load's stages.
+///
+/// \param root The content root that holds the map.
+/// \param path The map's asset path.
+/// \param times Where the time each stage took is written, whether or not the load succeeds.
+/// \return The map, or the file's name and every problem of the first phase that found any.
+[[nodiscard]] std::expected<Map, MapLoadError> load_map(const ContentRoot& root,
+                                                        std::string_view path, MapLoadTimes& times);
 
 } // namespace wulfhilde

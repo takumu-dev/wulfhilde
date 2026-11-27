@@ -37,6 +37,10 @@ option(WULFHILDE_CHECK_NOTICES
     "Test that THIRD_PARTY_NOTICES.md lists the ports that ship, as this build installs them."
     OFF
 )
+option(WULFHILDE_BENCHMARK_TESTS
+    "Test the viewer's benchmark mode by playing each benchmark walk in full at 1920x1080, which takes minutes on lavapipe."
+    OFF
+)
 
 # The engine's own builds take their dependencies from the vcpkg manifest, and check their licences.
 if(PROJECT_IS_TOP_LEVEL AND VCPKG_MANIFEST_MODE)

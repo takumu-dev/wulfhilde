@@ -465,3 +465,90 @@ TEST_CASE("the --camera, --samples, --anisotropy and --sensitivity options each 
     CHECK(sensitivity.code == viewer::UsageErrorCode::extra_argument);
     CHECK(std::format("{}", sensitivity) == "a second sensitivity: 0.3, after 0.2");
 }
+
+TEST_CASE("the --benchmark option names the map's benchmark walk to play", "[viewer]") {
+    const std::array<std::string_view, 3> arguments{"e1m1.map.json", "--benchmark", "tour"};
+
+    const auto command_line = parse_valid(arguments);
+
+    CHECK(command_line.benchmark == "tour");
+    CHECK(command_line.conditions.empty());
+}
+
+TEST_CASE("without --benchmark, the viewer plays no benchmark walk", "[viewer]") {
+    const std::array<std::string_view, 1> arguments{"e1m1.map.json"};
+
+    CHECK(!parse_valid(arguments).benchmark.has_value());
+}
+
+TEST_CASE("the --conditions option describes how a benchmark was run, in free text", "[viewer]") {
+    const std::array<std::string_view, 5> arguments{
+        "e1m1.map.json", "--benchmark", "tour", "--conditions", "on mains, \"performance\"",
+    };
+
+    CHECK(parse_valid(arguments).conditions == "on mains, \"performance\"");
+}
+
+TEST_CASE("the --conditions option without --benchmark is a usage error", "[viewer]") {
+    const std::array<std::string_view, 3> arguments{"e1m1.map.json", "--conditions", "idle"};
+
+    const auto error = parse_wrong(arguments);
+
+    CHECK(error.code == viewer::UsageErrorCode::conflicting_options);
+    CHECK(std::format("{}", error) ==
+          "--conditions describes a benchmark, so it needs --benchmark");
+}
+
+TEST_CASE("the --benchmark option takes no option of walking the map in a window", "[viewer]") {
+    const std::array<std::pair<std::array<std::string_view, 2>, std::string_view>, 3> cases{
+        {
+            {
+                {"--camera", "hall,1,2,3,4,5"},
+                "--benchmark plays its walk from the start position, "
+                "so it takes no --camera",
+            },
+            {
+                {"--fullscreen", "--fullscreen"},
+                "--benchmark draws no window, so it takes no "
+                "--fullscreen",
+            },
+            {{"--sensitivity", "0.2"}, "--benchmark takes no mouse, so it takes no --sensitivity"},
+        },
+    };
+    for (const auto& [option, message] : cases) {
+        CAPTURE(option.front());
+        const std::array<std::string_view, 5> arguments{
+            "e1m1.map.json", "--benchmark", "tour", option.front(), option.back(),
+        };
+        // --fullscreen takes no value, so it is simply given twice.
+        const auto error = parse_wrong(arguments);
+
+        CHECK(error.code == viewer::UsageErrorCode::conflicting_options);
+        CHECK(std::format("{}", error) == message);
+    }
+}
+
+TEST_CASE("the --benchmark and --conditions options need a value after them, and name one",
+          "[viewer]") {
+    const std::array<std::string_view, 2> no_walk{"e1m1.map.json", "--benchmark"};
+    const auto missing_walk = parse_wrong(no_walk);
+    CHECK(missing_walk.code == viewer::UsageErrorCode::missing_value);
+    CHECK(std::format("{}", missing_walk) == "--benchmark needs a benchmark walk's name after it");
+
+    const std::array<std::string_view, 4> no_conditions{
+        "e1m1.map.json",
+        "--benchmark",
+        "tour",
+        "--conditions",
+    };
+    const auto missing_conditions = parse_wrong(no_conditions);
+    CHECK(missing_conditions.code == viewer::UsageErrorCode::missing_value);
+    CHECK(std::format("{}", missing_conditions) == "--conditions needs a description after it");
+
+    const std::array<std::string_view, 5> walks{
+        "e1m1.map.json", "--benchmark", "tour", "--benchmark", "lap",
+    };
+    const auto walk = parse_wrong(walks);
+    CHECK(walk.code == viewer::UsageErrorCode::extra_argument);
+    CHECK(std::format("{}", walk) == "a second benchmark walk: lap, after tour");
+}

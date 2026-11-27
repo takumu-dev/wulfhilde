@@ -22,6 +22,7 @@
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
+#include <wulfhilde/renderer/frame_measurement.hpp>
 #include <wulfhilde/renderer/image.hpp>
 #include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/exposure.hpp>
@@ -39,6 +40,7 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -104,6 +106,12 @@ constexpr std::size_t histogram_bins = 256;
 constexpr std::uint32_t histogram_tile = 16;
 
 constexpr VkBufferUsageFlags shader_buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+// The passes a measured frame times, in the order they run. A timestamp is written before the
+// first and after each.
+constexpr std::array<std::string_view, 3> timed_passes{"main", "exposure", "resolve"};
+
+constexpr auto timestamp_count = narrow<std::uint32_t>(timed_passes.size() + 1);
 
 // From a camera's sector's coordinates into Vulkan's clip space: x to the right, y down, and depth
 // from 1 at the near plane to 0 infinitely far away.
@@ -294,6 +302,28 @@ std::expected<SamplerHandle, DeviceError> create_texture_sampler(const Device& d
     return SamplerHandle(device.get(), sampler);
 }
 
+// Makes the timestamps that a measured frame writes.
+std::expected<QueryPoolHandle, DeviceError> create_timestamps(const Device& device) {
+    const VkQueryPoolCreateInfo info{
+        .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+        .queryType = VK_QUERY_TYPE_TIMESTAMP,
+        .queryCount = timestamp_count,
+    };
+    VkQueryPool pool = VK_NULL_HANDLE;
+    if (const auto error = failure(vkCreateQueryPool(device.get(), &info, nullptr, &pool),
+                                   "creating the timestamps that measure a frame")) {
+        return std::unexpected(*error);
+    }
+    return QueryPoolHandle(device.get(), pool);
+}
+
+// Writes a timestamp once every command recorded before it is done.
+void record_timestamp(VkCommandBuffer commands, VkQueryPool timestamps, std::uint32_t index) {
+    if (timestamps != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp2(commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timestamps, index);
+    }
+}
+
 } // namespace
 
 struct Drawing::Pipelines {
@@ -472,20 +502,28 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
     if (!metering) {
         return std::unexpected(std::move(metering).error());
     }
+    QueryPoolHandle timestamps;
+    if (settings.measures_frames) {
+        auto made = create_timestamps(device);
+        if (!made) {
+            return std::unexpected(std::move(made).error());
+        }
+        timestamps = std::move(*made);
+    }
     const auto sampler_descriptor = device.descriptors().add_sampler(sampler->get());
     return std::make_unique<Drawing>(
         Key{}, samples,
         std::make_unique<Pipelines>(std::move(*scene), std::move(*gather), std::move(*meter),
                                     std::move(*resolve), std::move(present)),
-        std::move(*sampler), sampler_descriptor, std::move(*metering));
+        std::move(*sampler), sampler_descriptor, std::move(*metering), std::move(timestamps));
 }
 
 Drawing::Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
                  SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor,
-                 std::unique_ptr<Metering> metering) noexcept
+                 std::unique_ptr<Metering> metering, QueryPoolHandle timestamps) noexcept
     : samples_(samples), pipelines_(std::move(pipelines)),
       texture_sampler_(std::move(texture_sampler)), sampler_descriptor_(sampler_descriptor),
-      metering_(std::move(metering)) {}
+      metering_(std::move(metering)), timestamps_(std::move(timestamps)) {}
 
 Drawing::~Drawing() = default;
 
@@ -582,7 +620,8 @@ float Drawing::next_blend() {
 }
 
 void Drawing::record_passes(const Device& device, VkCommandBuffer commands, const Camera& camera,
-                            float blend, VkPipeline resolve, VkImageView output) const {
+                            float blend, VkPipeline resolve, VkImageView output,
+                            VkQueryPool timestamps) const {
     const SceneConstants scene_constants{
         .view_projection = view_projection(camera, targets_->extent),
         .vertices = geometry_->vertices.address(),
@@ -600,6 +639,10 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
         .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
         .access = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
     };
+    if (timestamps != VK_NULL_HANDLE) {
+        vkCmdResetQueryPool(commands, timestamps, 0, timestamp_count);
+    }
+    record_timestamp(commands, timestamps, 0);
     if (meters) {
         // The frame before may still be metering into the histogram and the exposure, or reading
         // the exposure in its AgX pass.
@@ -652,6 +695,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
                   narrow<std::uint32_t>(range.first), 0);
     }
     vkCmdEndRendering(commands);
+    record_timestamp(commands, timestamps, 1);
 
     record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, color_attachment_write,
@@ -686,6 +730,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
                                   .access = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                               });
     }
+    record_timestamp(commands, timestamps, 2);
     const VkRenderingAttachmentInfo output_attachment{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = output,
@@ -706,6 +751,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
     set_viewport(commands, size);
     vkCmdDraw(commands, 3, 1, 0, 0);
     vkCmdEndRendering(commands);
+    record_timestamp(commands, timestamps, 3);
 }
 
 std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Camera& camera,
@@ -745,6 +791,56 @@ std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Ca
     std::vector<std::uint8_t> pixels(memory.size());
     std::memcpy(pixels.data(), memory.data(), memory.size());
     return Image(extent, std::move(pixels));
+}
+
+std::expected<FrameMeasurement, DeviceError>
+Drawing::measure_frame(Device& device, const Camera& camera, Extent extent) {
+    const auto start = std::chrono::steady_clock::now();
+    if (auto fitted = fit_targets(device, extent); !fitted) {
+        return std::unexpected(std::move(fitted).error());
+    }
+    const auto blend = next_blend();
+    const auto submitted = device.submit([&](VkCommandBuffer commands) {
+        record_image_barrier(commands, targets_->output.get(), VK_IMAGE_LAYOUT_UNDEFINED,
+                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
+                             color_attachment_write);
+        record_passes(device, commands, camera, blend, pipelines_->resolve.get(),
+                      targets_->output.view(), timestamps_.get());
+    });
+    if (!submitted) {
+        return std::unexpected(submitted.error());
+    }
+    const auto submission = std::chrono::steady_clock::now() - start;
+    if (auto waited = device.wait(); !waited) {
+        return std::unexpected(waited.error());
+    }
+
+    std::array<std::uint64_t, timestamp_count> ticks{};
+    if (const auto error =
+            failure(vkGetQueryPoolResults(device.get(), timestamps_.get(), 0, timestamp_count,
+                                          sizeof(ticks), ticks.data(), sizeof(std::uint64_t),
+                                          VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
+                    "reading the timestamps that measure a frame")) {
+        return std::unexpected(*error);
+    }
+    FrameMeasurement measurement{
+        .submission = std::chrono::duration_cast<std::chrono::nanoseconds>(submission),
+        .views = 1,
+        .draws = geometry_->ranges.size(),
+        .device_memory = device.allocated_bytes(),
+    };
+    measurement.passes.reserve(timed_passes.size());
+    // A timestamp counts in steps of the device's period, in as many bits as the queue writes, so
+    // each pass is the steps between two of them, wrapping around.
+    for (const auto [name, before, after] :
+         std::views::zip(timed_passes, ticks, ticks | std::views::drop(1))) {
+        const auto steps = (after - before) & device.timestamp_mask();
+        const std::chrono::nanoseconds time{std::llround(
+            static_cast<double>(steps) * static_cast<double>(device.timestamp_period()))};
+        measurement.passes.push_back({.name = name, .time = time});
+        measurement.gpu += time;
+    }
+    return measurement;
 }
 
 std::expected<void, DeviceError> Drawing::draw(Device& device, const Camera& camera,

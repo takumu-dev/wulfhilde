@@ -8,12 +8,14 @@
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
+#include <wulfhilde/renderer/frame_measurement.hpp>
 #include <wulfhilde/renderer/image.hpp>
 #include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/map.hpp>
 
 #include <expected>
 #include <memory>
+#include <string_view>
 
 namespace wulfhilde {
 
@@ -91,6 +93,12 @@ class Renderer {
     /// Waits for the device to finish its work, then releases it.
     ~Renderer();
 
+    /// Returns the name of the device the renderer draws with, as its driver gives it.
+    [[nodiscard]] std::string_view device_name() const noexcept;
+
+    /// Returns the device's driver: its name, then what it says of itself, such as its version.
+    [[nodiscard]] std::string_view driver() const noexcept;
+
     /// Uploads a map to the device, in place of any map set before, to draw from then on.
     ///
     /// Each sector is triangulated into a range of vertices of its own: its walls, and its floor
@@ -129,6 +137,19 @@ class Renderer {
     /// \return The image, or what failed on the device.
     [[nodiscard]] std::expected<Image, DeviceError> render_image(const Camera& camera,
                                                                  Extent extent);
+
+    /// Draws a frame of the map that is set, as a camera sees it, into an image of the renderer's
+    /// own that is neither shown nor read back, and measures what it cost.
+    ///
+    /// The frame is drawn as an image is, and its exposure adapts as an image's does. The frame is
+    /// done when this returns, so its GPU time is all of the GPU's work, with none of the work of
+    /// the frames around it. Only a renderer created to measure frames measures them.
+    ///
+    /// \param camera Where the frame is seen from, in a sector of the map that is set.
+    /// \param extent The frame's size, neither side of it zero.
+    /// \return What the frame cost, or what failed on the device.
+    [[nodiscard]] std::expected<FrameMeasurement, DeviceError> measure_frame(const Camera& camera,
+                                                                             Extent extent);
 
   private:
     /// Makes a renderer on a device, for a window or for none.

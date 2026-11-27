@@ -42,6 +42,10 @@ class Allocator {
     /// Returns the allocator, still owned.
     [[nodiscard]] VmaAllocator get() const noexcept { return allocator_; }
 
+    /// Returns how many bytes of device memory the allocator holds, in every heap, for the buffers
+    /// and images it backs.
+    [[nodiscard]] std::size_t allocated_bytes() const;
+
   private:
     explicit Allocator(VmaAllocator allocator) noexcept : allocator_(allocator) {}
 

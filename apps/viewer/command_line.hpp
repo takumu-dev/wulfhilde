@@ -64,6 +64,14 @@ struct CommandLine {
 
     /// How far the eye turns for each count the mouse moves.
     wulfhilde::Angle sensitivity = wulfhilde::Angle::degrees(0.1F);
+
+    /// The name of the map's benchmark walk to play headless, measuring each frame, if
+    /// `--benchmark` names one.
+    std::optional<std::string> benchmark{};
+
+    /// How a benchmark was run, in free text for its record, such as the machine's power and its
+    /// CPU's governor.
+    std::string conditions{};
 };
 
 /// What kind of mistake makes a command line one the viewer can't follow.
@@ -77,6 +85,8 @@ enum class UsageErrorCode : std::uint8_t {
     invalid_value,       ///< An option's value that doesn't read as the option needs.
     out_of_range,        ///< An option's value outside the range the option takes.
     camera_outside_map,  ///< A camera in a sector the map lacks, or outside its sector.
+    conflicting_options, ///< An option that doesn't go with another given with it.
+    unknown_walk,        ///< A benchmark walk that the map doesn't have.
 };
 
 /// A command line the viewer can't follow.

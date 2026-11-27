@@ -31,6 +31,7 @@ wulfhilde_add_precondition_test(renderer "a pinned exposure that isn't a finite 
 wulfhilde_add_tests(renderer
     LABEL gpu
     SOURCES
+        measure_frame_tests.cpp
         render_image_tests.cpp
         renderer_tests.cpp
         shader_function_tests.cpp

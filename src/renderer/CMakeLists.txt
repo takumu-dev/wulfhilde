@@ -18,6 +18,7 @@ wulfhilde_add_module(renderer
         include/wulfhilde/renderer/camera.hpp
         include/wulfhilde/renderer/device_error.hpp
         include/wulfhilde/renderer/extent.hpp
+        include/wulfhilde/renderer/frame_measurement.hpp
         include/wulfhilde/renderer/image.hpp
         include/wulfhilde/renderer/renderer.hpp
         include/wulfhilde/renderer/renderer_settings.hpp

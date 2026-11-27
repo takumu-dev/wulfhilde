@@ -53,6 +53,14 @@ struct RendererSettings {
     /// light pin it, so that brighter light shows brighter. A value that isn't a finite number
     /// breaks a precondition of the renderer's creation.
     std::optional<float> pinned_exposure{};
+
+    /// Whether the renderer measures frames, timing each of their passes on the GPU with timestamp
+    /// queries, as `Renderer::measure_frame` does.
+    ///
+    /// Not every device has timestamp queries, and the renderer needs none to draw, so only when
+    /// this is on is a device without them unfit: creating the renderer then fails, naming them
+    /// among what each device lacks.
+    bool measures_frames = false;
 };
 
 } // namespace wulfhilde

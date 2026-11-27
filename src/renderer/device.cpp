@@ -73,6 +73,38 @@ std::optional<std::uint32_t> graphics_queue_family(VkPhysicalDevice device) {
     return std::nullopt;
 }
 
+// How many bits of a timestamp a queue family writes, or 0 when it writes none.
+std::uint32_t timestamp_bits(VkPhysicalDevice device, std::uint32_t family) {
+    std::uint32_t count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
+    std::vector<VkQueueFamilyProperties> families(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families.data());
+    return families.at(family).timestampValidBits;
+}
+
+// The device's driver, by its name and then by what it says of itself, which carries its version.
+std::string driver_of(VkPhysicalDevice device) {
+    // The driver writes every field, the driver's ID among them, which no zero names.
+    // NOLINTBEGIN(bugprone-invalid-enum-default-initialization): written by the driver
+    VkPhysicalDeviceDriverProperties driver{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+    };
+    // NOLINTEND(bugprone-invalid-enum-default-initialization)
+    VkPhysicalDeviceProperties2 properties{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &driver,
+    };
+    vkGetPhysicalDeviceProperties2(device, &properties);
+    const auto name = name_of(driver.driverName);
+    const auto info = name_of(driver.driverInfo);
+    return info.empty() ? std::string(name) : std::format("{} {}", name, info);
+}
+
+// The bits of a timestamp that a queue writes, from how many it writes.
+std::uint64_t mask_of(std::uint32_t bits) {
+    return bits >= 64 ? std::numeric_limits<std::uint64_t>::max() : (std::uint64_t{1} << bits) - 1;
+}
+
 // Whether a device has a device extension.
 std::expected<bool, DeviceError> has_extension(VkPhysicalDevice device, std::string_view name) {
     std::uint32_t count = 0;
@@ -117,8 +149,12 @@ std::expected<void, DeviceError> check_presentation(Candidate& candidate, VkSurf
     return {};
 }
 
-std::expected<std::vector<Candidate>, DeviceError>
-find_candidates(VkInstance instance, std::uint32_t newest_api_version, VkSurfaceKHR surface) {
+// The devices on the machine, best first, each with what it lacks: the required profile, a queue
+// that writes timestamps if they are needed, and presenting to the surface if there is one.
+std::expected<std::vector<Candidate>, DeviceError> find_candidates(VkInstance instance,
+                                                                   std::uint32_t newest_api_version,
+                                                                   VkSurfaceKHR surface,
+                                                                   bool needs_timestamps) {
     std::uint32_t count = 0;
     if (const auto error = failure(vkEnumeratePhysicalDevices(instance, &count, nullptr),
                                    "listing Vulkan devices")) {
@@ -141,6 +177,9 @@ find_candidates(VkInstance instance, std::uint32_t newest_api_version, VkSurface
             candidate.queue_family = *family;
         } else {
             candidate.missing.emplace_back("a queue for graphics and compute");
+        }
+        if (needs_timestamps && (!family || timestamp_bits(device, *family) == 0)) {
+            candidate.missing.emplace_back("timestamp queries");
         }
         if (surface != VK_NULL_HANDLE) {
             if (auto checked = check_presentation(candidate, surface, family.has_value());
@@ -252,8 +291,9 @@ Device::create(const RendererSettings& settings, const Window* window,
         }
         surface = SurfaceHandle(instance->get(), *made);
     }
-    const auto candidates = find_candidates(
-        instance->get(), std::min(newest_api_version, instance->api_version()), surface.get());
+    const auto candidates =
+        find_candidates(instance->get(), std::min(newest_api_version, instance->api_version()),
+                        surface.get(), settings.measures_frames);
     if (!candidates) {
         return std::unexpected(candidates.error());
     }
@@ -354,6 +394,10 @@ Device::create(const RendererSettings& settings, const Window* window,
                    .api_version = api_version,
                    .takes_spirv_directly = enabled.vulkan14.maintenance5 == VK_TRUE,
                    .sample_counts = scene_sample_counts(chosen->device, chosen->properties.limits),
+                   .name = std::string(name_of(chosen->properties.deviceName)),
+                   .driver = driver_of(chosen->device),
+                   .timestamp_period = chosen->properties.limits.timestampPeriod,
+                   .timestamp_mask = mask_of(timestamp_bits(chosen->device, chosen->queue_family)),
                    .device = std::move(device),
                    .allocator = std::move(*allocator),
                    .queue = queue,
@@ -400,7 +444,7 @@ std::expected<void, DeviceError> Device::begin_commands() const {
     return {};
 }
 
-std::expected<void, DeviceError> Device::finish_commands(const Synchronization& synchronization) {
+std::expected<void, DeviceError> Device::submit_commands(const Synchronization& synchronization) {
     if (const auto error =
             failure(vkEndCommandBuffer(parts_.commands), "ending a command buffer")) {
         return std::unexpected(*error);
@@ -438,9 +482,14 @@ std::expected<void, DeviceError> Device::finish_commands(const Synchronization& 
             failure(vkQueueSubmit2(parts_.queue, 1, &submit, fence), "submitting commands")) {
         return std::unexpected(*error);
     }
-    if (const auto error = failure(
-            vkWaitForFences(get(), 1, &fence, VK_TRUE, std::numeric_limits<std::uint64_t>::max()),
-            "waiting for commands to finish")) {
+    return {};
+}
+
+std::expected<void, DeviceError> Device::wait() const {
+    const std::array fences{parts_.fence.get()};
+    if (const auto error = failure(vkWaitForFences(get(), 1, fences.data(), VK_TRUE,
+                                                   std::numeric_limits<std::uint64_t>::max()),
+                                   "waiting for commands to finish")) {
         return std::unexpected(*error);
     }
     return {};
