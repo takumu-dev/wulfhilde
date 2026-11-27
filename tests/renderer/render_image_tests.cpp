@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -676,6 +677,43 @@ wulfhilde::MapDescription doorway_map(float floor_beyond, float ceiling_beyond,
     return description;
 }
 
+// The doorway map without strips, and a third sector north of the one beyond the doorway, from
+// (4, 4) to (8, 8), through a second doorway 1 m wide in the north wall of the sector beyond, from
+// x = 6.5 to 7.5. Every wall of the third sector is cyan.
+wulfhilde::MapDescription two_doorways_map() {
+    auto description = doorway_map(0.0F, 3.0F);
+    auto& beyond = description.sectors.at(1);
+    beyond = sector("beyond",
+                    {
+                        {.x = 4.0F, .y = 0.0F},
+                        {.x = 8.0F, .y = 0.0F},
+                        {.x = 8.0F, .y = 4.0F},
+                        {.x = 7.5F, .y = 4.0F},
+                        {.x = 6.5F, .y = 4.0F},
+                        {.x = 4.0F, .y = 4.0F},
+                        {.x = 4.0F, .y = 2.5F},
+                        {.x = 4.0F, .y = 1.5F},
+                    },
+                    std::vector<std::string>(8, "north"));
+    beyond.loops.at(0).at(3).id = "beyond-north";
+    beyond.loops.at(0).at(6).id = "beyond-door";
+
+    auto third = sector("third",
+                        {
+                            {.x = 4.0F, .y = 4.0F},
+                            {.x = 6.5F, .y = 4.0F},
+                            {.x = 7.5F, .y = 4.0F},
+                            {.x = 8.0F, .y = 4.0F},
+                            {.x = 8.0F, .y = 8.0F},
+                            {.x = 4.0F, .y = 8.0F},
+                        },
+                        std::vector<std::string>(6, "west"));
+    third.loops.at(0).at(1).id = "third-south";
+    description.sectors.push_back(std::move(third));
+    description.portals.push_back({.a = {.id = "beyond-north"}, .b = {.id = "third-south"}});
+    return description;
+}
+
 } // namespace
 
 TEST_CASE_METHOD(GpuTest, "a camera sees the sector beyond an opening through it", "[renderer]") {
@@ -723,4 +761,32 @@ TEST_CASE_METHOD(GpuTest, "strips without materials of their own take their wall
     CAPTURE(describe(upper), describe(lower));
     CHECK(shows(upper, blue));
     CHECK(shows(lower, blue));
+}
+
+TEST_CASE_METHOD(GpuTest, "a camera sees a sector through two openings in a row", "[renderer]") {
+    const auto map = make_map(two_doorways_map());
+    auto renderer = renderer_of(map);
+
+    // Looking through the middle of the first doorway, at (4, 2), and of the second, at (7, 4),
+    // the middle of the image reaches the third sector's east wall.
+    const auto image = render(renderer, camera_at(map, {.x = 2.5F, .y = 1.0F, .z = 1.5F},
+                                                  Angle::radians(std::atan2(2.0F, 3.0F))));
+    const auto through = center_of(image);
+
+    CAPTURE(describe(through));
+    CHECK(shows(through, cyan));
+}
+
+TEST_CASE_METHOD(GpuTest, "a camera standing in an opening sees the sector beyond it",
+                 "[renderer]") {
+    const auto map = make_map(doorway_map(0.0F, 3.0F));
+    auto renderer = renderer_of(map);
+
+    // The camera's sector is all behind it, and the sector beyond fills the image.
+    const auto image =
+        render(renderer, camera_at(map, {.x = 4.0F, .y = 2.0F, .z = 1.5F}, Angle::degrees(0.0F)));
+    const auto through = center_of(image);
+
+    CAPTURE(describe(through));
+    CHECK(shows(through, yellow));
 }

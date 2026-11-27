@@ -7,18 +7,18 @@
 #include "memory.hpp"
 #include "owned_handle.hpp"
 #include "pipelines.hpp"
+#include "portal_traversal.hpp"
 #include "presentation.hpp"
 #include "sector_geometry.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/assets/map_assets.hpp>
 #include <wulfhilde/assets/texture_image.hpp>
-#include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/assertion.hpp>
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/matrix4.hpp>
 #include <wulfhilde/core/narrow.hpp>
-#include <wulfhilde/core/rigid_transform.hpp>
-#include <wulfhilde/core/vector4.hpp>
+#include <wulfhilde/core/vector2.hpp>
+#include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/device_error.hpp>
 #include <wulfhilde/renderer/extent.hpp>
@@ -48,6 +48,7 @@ namespace wulfhilde::detail {
 
 namespace {
 
+#include "culling_spirv.h"
 #include "metering_spirv.h"
 #include "resolve_spirv.h"
 #include "sectors_spirv.h"
@@ -90,13 +91,55 @@ struct MeteringConstants {
     float blend = 0.0F;
 };
 
+// The C++ twin of the culling shader's `SurfaceDraw`.
+struct SurfaceDraw {
+    std::uint32_t first_vertex = 0;
+    std::uint32_t vertex_count = 0;
+    Vector3 lowest;
+    Vector3 highest;
+};
+
+// The C++ twin of the culling shader's `SectorInView`.
+struct SectorInView {
+    Vector2 window_min;
+    Vector2 window_max;
+    std::uint32_t first_surface = 0;
+    std::uint32_t surface_count = 0;
+    std::uint32_t first_candidate = 0;
+};
+
+// The C++ twin of the culling shader's `ViewCulling`.
+struct ViewCulling {
+    Matrix4 view_projection;
+    std::uint32_t first_sector = 0;
+    std::uint32_t sector_count = 0;
+    std::uint32_t first_draw = 0;
+    std::uint32_t candidate_count = 0;
+};
+
+// The C++ twin of the culling shader's `DrawCommand`, which is Vulkan's own.
+struct DrawCommand {
+    std::uint32_t vertex_count = 0;
+    std::uint32_t instance_count = 0;
+    std::uint32_t first_vertex = 0;
+    std::uint32_t first_instance = 0;
+};
+
+static_assert(sizeof(DrawCommand) == sizeof(VkDrawIndirectCommand));
+
+// The C++ twin of the culling shader's push constants.
+struct CullingConstants {
+    std::uint64_t views = 0;
+    std::uint64_t sectors = 0;
+    std::uint64_t surfaces = 0;
+    std::uint64_t draws = 0;
+    std::uint64_t draw_counts = 0;
+};
+
+#include "culling_layout.hpp"  // IWYU pragma: keep
 #include "metering_layout.hpp" // IWYU pragma: keep
 #include "resolve_layout.hpp"  // IWYU pragma: keep
 #include "sectors_layout.hpp"  // IWYU pragma: keep
-
-// How near the eye a surface can be and still be drawn, in metres. Depth is reversed, so a fixed
-// near plane loses no precision far away, and there is no far plane at all.
-constexpr float near_plane = 0.05F;
 
 // The bins of the histogram that metering counts pixels into, as the metering shaders have them.
 constexpr std::size_t histogram_bins = 256;
@@ -109,35 +152,9 @@ constexpr VkBufferUsageFlags shader_buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFE
 
 // The passes a measured frame times, in the order they run. A timestamp is written before the
 // first and after each.
-constexpr std::array<std::string_view, 3> timed_passes{"main", "exposure", "resolve"};
+constexpr std::array<std::string_view, 4> timed_passes{"culling", "main", "exposure", "resolve"};
 
 constexpr auto timestamp_count = narrow<std::uint32_t>(timed_passes.size() + 1);
-
-// From a camera's sector's coordinates into Vulkan's clip space: x to the right, y down, and depth
-// from 1 at the near plane to 0 infinitely far away.
-Matrix4 view_projection(const Camera& camera, Extent extent) {
-    // Into the eye's own axes, as the camera's orientation has them: forward, left and up.
-    const auto view = to_matrix(inverse(RigidTransform{
-        .rotation = camera.orientation,
-        .translation = camera.location.point,
-    }));
-    const auto vertical =
-        1.0F / tan(Angle::radians(camera.vertical_field_of_view.in_radians() / 2.0F));
-    const auto horizontal =
-        vertical * static_cast<float>(extent.height) / static_cast<float>(extent.width);
-    // Left is to the left and up is up, so each turns negative in the image, and depth is the near
-    // plane over the distance forward, which divides through as w.
-    const Matrix4 projection{
-        .columns =
-            {
-                Vector4{.w = 1.0F},
-                Vector4{.x = -horizontal},
-                Vector4{.y = -vertical},
-                Vector4{.z = near_plane},
-            },
-    };
-    return projection * view;
-}
 
 VkExtent2D vulkan_extent(Extent extent) {
     return {
@@ -146,10 +163,18 @@ VkExtent2D vulkan_extent(Extent extent) {
     };
 }
 
+// Makes a buffer for shaders to read and write that holds a number of values of a type, and at
+// least one.
+template <typename T>
+std::expected<Buffer, DeviceError> buffer_of(const Device& device, std::size_t count,
+                                             VkBufferUsageFlags usage = shader_buffer_usage) {
+    return Buffer::create(device.allocator(), device.get(),
+                          std::max<std::size_t>(count, 1) * sizeof(T), usage);
+}
+
 template <typename T>
 std::expected<Buffer, DeviceError> upload(const Device& device, std::span<const T> values) {
-    auto buffer =
-        Buffer::create(device.allocator(), device.get(), values.size_bytes(), shader_buffer_usage);
+    auto buffer = buffer_of<T>(device, values.size());
     if (buffer) {
         std::memcpy(buffer->memory().data(), values.data(), values.size_bytes());
     }
@@ -324,9 +349,52 @@ void record_timestamp(VkCommandBuffer commands, VkQueryPool timestamps, std::uin
     }
 }
 
+// Writes what culling reads for a frame's views and the sectors each sees, given each sector's
+// surfaces, and returns each view's culling, with the room its draws take, one after another.
+std::vector<ViewCulling> write_culling(const PortalTraversal& traversal,
+                                       std::span<const Range> sector_surfaces,
+                                       const Buffer& view_buffer, const Buffer& sector_buffer) {
+    std::vector<ViewCulling> views;
+    views.reserve(traversal.views.size());
+    for (const auto& view : traversal.views) {
+        views.push_back({.view_projection = view.view_projection});
+    }
+    // The records come view by view, so each view's sectors, and its draws after them, follow the
+    // view before's.
+    std::vector<SectorInView> sectors;
+    sectors.reserve(traversal.sectors.size());
+    std::uint32_t draws = 0;
+    for (const auto& record : traversal.sectors) {
+        auto& view = views.at(record.view);
+        if (view.sector_count == 0) {
+            view.first_sector = narrow<std::uint32_t>(sectors.size());
+            view.first_draw = draws;
+        }
+        const auto surfaces = sector_surfaces.subspan(record.sector.index(), 1).front();
+        sectors.push_back({
+            .window_min = record.window.min,
+            .window_max = record.window.max,
+            .first_surface = narrow<std::uint32_t>(surfaces.first),
+            .surface_count = narrow<std::uint32_t>(surfaces.count),
+            .first_candidate = view.candidate_count,
+        });
+        ++view.sector_count;
+        view.candidate_count += narrow<std::uint32_t>(surfaces.count);
+        draws += narrow<std::uint32_t>(surfaces.count);
+    }
+    WULFHILDE_DEBUG_ASSERT(std::span(views).size_bytes() <= view_buffer.memory().size() &&
+                               std::span(sectors).size_bytes() <= sector_buffer.memory().size(),
+                           "the buffers hold the frame's views and sectors");
+    std::memcpy(view_buffer.memory().data(), views.data(), std::span(views).size_bytes());
+    std::memcpy(sector_buffer.memory().data(), sectors.data(), std::span(sectors).size_bytes());
+    return views;
+}
+
 } // namespace
 
 struct Drawing::Pipelines {
+    // Culling each view's surfaces into its draws.
+    PipelineHandle cull;
     PipelineHandle scene;
     // Metering: counting the scene's pixels into the histogram, then the exposure it meters.
     PipelineHandle gather;
@@ -372,10 +440,21 @@ struct Drawing::Metering {
 };
 
 struct Drawing::Geometry {
+    // The map, which the renderer's caller keeps alive while it is set.
+    const Map* map = nullptr;
     Buffer vertices;
     Buffer materials;
     Buffer sectors;
-    std::vector<VertexRange> ranges;
+    // Each surface's vertices and the box that holds them, and each sector's surfaces among them.
+    Buffer surfaces;
+    std::vector<Range> sector_surfaces;
+    // What culling reads and writes for a frame: its views and the sectors each sees, which the CPU
+    // writes, then a draw for each surface in sight, and how many draws each view makes. Each holds
+    // as many as a frame of one view can need.
+    Buffer views;
+    Buffer sectors_in_view;
+    Buffer draws;
+    Buffer draw_counts;
     // The map's images, in the order of its assets, then the white one that stands in for the
     // colour texture of a material without one.
     std::vector<GpuImage> textures;
@@ -471,6 +550,10 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
     if (!scene) {
         return std::unexpected(std::move(scene).error());
     }
+    auto cull = create_compute_pipeline(device, culling_spirv, "cull");
+    if (!cull) {
+        return std::unexpected(std::move(cull).error());
+    }
     // A scene of one sample a pixel isn't a multisampled image, so it is read another way.
     auto gather = create_compute_pipeline(device, metering_spirv,
                                           samples == VK_SAMPLE_COUNT_1_BIT ? "gather_sample"
@@ -513,8 +596,8 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
     const auto sampler_descriptor = device.descriptors().add_sampler(sampler->get());
     return std::make_unique<Drawing>(
         Key{}, samples,
-        std::make_unique<Pipelines>(std::move(*scene), std::move(*gather), std::move(*meter),
-                                    std::move(*resolve), std::move(present)),
+        std::make_unique<Pipelines>(std::move(*cull), std::move(*scene), std::move(*gather),
+                                    std::move(*meter), std::move(*resolve), std::move(present)),
         std::move(*sampler), sampler_descriptor, std::move(*metering), std::move(timestamps));
 }
 
@@ -586,9 +669,44 @@ std::expected<void, DeviceError> Drawing::set_map(Device& device, const Map& map
     if (!sector_buffer) {
         return std::unexpected(std::move(sector_buffer).error());
     }
-    geometry_ = std::make_unique<Geometry>(std::move(*vertex_buffer), std::move(*material_buffer),
-                                           std::move(*sector_buffer), std::move(triangles.sectors),
-                                           std::move(*textures));
+    std::vector<SurfaceDraw> surfaces;
+    surfaces.reserve(triangles.surfaces.size());
+    for (const auto& surface : triangles.surfaces) {
+        surfaces.push_back({
+            .first_vertex = narrow<std::uint32_t>(surface.vertices.first),
+            .vertex_count = narrow<std::uint32_t>(surface.vertices.count),
+            .lowest = surface.lowest,
+            .highest = surface.highest,
+        });
+    }
+    auto surface_buffer = upload<SurfaceDraw>(device, surfaces);
+    if (!surface_buffer) {
+        return std::unexpected(std::move(surface_buffer).error());
+    }
+    // One view sees each sector once at most, and draws each of their surfaces once at most.
+    constexpr VkBufferUsageFlags indirect_usage =
+        shader_buffer_usage | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    auto views = buffer_of<ViewCulling>(device, 1);
+    if (!views) {
+        return std::unexpected(std::move(views).error());
+    }
+    auto sectors_in_view = buffer_of<SectorInView>(device, map.sectors().size());
+    if (!sectors_in_view) {
+        return std::unexpected(std::move(sectors_in_view).error());
+    }
+    auto draws = buffer_of<DrawCommand>(device, surfaces.size(), indirect_usage);
+    if (!draws) {
+        return std::unexpected(std::move(draws).error());
+    }
+    auto draw_counts = buffer_of<std::uint32_t>(device, 1, indirect_usage);
+    if (!draw_counts) {
+        return std::unexpected(std::move(draw_counts).error());
+    }
+    geometry_ = std::make_unique<Geometry>(
+        &map, std::move(*vertex_buffer), std::move(*material_buffer), std::move(*sector_buffer),
+        std::move(*surface_buffer), std::move(triangles.sectors), std::move(*views),
+        std::move(*sectors_in_view), std::move(*draws), std::move(*draw_counts),
+        std::move(*textures));
     metering_->exposure = map.exposure();
     metering_->last_frame.reset();
     return {};
@@ -619,15 +737,17 @@ float Drawing::next_blend() {
     return 1.0F - std::exp(-speed * elapsed.count());
 }
 
-void Drawing::record_passes(const Device& device, VkCommandBuffer commands, const Camera& camera,
-                            float blend, VkPipeline resolve, VkImageView output,
-                            VkQueryPool timestamps) const {
-    const SceneConstants scene_constants{
-        .view_projection = view_projection(camera, targets_->extent),
-        .vertices = geometry_->vertices.address(),
-        .materials = geometry_->materials.address(),
-        .sectors = geometry_->sectors.address(),
-        .texture_sampler = sampler_descriptor_,
+void Drawing::record_passes(const Device& device, VkCommandBuffer commands,
+                            const PortalTraversal& traversal, float blend, VkPipeline resolve,
+                            VkImageView output, VkQueryPool timestamps) const {
+    const auto views = write_culling(traversal, geometry_->sector_surfaces, geometry_->views,
+                                     geometry_->sectors_in_view);
+    const CullingConstants culling_constants{
+        .views = geometry_->views.address(),
+        .sectors = geometry_->sectors_in_view.address(),
+        .surfaces = geometry_->surfaces.address(),
+        .draws = geometry_->draws.address(),
+        .draw_counts = geometry_->draw_counts.address(),
     };
     const ResolveConstants resolve_constants{
         .scene = targets_->scene_descriptor,
@@ -654,6 +774,22 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
                               },
                               metering_access);
     }
+
+    device.record_binding(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipelines_->cull.get(),
+                          std::as_bytes(std::span(&culling_constants, 1)));
+    vkCmdDispatch(commands, narrow<std::uint32_t>(traversal.views.size()), 1, 1);
+    // The draws are read to draw, and their counts by the CPU too, once a measured frame is done.
+    record_memory_barrier(
+        commands,
+        {
+            .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        },
+        {
+            .stages = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_HOST_BIT,
+            .access = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_HOST_READ_BIT,
+        });
+    record_timestamp(commands, timestamps, 1);
 
     record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
@@ -687,15 +823,25 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
         .pStencilAttachment = &scene_depth,
     };
     vkCmdBeginRendering(commands, &scene_rendering);
-    device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->scene.get(),
-                          std::as_bytes(std::span(&scene_constants, 1)));
     set_viewport(commands, size);
-    for (const auto& range : geometry_->ranges) {
-        vkCmdDraw(commands, narrow<std::uint32_t>(range.count), 1,
-                  narrow<std::uint32_t>(range.first), 0);
+    for (std::uint32_t index = 0; const auto& view : views) {
+        const SceneConstants scene_constants{
+            .view_projection = view.view_projection,
+            .vertices = geometry_->vertices.address(),
+            .materials = geometry_->materials.address(),
+            .sectors = geometry_->sectors.address(),
+            .texture_sampler = sampler_descriptor_,
+        };
+        device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->scene.get(),
+                              std::as_bytes(std::span(&scene_constants, 1)));
+        vkCmdDrawIndirectCount(commands, geometry_->draws.get(),
+                               view.first_draw * sizeof(DrawCommand), geometry_->draw_counts.get(),
+                               index * sizeof(std::uint32_t), view.candidate_count,
+                               sizeof(DrawCommand));
+        ++index;
     }
     vkCmdEndRendering(commands);
-    record_timestamp(commands, timestamps, 1);
+    record_timestamp(commands, timestamps, 2);
 
     record_image_barrier(commands, targets_->scene.get(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, color_attachment_write,
@@ -730,7 +876,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
                                   .access = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                               });
     }
-    record_timestamp(commands, timestamps, 2);
+    record_timestamp(commands, timestamps, 3);
     const VkRenderingAttachmentInfo output_attachment{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = output,
@@ -751,7 +897,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
     set_viewport(commands, size);
     vkCmdDraw(commands, 3, 1, 0, 0);
     vkCmdEndRendering(commands);
-    record_timestamp(commands, timestamps, 3);
+    record_timestamp(commands, timestamps, 4);
 }
 
 std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Camera& camera,
@@ -761,11 +907,12 @@ std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Ca
     }
     const auto size = vulkan_extent(extent);
     const auto blend = next_blend();
+    const auto traversal = traverse_portals(*geometry_->map, camera, extent);
     const auto executed = device.execute([&](VkCommandBuffer commands) {
         record_image_barrier(commands, targets_->output.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
                              color_attachment_write);
-        record_passes(device, commands, camera, blend, pipelines_->resolve.get(),
+        record_passes(device, commands, traversal, blend, pipelines_->resolve.get(),
                       targets_->output.view());
 
         record_image_barrier(
@@ -800,11 +947,12 @@ Drawing::measure_frame(Device& device, const Camera& camera, Extent extent) {
         return std::unexpected(std::move(fitted).error());
     }
     const auto blend = next_blend();
+    const auto traversal = traverse_portals(*geometry_->map, camera, extent);
     const auto submitted = device.submit([&](VkCommandBuffer commands) {
         record_image_barrier(commands, targets_->output.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
                              color_attachment_write);
-        record_passes(device, commands, camera, blend, pipelines_->resolve.get(),
+        record_passes(device, commands, traversal, blend, pipelines_->resolve.get(),
                       targets_->output.view(), timestamps_.get());
     });
     if (!submitted) {
@@ -825,10 +973,15 @@ Drawing::measure_frame(Device& device, const Camera& camera, Extent extent) {
     }
     FrameMeasurement measurement{
         .submission = std::chrono::duration_cast<std::chrono::nanoseconds>(submission),
-        .views = 1,
-        .draws = geometry_->ranges.size(),
+        .views = traversal.views.size(),
         .device_memory = device.allocated_bytes(),
     };
+    std::vector<std::uint32_t> draw_counts(traversal.views.size());
+    std::memcpy(draw_counts.data(), geometry_->draw_counts.memory().data(),
+                std::span(draw_counts).size_bytes());
+    for (const auto count : draw_counts) {
+        measurement.draws += count;
+    }
     measurement.passes.reserve(timed_passes.size());
     // A timestamp counts in steps of the device's period, in as many bits as the queue writes, so
     // each pass is the steps between two of them, wrapping around.
@@ -849,6 +1002,7 @@ std::expected<void, DeviceError> Drawing::draw(Device& device, const Camera& cam
         return fitted;
     }
     const auto blend = next_blend();
+    const auto traversal = traverse_portals(*geometry_->map, camera, frame.extent);
     return device.execute(
         [&](VkCommandBuffer commands) {
             // The image is written once the semaphore that the submission waits for at this stage
@@ -857,7 +1011,8 @@ std::expected<void, DeviceError> Drawing::draw(Device& device, const Camera& cam
                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                  {.stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT},
                                  color_attachment_write);
-            record_passes(device, commands, camera, blend, pipelines_->present.get(), frame.view);
+            record_passes(device, commands, traversal, blend, pipelines_->present.get(),
+                          frame.view);
             // The semaphore that the submission signals, after every command, makes the image's
             // new layout visible to the present that waits for it.
             record_image_barrier(commands, frame.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
