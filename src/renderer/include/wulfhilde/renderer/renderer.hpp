@@ -40,6 +40,11 @@ class Presentation;
 /// It takes up Vulkan 1.4 where the device has it, and never needs it. Like every module, it is
 /// used from one thread. It draws frames into a window, or images into memory, or both.
 ///
+/// It draws only what a camera can see of a map. Walking from the camera's sector through each
+/// opening it sees into the sector beyond, it finds the part of the image each sector may be seen
+/// in, which shrinks at each opening. The GPU then culls each of those sectors' surfaces that lies
+/// wholly outside its sector's part of the image, and draws the rest in one multi-draw.
+///
 /// It draws a map in linear light into a multisampled target of 16-bit floats, with 32-bit float
 /// depth, reversed so that it is 1 at the near plane, 5 cm from the eye, and 0 infinitely far
 /// away. It meters the exposure from a histogram of the luminance of each pixel's first sample,

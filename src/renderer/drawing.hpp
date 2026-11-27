@@ -5,6 +5,7 @@
 #include "bindless_descriptors.hpp"
 #include "device.hpp"
 #include "owned_handle.hpp"
+#include "portal_traversal.hpp"
 #include "presentation.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/assets/map_assets.hpp>
@@ -23,11 +24,12 @@
 
 namespace wulfhilde::detail {
 
-/// Draws a map on one device: each sector's surfaces into a multisampled scene in linear light,
-/// textured and filtered anisotropically, and its skies showing their backdrops, then metering,
-/// which moves the exposure toward what a histogram of the scene's light meters, then the AgX pass,
-/// which resolves the scene's samples into an sRGB image, or into a window's image to show. An
-/// image is drawn as a frame is.
+/// Draws a map on one device: culling, which keeps the surfaces of the sectors that a walk through
+/// the portals finds within what the camera sees, then those surfaces into a multisampled scene in
+/// linear light, textured and filtered anisotropically, with skies showing their backdrops, then
+/// metering, which moves the exposure toward what a histogram of the scene's light meters, then the
+/// AgX pass, which resolves the scene's samples into an sRGB image, or into a window's image to
+/// show. An image is drawn as a frame is.
 class Drawing {
     struct Pipelines;
     struct Metering;
@@ -64,7 +66,8 @@ class Drawing {
 
     /// Triangulates a map and uploads its geometry, its shading and its textures with their mip
     /// chains to the device this was made on, in place of any set before, and meters within its
-    /// exposure range from the next frame on, taking that frame's exposure at once.
+    /// exposure range from the next frame on, taking that frame's exposure at once. It keeps a
+    /// reference to the map, to walk through its portals for each frame.
     [[nodiscard]] std::expected<void, DeviceError> set_map(Device& device, const Map& map,
                                                            const MapAssets& assets);
 
@@ -97,13 +100,14 @@ class Drawing {
     // since the last frame, which it notes.
     [[nodiscard]] float next_blend();
 
-    // Records the scene's pass, then metering, unless the exposure is pinned, moving the exposure
-    // by a blend toward what it meters, then the AgX pass with a pipeline into an output image's
-    // view, which is in the colour attachment layout and stays so. With timestamps, it writes one
-    // before the passes and one after each.
-    void record_passes(const Device& device, VkCommandBuffer commands, const Camera& camera,
-                       float blend, VkPipeline resolve, VkImageView output,
-                       VkQueryPool timestamps = VK_NULL_HANDLE) const;
+    // Records culling, which writes the draws of the surfaces each view of a traversal sees, then
+    // the scene's pass, a multi-draw for each view, then metering, unless the exposure is pinned,
+    // moving the exposure by a blend toward what it meters, then the AgX pass with a pipeline into
+    // an output image's view, which is in the colour attachment layout and stays so. With
+    // timestamps, it writes one before the passes and one after each.
+    void record_passes(const Device& device, VkCommandBuffer commands,
+                       const PortalTraversal& traversal, float blend, VkPipeline resolve,
+                       VkImageView output, VkQueryPool timestamps = VK_NULL_HANDLE) const;
 
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     std::unique_ptr<Pipelines> pipelines_;
