@@ -9,6 +9,7 @@
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
+#include <wulfhilde/world/map.hpp>
 
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -17,6 +18,7 @@
 #include <cmath>
 #include <format>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace {
@@ -29,20 +31,26 @@ float distance_across(const viewer::Eye& eye, Vector2 point) {
     return std::hypot(eye.location.point.x - point.x, eye.location.point.y - point.y);
 }
 
-// How near a walk's frames came to the mapping camera's spot, and how far north they went.
-struct Reach {
-    float nearest_mapping = std::numeric_limits<float>::infinity();
-    float furthest_north = -std::numeric_limits<float>::infinity();
-};
-
-Reach reach_of(const std::vector<viewer::WalkedFrame>& frames) {
-    Reach reach;
+// How near a walk's frames came to the mapping camera's spot.
+float nearest_mapping(const std::vector<viewer::WalkedFrame>& frames) {
+    float nearest = std::numeric_limits<float>::infinity();
     for (const auto& frame : frames) {
-        reach.nearest_mapping =
-            std::min(reach.nearest_mapping, distance_across(frame.eye, {.x = 11.0F, .y = 1.0F}));
-        reach.furthest_north = std::max(reach.furthest_north, frame.eye.location.point.y);
+        nearest = std::min(nearest, distance_across(frame.eye, {.x = 11.0F, .y = 1.0F}));
     }
-    return reach;
+    return nearest;
+}
+
+// The id of each sector a walk's frames were seen from, in order, with none twice in a row.
+std::vector<std::string> sectors_seen_from(const wulfhilde::Map& map,
+                                           const std::vector<viewer::WalkedFrame>& frames) {
+    std::vector<std::string> sectors;
+    for (const auto& frame : frames) {
+        const auto& id = map.sector(frame.eye.location.sector).id;
+        if (sectors.empty() || sectors.back() != id) {
+            sectors.push_back(id);
+        }
+    }
+    return sectors;
 }
 
 } // namespace
@@ -79,13 +87,13 @@ TEST_CASE("a benchmark walk draws a frame every 4 ticks, at 60 a second", "[view
 
     const auto frames = viewer::walk_benchmark(map, *walk);
 
-    // The tour lasts 13 s.
-    CHECK(frames.size() == 780);
-    CHECK(viewer::frame_count(*walk) == 780);
+    // The tour lasts 19.5 s.
+    CHECK(frames.size() == 1170);
+    CHECK(viewer::frame_count(*walk) == 1170);
 }
 
-TEST_CASE("the sectors tour walks both arms of the hall, past the mapping camera's spot, and "
-          "back to the start, facing as it faced",
+TEST_CASE("the sectors tour walks both arms of the hall, past the mapping camera's spot, through "
+          "the gallery into the bay, and back to the start, facing as it faced",
           "[viewer]") {
     const auto map = load_test_map("sectors");
     const auto walk = viewer::find_benchmark_walk("sectors", "tour");
@@ -94,10 +102,9 @@ TEST_CASE("the sectors tour walks both arms of the hall, past the mapping camera
     const auto frames = viewer::walk_benchmark(map, *walk);
     REQUIRE(!frames.empty());
 
-    const auto reach = reach_of(frames);
-    CHECK(reach.nearest_mapping < 1.0F);
-    // The arm along Y runs to y = 10 m.
-    CHECK(reach.furthest_north > 8.5F);
+    CHECK(nearest_mapping(frames) < 1.0F);
+    CHECK(sectors_seen_from(map, frames) ==
+          std::vector<std::string>{"hall", "gallery", "bay", "gallery", "hall"});
 
     const auto& end = frames.back().eye;
     CAPTURE(end.location.point);

@@ -23,18 +23,23 @@ constexpr std::size_t ticks(double seconds) { return static_cast<std::size_t>(se
 constexpr Actions forward{.forward = 1.0F};
 constexpr Actions right{.strafe = -1.0F};
 
-/// The tour of `sectors`, 13 s long: down the arm along X to its far end, across to where the
-/// mapping camera stands, round to face back down the arm, then up the arm along Y to its end, and
-/// back to the start, facing as the start faces.
+/// The tour of `sectors`, 19.5 s long: down the hall's arm along X to its far end, across to where
+/// the mapping camera stands, and back down the arm; up the arm along Y and through the doorway
+/// into the gallery, across it into the bay and back; then back through the doorway to the start,
+/// facing as the start faces.
 constexpr std::array sectors_tour{
     BenchmarkStep{.actions = forward, .ticks = ticks(2.25)},
     BenchmarkStep{.actions = right, .ticks = ticks(0.25)},
     BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.5)},
     BenchmarkStep{.actions = forward, .ticks = ticks(2.25)},
     BenchmarkStep{.turn = wulfhilde::Angle::degrees(-90.0F), .ticks = ticks(0.75)},
-    BenchmarkStep{.actions = forward, .ticks = ticks(2.0)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(3.0)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(-90.0F), .ticks = ticks(0.75)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(1.5)},
     BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.5)},
-    BenchmarkStep{.actions = forward, .ticks = ticks(1.75)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(1.5)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(90.0F), .ticks = ticks(0.75)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.75)},
     BenchmarkStep{.turn = wulfhilde::Angle::degrees(90.0F), .ticks = ticks(0.75)},
 };
 

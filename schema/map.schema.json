@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "wulfhilde map",
-  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, sector ids that repeat, references to sectors that don't exist, and an exposure range whose minimum is above its maximum.",
+  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, portals that link them, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, sector and wall ids that repeat, references to sectors and walls that don't exist, a portal's walls that don't run between the same corners in opposite directions, a wall that is a side of two portals, and an exposure range whose minimum is above its maximum.",
   "type": "object",
   "required": ["format", "version", "sectors", "start"],
   "additionalProperties": false,
@@ -45,6 +45,11 @@
       "description": "The map's sectors.",
       "type": "array",
       "items": { "$ref": "#/$defs/sector" }
+    },
+    "portals": {
+      "description": "The map's portals, each of which links two walls so that each wall's sector is seen and reached through it from the other's.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/portal" }
     },
     "start": {
       "description": "Where the player is placed when the map loads, and which way they face.",
@@ -175,16 +180,28 @@
       }
     },
     "wall": {
-      "description": "A wall, which runs from its own start to the start of the next wall in its loop, the last wall to the first, and stands from the sector's floor to its ceiling.",
+      "description": "A wall, which runs from its own start to the start of the next wall in its loop, the last wall to the first, and stands from the sector's floor to its ceiling. A wall that is a side of a portal is open where the sector beyond overlaps its own, and solid only on its strips above and below.",
       "type": "object",
       "required": ["start", "surface"],
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "description": "The wall's name, unique among the map's walls, by which a portal refers to it. A wall that nothing refers to needs none.",
+          "type": "string"
+        },
         "start": {
           "description": "Where the wall starts, seen from above.",
           "$ref": "#/$defs/planPoint"
         },
         "surface": { "$ref": "#/$defs/surface" },
+        "upper": {
+          "description": "The surface of the wall's upper strip, above its opening where the sector beyond has a lower ceiling, if the wall is a side of a portal. Defaults to the wall's surface.",
+          "$ref": "#/$defs/surface"
+        },
+        "lower": {
+          "description": "The surface of the wall's lower strip, below its opening where the sector beyond has a higher floor, if the wall is a side of a portal. Defaults to the wall's surface.",
+          "$ref": "#/$defs/surface"
+        },
         "properties": { "$ref": "#/$defs/properties" }
       }
     },
@@ -215,6 +232,29 @@
           "minItems": 1,
           "maxItems": 1
         },
+        "properties": { "$ref": "#/$defs/properties" }
+      }
+    },
+    "portalSide": {
+      "description": "A side of a portal: a wall, by its id. This version of the engine links walls only.",
+      "type": "object",
+      "required": ["wall"],
+      "additionalProperties": false,
+      "properties": {
+        "wall": {
+          "description": "The id of the wall.",
+          "type": "string"
+        }
+      }
+    },
+    "portal": {
+      "description": "A portal, which links side a to side b. Its walls lie in different sectors and run between the same corners in opposite directions, and the sector beyond each is seen and reached through its opening, from the higher floor to the lower ceiling. A wall is a side of one portal at most.",
+      "type": "object",
+      "required": ["a", "b"],
+      "additionalProperties": false,
+      "properties": {
+        "a": { "$ref": "#/$defs/portalSide" },
+        "b": { "$ref": "#/$defs/portalSide" },
         "properties": { "$ref": "#/$defs/properties" }
       }
     },

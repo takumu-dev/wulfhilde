@@ -20,6 +20,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace wulfhilde::detail {
@@ -150,6 +151,14 @@ std::optional<ObjectReader> ReadObject::operator()(const Field& field, JsonFile&
         return std::nullopt;
     }
     return ObjectReader(field.value, field.pointer, noun, file);
+}
+
+std::optional<std::monostate> ReportConflict::operator()(const Field& field, JsonFile& file) const {
+    report_at(field, AssetProblemCode::conflicting_members,
+              std::format("the {} has both {:?} and {:?}, but may have only one of them", noun,
+                          other, name),
+              file);
+    return std::nullopt;
 }
 
 std::optional<std::vector<Field>> read_array(const Field& field, JsonFile& file) {

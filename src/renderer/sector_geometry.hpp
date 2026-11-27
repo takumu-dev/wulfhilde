@@ -39,15 +39,17 @@ struct SectorGeometry {
     std::vector<VertexRange> sectors;
 };
 
-/// Triangulates every sector of a map: each wall as two triangles from the floor to the ceiling,
-/// and the floor and the ceiling across the sector's loops, concave or not. Every triangle's
-/// corners run anticlockwise seen from the side its surface faces: into the sector.
+/// Triangulates every sector of a map: each solid wall as two triangles from the floor to the
+/// ceiling, each side of a portal as two triangles for each of its strips, below and above its
+/// opening, and the floor and the ceiling across the sector's loops, concave or not. Every
+/// triangle's corners run anticlockwise seen from the side its surface faces: into the sector.
 ///
-/// Each surface's material lies on it as the map says. On a wall, u runs from the wall's start to
-/// the right, as the wall is seen from its sector, and v is height. On a floor or a ceiling, u and
-/// v are X and Y. The material is then moved by the surface's offset, along u and v in metres,
-/// turned about the point it is moved to, from +u toward +v, by the surface's rotation, and
-/// repeats at its size times the surface's scale, along its own turned axes.
+/// Each surface's material lies on it as the map says, a strip's as its wall's. On a wall, u runs
+/// from the wall's start to the right, as the wall is seen from its sector, and v is height. On a
+/// floor or a ceiling, u and v are X and Y. The material is then moved by the surface's offset,
+/// along u and v in metres, turned about the point it is moved to, from +u toward +v, by the
+/// surface's rotation, and repeats at its size times the surface's scale, along its own turned
+/// axes.
 ///
 /// \param map The map.
 /// \param materials The map's materials, each at the index of its ID.

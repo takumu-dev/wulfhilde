@@ -5,13 +5,18 @@
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/opening.hpp>
 
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <optional>
+
 using wulfhilde::Location;
+using wulfhilde::Opening;
 using wulfhilde::SectorId;
 using wulfhilde::Vector3;
+using wulfhilde::WallId;
 
 namespace {
 
@@ -94,5 +99,41 @@ TEST_CASE("a flat floor and ceiling are at their heights wherever they are asked
         CAPTURE(location);
         CHECK(map.floor_height(location) == -1.25F);
         CHECK(map.ceiling_height(location) == 2.75F);
+    }
+}
+
+TEST_CASE("a wall portal's opening runs from the higher floor to the lower ceiling, on both sides",
+          "[world]") {
+    auto description = doorway_map();
+    description.sectors.at(1).floor.height = 0.5F;
+    description.sectors.at(1).ceiling.height = 2.5F;
+    const auto map = make_map(description);
+
+    CHECK(map.opening(WallId{3}) == Opening{.bottom = 0.5F, .top = 2.5F});
+    CHECK(map.opening(WallId{7}) == Opening{.bottom = 0.5F, .top = 2.5F});
+}
+
+TEST_CASE("an opening between sectors of the same heights spans the whole wall", "[world]") {
+    const auto map = make_map(doorway_map());
+    CHECK(map.opening(WallId{3}) == Opening{.bottom = 0.0F, .top = 3.0F});
+}
+
+TEST_CASE("an opening between sectors whose spans don't overlap is empty, at the near sector's "
+          "nearest height",
+          "[world]") {
+    auto description = doorway_map();
+    description.sectors.at(1).floor.height = 3.5F;
+    description.sectors.at(1).ceiling.height = 6.0F;
+    const auto map = make_map(description);
+
+    CHECK(map.opening(WallId{3}) == Opening{.bottom = 3.0F, .top = 3.0F});
+    CHECK(map.opening(WallId{7}) == Opening{.bottom = 3.5F, .top = 3.5F});
+}
+
+TEST_CASE("a solid wall has no opening", "[world]") {
+    const auto map = make_map(doorway_map());
+    for (const auto solid : {WallId{0}, WallId{2}, WallId{4}, WallId{8}}) {
+        CAPTURE(solid);
+        CHECK(map.opening(solid) == std::nullopt);
     }
 }

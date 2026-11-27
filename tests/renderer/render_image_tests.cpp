@@ -31,6 +31,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -210,6 +211,7 @@ constexpr std::array green{false, true, false};
 constexpr std::array blue{false, false, true};
 constexpr std::array yellow{true, true, false};
 constexpr std::array magenta{true, false, true};
+constexpr std::array cyan{false, true, true};
 constexpr Pixel black{0, 0, 0, 255};
 
 std::string describe(const Pixel& pixel) {
@@ -626,4 +628,99 @@ TEST_CASE_METHOD(GpuTest,
     // Never moving from the dim box's exposure, the bright box shows far brighter, its red lifted
     // toward white.
     CHECK(frozen_bright.at(0) > frozen_dim.at(0) + 64);
+}
+
+namespace {
+
+// The box with a doorway 1 m wide in the middle of its east wall, from (4, 1.5) to (4, 2.5), into
+// a second box beyond it from (4, 0) to (8, 4) between heights of its own, every wall of which is
+// yellow. The doorway's strips take the materials named, or the blue of the east wall without.
+wulfhilde::MapDescription doorway_map(float floor_beyond, float ceiling_beyond,
+                                      std::optional<std::string> upper = {},
+                                      std::optional<std::string> lower = {}) {
+    auto description = box_map();
+    auto& box = description.sectors.at(0);
+    box = sector("box",
+                 {
+                     {.x = 0.0F, .y = 0.0F},
+                     {.x = 4.0F, .y = 0.0F},
+                     {.x = 4.0F, .y = 1.5F},
+                     {.x = 4.0F, .y = 2.5F},
+                     {.x = 4.0F, .y = 4.0F},
+                     {.x = 0.0F, .y = 4.0F},
+                 },
+                 {"south", "east", "east", "east", "north", "west"});
+    auto& door = box.loops.at(0).at(2);
+    door.id = "box-door";
+    if (upper) {
+        door.upper = wulfhilde::SurfaceDescription{.material = *upper};
+    }
+    if (lower) {
+        door.lower = wulfhilde::SurfaceDescription{.material = *lower};
+    }
+
+    auto beyond = sector("beyond",
+                         {
+                             {.x = 4.0F, .y = 0.0F},
+                             {.x = 8.0F, .y = 0.0F},
+                             {.x = 8.0F, .y = 4.0F},
+                             {.x = 4.0F, .y = 4.0F},
+                             {.x = 4.0F, .y = 2.5F},
+                             {.x = 4.0F, .y = 1.5F},
+                         },
+                         {"north", "north", "north", "north", "north", "north"}, ceiling_beyond);
+    beyond.floor.height = floor_beyond;
+    beyond.loops.at(0).at(4).id = "beyond-door";
+    description.sectors.push_back(std::move(beyond));
+    description.portals.push_back({.a = {.id = "box-door"}, .b = {.id = "beyond-door"}});
+    return description;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(GpuTest, "a camera sees the sector beyond an opening through it", "[renderer]") {
+    const auto map = make_map(doorway_map(0.0F, 3.0F));
+    auto renderer = renderer_of(map);
+
+    // The doorway is 2 m ahead and 1 m wide, so 8 px either side of the image's middle.
+    const auto image = render(renderer, facing_east(map));
+    const auto through = center_of(image);
+    const auto beside = pixel_at(image, 16, 32);
+
+    CAPTURE(describe(through), describe(beside));
+    CHECK(shows(through, yellow));
+    CHECK(shows(beside, blue));
+}
+
+TEST_CASE_METHOD(GpuTest,
+                 "an opening into a sector with a higher floor and a lower ceiling has a lower and "
+                 "an upper strip, each with its own material",
+                 "[renderer]") {
+    // The opening runs from 1 m to 2 m. Seen from 1.5 m high and 2 m away, the upper strip
+    // spans rows 8 to 24 and the lower strip rows 40 to 56.
+    const auto map = make_map(doorway_map(1.0F, 2.0F, "south", "west"));
+    auto renderer = renderer_of(map);
+
+    const auto image = render(renderer, facing_east(map));
+    const auto upper = pixel_at(image, 32, 16);
+    const auto through = center_of(image);
+    const auto lower = pixel_at(image, 32, 48);
+
+    CAPTURE(describe(upper), describe(through), describe(lower));
+    CHECK(shows(upper, magenta));
+    CHECK(shows(through, yellow));
+    CHECK(shows(lower, cyan));
+}
+
+TEST_CASE_METHOD(GpuTest, "strips without materials of their own take their wall's", "[renderer]") {
+    const auto map = make_map(doorway_map(1.0F, 2.0F));
+    auto renderer = renderer_of(map);
+
+    const auto image = render(renderer, facing_east(map));
+    const auto upper = pixel_at(image, 32, 16);
+    const auto lower = pixel_at(image, 32, 48);
+
+    CAPTURE(describe(upper), describe(lower));
+    CHECK(shows(upper, blue));
+    CHECK(shows(lower, blue));
 }

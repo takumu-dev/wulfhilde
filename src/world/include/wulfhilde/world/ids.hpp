@@ -15,6 +15,10 @@ using SectorId = Id<struct SectorTag>;
 /// the order the map's description lists them, sector by sector and loop by loop.
 using WallId = Id<struct WallTag>;
 
+/// The ID of one of a map's portals: its index among the map's portals, in the order the map's
+/// description lists them.
+using PortalId = Id<struct PortalTag>;
+
 /// The ID of one of the materials a map's surfaces carry. Each distinct asset path gets one, in the
 /// order the map's description first names it.
 using MaterialId = Id<struct MaterialTag>;

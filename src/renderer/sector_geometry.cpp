@@ -8,6 +8,7 @@
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/opening.hpp>
 #include <wulfhilde/world/sector.hpp>
 #include <wulfhilde/world/surface.hpp>
 #include <wulfhilde/world/wall.hpp>
@@ -106,16 +107,15 @@ void add_triangle(std::vector<SectorVertex>& vertices, const std::array<Vector3,
 
 // A wall faces its sector, to its left as it runs from its start to its end, so seen from there
 // its start is on the right, and u, which runs to the right from the start, is negative across it.
-void add_wall(std::vector<SectorVertex>& vertices, const Wall& wall, const Sector& sector,
-              std::span<const Material> materials) {
-    const auto low = sector.floor.height;
-    const auto high = sector.ceiling.height;
+// Each part of a wall is a band of it between two heights.
+void add_wall_band(std::vector<SectorVertex>& vertices, const Wall& wall, const Surface& surface,
+                   float low, float high, std::span<const Material> materials) {
     const Vector3 start_low{.x = wall.start.x, .y = wall.start.y, .z = low};
     const Vector3 start_high{.x = wall.start.x, .y = wall.start.y, .z = high};
     const Vector3 end_low{.x = wall.end.x, .y = wall.end.y, .z = low};
     const Vector3 end_high{.x = wall.end.x, .y = wall.end.y, .z = high};
 
-    const MaterialPlacement placement(wall.surface, materials, {.x = 0.0F, .y = low});
+    const MaterialPlacement placement(surface, materials, {.x = 0.0F, .y = low});
     const auto end_u = -distance(wall.start, wall.end);
     const auto at_start_low = placement({.x = 0.0F, .y = low});
     const auto at_start_high = placement({.x = 0.0F, .y = high});
@@ -123,9 +123,29 @@ void add_wall(std::vector<SectorVertex>& vertices, const Wall& wall, const Secto
     const auto at_end_high = placement({.x = end_u, .y = high});
 
     add_triangle(vertices, {start_low, start_high, end_high},
-                 {at_start_low, at_start_high, at_end_high}, wall.surface.material, wall.sector);
+                 {at_start_low, at_start_high, at_end_high}, surface.material, wall.sector);
     add_triangle(vertices, {start_low, end_high, end_low}, {at_start_low, at_end_high, at_end_low},
-                 wall.surface.material, wall.sector);
+                 surface.material, wall.sector);
+}
+
+// A solid wall stands from the floor to the ceiling. A side of a portal is open between, and only
+// its strips below and above the opening are drawn.
+void add_wall(std::vector<SectorVertex>& vertices, const Map& map, WallId id, const Sector& sector,
+              std::span<const Material> materials) {
+    const auto& wall = map.wall(id);
+    const auto low = sector.floor.height;
+    const auto high = sector.ceiling.height;
+    const auto opening = map.opening(id);
+    if (!opening) {
+        add_wall_band(vertices, wall, wall.surface, low, high, materials);
+        return;
+    }
+    if (low < opening->bottom) {
+        add_wall_band(vertices, wall, wall.lower, low, opening->bottom, materials);
+    }
+    if (opening->top < high) {
+        add_wall_band(vertices, wall, wall.upper, opening->top, high, materials);
+    }
 }
 
 // The floor faces up and the ceiling down, so the floor's triangles run anticlockwise seen from
@@ -174,7 +194,7 @@ SectorGeometry triangulate(const Map& map, std::span<const Material> materials) 
             auto& outline = loops.emplace_back();
             for (const auto wall_id : loop) {
                 const auto& wall = map.wall(wall_id);
-                add_wall(geometry.vertices, wall, sector, materials);
+                add_wall(geometry.vertices, map, wall_id, sector, materials);
                 outline.push_back({wall.start.x, wall.start.y});
                 corners.push_back(wall.start);
             }

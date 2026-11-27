@@ -1,0 +1,1 @@
+loader_only/duplicate_wall_id.map.json:26:19: wall /sectors/0/loops/0/3 already has the id "hall-door" (/sectors/1/loops/0/0/id)

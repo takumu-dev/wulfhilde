@@ -142,7 +142,7 @@ if(WULFHILDE_BENCHMARK_TESTS)
             "${PROJECT_SOURCE_DIR}/tests/content/sectors.map.json"
             --benchmark tour
             --conditions "in CTest"
-        STDOUT_MATCHES "^{.+\"walk\": \"tour\",.+\"width\": 1920,.+\"height\": 1080,.+\"conditions\": \"in CTest\",.+\"load_ms\": {\"parse\": [0-9.]+,.+\"frame_count\": 780,.+\"gpu_ms_by_pass\": {.+\"draws\": {\"p50\": [0-9]+, .+}.}.$"
+        STDOUT_MATCHES "^{.+\"walk\": \"tour\",.+\"width\": 1920,.+\"height\": 1080,.+\"conditions\": \"in CTest\",.+\"load_ms\": {\"parse\": [0-9.]+,.+\"frame_count\": 1170,.+\"gpu_ms_by_pass\": {.+\"draws\": {\"p50\": [0-9]+, .+}.}.$"
     )
     set_tests_properties("viewer: the sectors tour plays in full at 1920x1080 and writes its record"
         PROPERTIES

@@ -82,6 +82,41 @@ inline wulfhilde::MapDescription l_shaped_hall_map() {
     return description;
 }
 
+// The hall with a doorway 2 m wide in its north wall into the gallery, a square sector 4 m on a
+// side from (0, 4) to (4, 8), with the same floor and ceiling.
+//
+// The hall's north wall is split into three walls, and the gallery's south wall likewise, so that
+// the middle ones, the hall's "hall-door" from (3, 4) to (1, 4) and the gallery's "gallery-door"
+// back from (1, 4) to (3, 4), are the sides of the map's one portal. Each sector's walls run
+// anticlockwise from its corner nearest the origin: the hall's are #0 to #5, its door #3, and the
+// gallery's #6 to #11, its door #7.
+inline wulfhilde::MapDescription doorway_map() {
+    auto description = hall_map();
+    description.sectors.at(0) = sector_through("hall", {
+                                                           {.x = 0.0F, .y = 0.0F},
+                                                           {.x = 4.0F, .y = 0.0F},
+                                                           {.x = 4.0F, .y = 4.0F},
+                                                           {.x = 3.0F, .y = 4.0F},
+                                                           {.x = 1.0F, .y = 4.0F},
+                                                           {.x = 0.0F, .y = 4.0F},
+                                                       });
+    description.sectors.at(0).loops.at(0).at(3).id = "hall-door";
+    description.sectors.push_back(sector_through("gallery", {
+                                                                {.x = 0.0F, .y = 4.0F},
+                                                                {.x = 1.0F, .y = 4.0F},
+                                                                {.x = 3.0F, .y = 4.0F},
+                                                                {.x = 4.0F, .y = 4.0F},
+                                                                {.x = 4.0F, .y = 8.0F},
+                                                                {.x = 0.0F, .y = 8.0F},
+                                                            }));
+    description.sectors.at(1).loops.at(0).at(1).id = "gallery-door";
+    description.portals.push_back({
+        .a = {.id = "hall-door"},
+        .b = {.id = "gallery-door"},
+    });
+    return description;
+}
+
 // Makes a map from a description that must be valid, failing the test with its problems if it
 // isn't.
 inline wulfhilde::Map make_map(wulfhilde::MapDescription description) {

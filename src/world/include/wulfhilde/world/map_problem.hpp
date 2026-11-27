@@ -37,18 +37,28 @@ enum class MapProblemCode : std::uint8_t {
     light_level_out_of_range, ///< A light level is below 0, or not a finite number.
     exposure_out_of_range,    ///< An exposure isn't a finite number, or an exposure range's
                               ///< minimum is above its maximum.
-    missing_file,             ///< No file is at the map's asset path.
-    unreadable_file,          ///< The map's file is there, but can't be read.
-    syntax_error,             ///< The map's file isn't JSON.
-    unknown_format,           ///< The file isn't a map: its `format` isn't `wulfhilde-map`.
-    unsupported_version,      ///< The map's `version` isn't one this version of the engine reads.
-    wrong_type,               ///< A value is of the wrong kind, such as a string for a number.
-    wrong_length,             ///< An array has more or fewer elements than it must, such as a
-                              ///< point of three coordinates where a point seen from above belongs.
-    missing_member,           ///< An object lacks a member it must have.
-    unknown_member,           ///< An object has a member that no object of its kind has.
-    duplicate_member,         ///< An object has a member of the same name as an earlier one.
-    number_out_of_range,      ///< A number is beyond what its value can hold.
+    duplicate_wall_id,        ///< A wall has the id of an earlier one.
+    unknown_wall,             ///< A reference names a wall that no wall has the id of.
+    unlike_portal_sides,      ///< A portal links a wall to a floor or a ceiling.
+    unsupported_portal, ///< A portal links floors and ceilings, which this version of the engine
+                        ///< can't make.
+    mismatched_portal_walls, ///< A wall portal's walls don't run between the same corners in
+                             ///< opposite directions.
+    wall_in_two_portals,     ///< A wall is a side of an earlier portal too.
+    missing_file,            ///< No file is at the map's asset path.
+    unreadable_file,         ///< The map's file is there, but can't be read.
+    syntax_error,            ///< The map's file isn't JSON.
+    unknown_format,          ///< The file isn't a map: its `format` isn't `wulfhilde-map`.
+    unsupported_version,     ///< The map's `version` isn't one this version of the engine reads.
+    wrong_type,              ///< A value is of the wrong kind, such as a string for a number.
+    wrong_length,            ///< An array has more or fewer elements than it must, such as a
+                             ///< point of three coordinates where a point seen from above belongs.
+    missing_member,          ///< An object lacks a member it must have.
+    unknown_member,          ///< An object has a member that no object of its kind has.
+    duplicate_member,        ///< An object has a member of the same name as an earlier one.
+    conflicting_members,     ///< An object has two members of which it may have only one, such
+                             ///< as a portal side's `wall` and `floor`.
+    number_out_of_range,     ///< A number is beyond what its value can hold.
 };
 
 /// A problem in a map, found by `Map::create` in its description, or by the assets module in its

@@ -10,7 +10,10 @@
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/map_problem.hpp>
+#include <wulfhilde/world/portal.hpp>
+#include <wulfhilde/world/portal_link.hpp>
 #include <wulfhilde/world/surface.hpp>
+#include <wulfhilde/world/surface_ref.hpp>
 
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -18,6 +21,7 @@
 #include <chrono>
 #include <filesystem>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -32,6 +36,8 @@ using wulfhilde::load_map;
 using wulfhilde::Map;
 using wulfhilde::MapProblemCode;
 using wulfhilde::MaterialId;
+using wulfhilde::PortalId;
+using wulfhilde::PortalLink;
 using wulfhilde::SectorId;
 using wulfhilde::Surface;
 using wulfhilde::WallId;
@@ -103,8 +109,25 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
                               .rotation = Angle::degrees(-45.0F),
                           });
     CHECK(wall.properties == R"({ "switch": "lights" })");
+    CHECK(wall.id == "hall-east");
+    CHECK(wall.upper == Surface{.material = MaterialId{1}, .offset = {.x = 0.0F, .y = 0.5F}});
+    CHECK(wall.lower == wall.surface);
+    CHECK(wall.link == PortalLink{.portal = PortalId{0}, .wall = WallId{6}});
     CHECK(map.wall(WallId{0}).surface == Surface{.material = MaterialId{2}});
     CHECK(map.wall(WallId{0}).properties.empty());
+    CHECK(map.wall(WallId{0}).id == std::nullopt);
+
+    const auto& closet_west = map.wall(WallId{6});
+    CHECK(closet_west.id == "closet-west");
+    CHECK(closet_west.upper == Surface{.material = MaterialId{2}});
+    CHECK(closet_west.lower ==
+          Surface{.material = MaterialId{2}, .rotation = Angle::degrees(90.0F)});
+    CHECK(closet_west.link == PortalLink{.portal = PortalId{0}, .wall = WallId{1}});
+
+    REQUIRE(map.portals().size() == 1);
+    CHECK(map.portal(PortalId{0}).a == wulfhilde::SurfaceRef{WallId{1}});
+    CHECK(map.portal(PortalId{0}).b == wulfhilde::SurfaceRef{WallId{6}});
+    CHECK(map.portal(PortalId{0}).properties == R"({ "sound": "creak" })");
 
     const auto& closet = map.sector(SectorId{1});
     CHECK(closet.id == "closet");
@@ -113,7 +136,7 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     CHECK(closet.properties.empty());
 
     CHECK(map.start().location.sector == SectorId{1});
-    CHECK(map.start().location.point == wulfhilde::Vector3{.x = 11.0F, .y = 0.25F, .z = 0.0F});
+    CHECK(map.start().location.point == wulfhilde::Vector3{.x = 4.5F, .y = 2.0F, .z = 0.0F});
     CHECK(map.start().yaw == Angle::degrees(180.0F));
     CHECK(map.start().pitch == Angle::degrees(-10.0F));
     CHECK(map.exposure() == Exposure{.min = -2.5F, .max = 12.0F, .compensation = 0.5F});
@@ -128,6 +151,9 @@ TEST_CASE("a map's file may leave out every optional member", "[assets]") {
     CHECK(map.exposure() == Exposure{});
     CHECK(map.sector(SectorId{0}).properties.empty());
     CHECK(map.properties().empty());
+    CHECK(map.portals().empty());
+    CHECK(map.wall(WallId{0}).id == std::nullopt);
+    CHECK(map.wall(WallId{0}).upper == map.wall(WallId{0}).surface);
 }
 
 TEST_CASE("a map's file may begin with a byte-order mark", "[assets]") {

@@ -9,6 +9,7 @@
 #include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <format>
@@ -194,16 +195,68 @@ void check_loop_shape(Problems& problems, std::string_view pointer,
     }
 }
 
+/// A wall that has an id, as the checks of portals look it up by it.
+struct NamedWall {
+    /// The wall's JSON pointer.
+    std::string pointer;
+
+    /// Where the wall starts and ends, seen from above.
+    Vector2 start{};
+    Vector2 end{};
+
+    /// Whether both its ends lie within the map's bounds, so that they are numbers.
+    bool in_bounds = false;
+};
+
+/// The walls that have ids, by their ids. Of walls with the same id, the first is kept.
+using NamedWalls = std::unordered_map<std::string_view, NamedWall>;
+
 void check_loop(Problems& problems, std::string_view pointer,
-                const std::vector<WallDescription>& walls) {
+                const std::vector<WallDescription>& walls, NamedWalls& named_walls) {
     auto in_bounds = true;
     std::vector<Vector2> starts;
+    std::vector<bool> starts_in_bounds;
+    // The entry of each wall that is the first with its id, or null. The map's nodes stay put.
+    std::vector<NamedWall*> named;
     for (std::size_t i = 0; const auto& wall : walls) {
         const auto wall_pointer = child(pointer, i++);
-        in_bounds = check_point(problems, child(wall_pointer, "start"), wall.start) && in_bounds;
-        check_asset_path(problems, child(child(wall_pointer, "surface"), "material"),
-                         wall.surface.material);
+        named.push_back(nullptr);
+        if (wall.id) {
+            const auto [first, inserted] =
+                named_walls.try_emplace(*wall.id, NamedWall{.pointer = wall_pointer});
+            if (inserted) {
+                named.back() = &first->second;
+            } else {
+                problems.add(MapProblemCode::duplicate_wall_id, child(wall_pointer, "id"),
+                             std::format(R"(wall {} already has the id "{}")",
+                                         first->second.pointer, *wall.id));
+            }
+        }
+        const auto start_in_bounds =
+            check_point(problems, child(wall_pointer, "start"), wall.start);
+        in_bounds = start_in_bounds && in_bounds;
+        starts_in_bounds.push_back(start_in_bounds);
+        for (const auto& [name, surface] : {
+                 std::pair{"surface", std::optional(wall.surface)},
+                 std::pair{"upper", wall.upper},
+                 std::pair{"lower", wall.lower},
+             }) {
+            if (surface) {
+                check_asset_path(problems, child(child(wall_pointer, name), "material"),
+                                 surface->material);
+            }
+        }
         starts.push_back(wall.start);
+    }
+
+    // Each wall ends where the next one starts.
+    const auto ends = loop_ends(starts);
+    for (std::size_t i = 0; i < walls.size(); ++i) {
+        if (auto* const wall = named.at(i)) {
+            wall->start = starts.at(i);
+            wall->end = ends.at(i);
+            wall->in_bounds = starts_in_bounds.at(i) && starts_in_bounds.at((i + 1) % walls.size());
+        }
     }
     if (walls.size() < 3) {
         problems.add(MapProblemCode::too_few_walls, std::string{pointer},
@@ -215,7 +268,8 @@ void check_loop(Problems& problems, std::string_view pointer,
     }
 }
 
-void check_sector(Problems& problems, std::string_view pointer, const SectorDescription& sector) {
+void check_sector(Problems& problems, std::string_view pointer, const SectorDescription& sector,
+                  NamedWalls& named_walls) {
     check_floor_or_ceiling(problems, child(pointer, "floor"), sector.floor);
     check_floor_or_ceiling(problems, child(pointer, "ceiling"), sector.ceiling);
     check_ambient(problems, child(pointer, "ambient"), sector.ambient);
@@ -225,10 +279,92 @@ void check_sector(Problems& problems, std::string_view pointer, const SectorDesc
                      "the sector has no loops, but needs its outer loop");
         return;
     }
-    check_loop(problems, child(loops_pointer, 0), sector.loops.front());
+    check_loop(problems, child(loops_pointer, 0), sector.loops.front(), named_walls);
     for (const auto i : std::views::iota(std::size_t{1}, sector.loops.size())) {
         problems.add(MapProblemCode::unsupported_inner_loop, child(loops_pointer, i),
                      "the loop is an inner loop, which this version of the engine doesn't support");
+    }
+}
+
+/// Returns the name of a kind of portal side, as the file writes it.
+[[nodiscard]] std::string_view kind_name(PortalSideKind kind) noexcept {
+    switch (kind) {
+    case PortalSideKind::wall:
+        return "wall";
+    case PortalSideKind::floor:
+        return "floor";
+    case PortalSideKind::ceiling:
+        return "ceiling";
+    }
+    return "wall";
+}
+
+/// Returns a point seen from above as a message writes it, `(x, y)`.
+[[nodiscard]] std::string point_text(const Vector2& point) {
+    return std::format("({}, {})", point.x, point.y);
+}
+
+/// Checks that each portal's sides name walls or sectors that exist, that it links like with like,
+/// that no wall is a side of two portals, and that a wall portal's walls run between the same
+/// corners in opposite directions.
+void check_portals(Problems& problems, const std::vector<PortalDescription>& portals,
+                   const NamedWalls& named_walls,
+                   const std::unordered_map<std::string_view, std::size_t>& sectors_by_id) {
+    // The JSON pointer of the portal that each wall is a side of, by the wall's id.
+    std::unordered_map<std::string_view, std::size_t> portal_of_wall;
+    for (std::size_t i = 0; const auto& portal : portals) {
+        const auto pointer = child("/portals", i);
+        std::array<const NamedWall*, 2> walls{};
+        for (auto&& [name, side, wall] :
+             std::views::zip(std::array{"a", "b"}, std::array{&portal.a, &portal.b}, walls)) {
+            const auto side_pointer = child(child(pointer, name), kind_name(side->kind));
+            if (side->kind != PortalSideKind::wall) {
+                if (!sectors_by_id.contains(side->id)) {
+                    problems.add(MapProblemCode::unknown_sector, side_pointer,
+                                 std::format(R"(no sector has the id "{}")", side->id));
+                }
+                continue;
+            }
+            const auto found = named_walls.find(side->id);
+            if (found == named_walls.end()) {
+                problems.add(MapProblemCode::unknown_wall, side_pointer,
+                             std::format(R"(no wall has the id "{}")", side->id));
+                continue;
+            }
+            wall = &found->second;
+            const auto [first, inserted] = portal_of_wall.try_emplace(side->id, i);
+            if (!inserted && first->second != i) {
+                problems.add(MapProblemCode::wall_in_two_portals, side_pointer,
+                             std::format("the wall {} is already a side of {}", wall->pointer,
+                                         child("/portals", first->second)));
+            }
+        }
+
+        const auto a_is_wall = portal.a.kind == PortalSideKind::wall;
+        const auto b_is_wall = portal.b.kind == PortalSideKind::wall;
+        if (a_is_wall != b_is_wall) {
+            problems.add(MapProblemCode::unlike_portal_sides, pointer,
+                         std::format("the portal links a {} to a {}, but walls link only to walls",
+                                     kind_name(portal.a.kind), kind_name(portal.b.kind)));
+        } else if (!a_is_wall) {
+            problems.add(MapProblemCode::unsupported_portal, pointer,
+                         std::format("the portal links a {} to a {}, which this version of the "
+                                     "engine doesn't support",
+                                     kind_name(portal.a.kind), kind_name(portal.b.kind)));
+        }
+
+        const auto [a, b] = walls;
+        // Corners beyond the bounds may not be numbers, so comparing them would mean nothing.
+        if (a != nullptr && b != nullptr && a->in_bounds && b->in_bounds &&
+            (a->start != b->end || a->end != b->start)) {
+            problems.add(MapProblemCode::mismatched_portal_walls, pointer,
+                         std::format("the portal's walls must run between the same corners in "
+                                     "opposite directions, but {} runs from {} to {}, and {} "
+                                     "from {} to {}",
+                                     a->pointer, point_text(a->start), point_text(a->end),
+                                     b->pointer, point_text(b->start), point_text(b->end)));
+        }
+        ++i;
     }
 }
 
@@ -239,6 +375,7 @@ std::vector<MapProblem> find_problems(const MapDescription& description) {
     check_ambient(problems, "/ambient", description.ambient);
     check_exposure(problems, description.exposure);
     std::unordered_map<std::string_view, std::size_t> sectors_by_id;
+    NamedWalls named_walls;
     for (std::size_t i = 0; const auto& sector : description.sectors) {
         const auto pointer = child("/sectors", i);
         const auto [first, inserted] = sectors_by_id.try_emplace(sector.id, i);
@@ -247,9 +384,10 @@ std::vector<MapProblem> find_problems(const MapDescription& description) {
                          std::format(R"(sector {} already has the id "{}")",
                                      child("/sectors", first->second), sector.id));
         }
-        check_sector(problems, pointer, sector);
+        check_sector(problems, pointer, sector, named_walls);
         ++i;
     }
+    check_portals(problems, description.portals, named_walls, sectors_by_id);
 
     if (!sectors_by_id.contains(description.start.sector)) {
         problems.add(MapProblemCode::unknown_sector, "/start/sector",

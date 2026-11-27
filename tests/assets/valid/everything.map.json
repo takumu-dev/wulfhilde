@@ -20,8 +20,10 @@
         [
           { "start": [0, 0], "surface": { "material": "brick" } },
           {
+            "id": "hall-east",
             "start": [4, 0],
             "surface": { "material": "brick/dark", "offset": [1, 2], "scale": [0.5, 4], "rotation": -45 },
+            "upper": { "material": "plaster", "offset": [0, 0.5] },
             "properties": { "switch": "lights" }
           },
           { "start": [4, 4], "surface": { "material": "brick" } },
@@ -39,13 +41,21 @@
       "ceiling": { "height": 2.5, "material": "plaster" },
       "loops": [
         [
-          { "start": [10, 0], "surface": { "material": "brick" } },
-          { "start": [12, 0], "surface": { "material": "brick" } },
-          { "start": [12, 1], "surface": { "material": "brick" } }
+          { "start": [4, 0], "surface": { "material": "brick" } },
+          { "start": [6, 2], "surface": { "material": "brick" } },
+          {
+            "id": "closet-west",
+            "start": [4, 4],
+            "surface": { "material": "brick" },
+            "lower": { "material": "brick", "rotation": 90 }
+          }
         ]
       ]
     }
   ],
-  "start": { "sector": "closet", "point": [11, 0.25, 0], "yaw": 180, "pitch": -10 },
+  "portals": [
+    { "a": { "wall": "hall-east" }, "b": { "wall": "closet-west" }, "properties": { "sound": "creak" } }
+  ],
+  "start": { "sector": "closet", "point": [4.5, 2, 0], "yaw": 180, "pitch": -10 },
   "properties": {}
 }

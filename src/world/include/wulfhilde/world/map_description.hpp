@@ -9,6 +9,7 @@
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/exposure.hpp>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -39,11 +40,24 @@ struct SurfaceDescription {
 
 /// A wall of a loop, which runs from its own start to the start of the next wall in the loop.
 struct WallDescription {
+    /// The wall's name, unique among the map's walls, by which a portal refers to it, or nothing
+    /// for a wall that nothing refers to.
+    std::optional<std::string> id{};
+
     /// Where the wall starts, seen from above, in metres.
     Vector2 start{};
 
-    /// The wall's surface, from the sector's floor to its ceiling.
+    /// The wall's surface, from the sector's floor to its ceiling. A wall that is a side of a
+    /// portal shows it only on its strips, unless they have surfaces of their own.
     SurfaceDescription surface{};
+
+    /// The surface of the wall's upper strip, above its opening where the sector beyond has a lower
+    /// ceiling, or nothing to take `surface`. It applies only to a side of a portal.
+    std::optional<SurfaceDescription> upper{};
+
+    /// The surface of the wall's lower strip, below its opening where the sector beyond has a
+    /// higher floor, or nothing to take `surface`. It applies only to a side of a portal.
+    std::optional<SurfaceDescription> lower{};
 
     /// Game-defined data that the engine keeps and ignores: the JSON text of an object, or empty
     /// for none.
@@ -94,6 +108,43 @@ struct SectorDescription {
     std::string properties{};
 };
 
+/// Which kind of surface a side of a portal is.
+enum class PortalSideKind : std::uint8_t {
+    wall,    ///< A wall, named by its id.
+    floor,   ///< A sector's floor, named by the sector's id.
+    ceiling, ///< A sector's ceiling, named by the sector's id.
+};
+
+/// One side of a portal: a wall, or a sector's floor or ceiling.
+///
+/// The file writes it as an object of one member, named after its kind, whose value is the id,
+/// such as `{ "wall": "hall-door" }`.
+struct PortalSideDescription {
+    /// Which kind of surface the side is.
+    PortalSideKind kind = PortalSideKind::wall;
+
+    /// The id of the wall, or of the sector whose floor or ceiling the side is.
+    std::string id{};
+};
+
+/// A portal, which links one side to the other, so that each side's sector is seen and reached
+/// through it from the other's.
+///
+/// Walls link only to walls. An ordinary wall portal links two walls of different sectors that
+/// run between the same corners in opposite directions, and a wall is a side of one portal at
+/// most. This version of the engine makes wall portals only.
+struct PortalDescription {
+    /// One side of the portal.
+    PortalSideDescription a{};
+
+    /// The other side of the portal.
+    PortalSideDescription b{};
+
+    /// Game-defined data that the engine keeps and ignores: the JSON text of an object, or empty
+    /// for none.
+    std::string properties{};
+};
+
 /// Where and facing which way the player is placed when the map loads.
 ///
 /// The facing is turned from +X by `yaw`, then `pitch`, as everywhere in the engine.
@@ -126,6 +177,9 @@ struct MapDescription {
 
     /// The map's sectors.
     std::vector<SectorDescription> sectors{};
+
+    /// The map's portals, which link sectors.
+    std::vector<PortalDescription> portals{};
 
     /// Where the player starts.
     StartPositionDescription start{};
