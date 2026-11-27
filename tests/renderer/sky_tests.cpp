@@ -107,6 +107,31 @@ wulfhilde::TextureImage patchwork() {
     };
 }
 
+// An equirectangular image blue in its left and right columns, which meet toward -X, and red in
+// the two between them, whose coarser mip levels are white.
+wulfhilde::TextureImage blue_at_its_edges() {
+    return {
+        .path = "blue at its edges",
+        .color_space = wulfhilde::ColorSpace::srgb,
+        .levels =
+            {
+                level(4, 2,
+                      {
+                          blue_texel,
+                          red_texel,
+                          red_texel,
+                          blue_texel,
+                          blue_texel,
+                          red_texel,
+                          red_texel,
+                          blue_texel,
+                      }),
+                level(2, 1, {white_texel, white_texel}),
+                level(1, 1, {white_texel}),
+            },
+    };
+}
+
 // One white texel.
 wulfhilde::TextureImage white() {
     return {
@@ -170,8 +195,9 @@ class View {
     View(wulfhilde::Camera camera, wulfhilde::Image image)
         : camera_(camera), image_(std::move(image)) {}
 
-    // The pixel the point lies in, projected as the renderer projects it.
-    [[nodiscard]] Pixel at(Vector3 point) const {
+    // The pixels within `reach` columns and rows of the one the point lies in, projected as the
+    // renderer projects it.
+    [[nodiscard]] std::vector<Pixel> around(Vector3 point, std::size_t reach) const {
         const auto relative = wulfhilde::rotate(wulfhilde::inverse(camera_.orientation),
                                                 point - camera_.location.point);
         const auto extent = image_.extent();
@@ -182,9 +208,18 @@ class View {
         // Forward, left and up are x, y and z in the camera's own axes.
         const auto x = (1.0F - (horizontal * relative.y / relative.x)) * width / 2.0F;
         const auto y = (1.0F - (vertical * relative.z / relative.x)) * height / 2.0F;
+        const auto margin = static_cast<float>(reach);
         REQUIRE(relative.x > 0.0F);
-        REQUIRE((x >= 0.0F && x < width && y >= 0.0F && y < height));
-        return pixel(static_cast<std::size_t>(x), static_cast<std::size_t>(y));
+        REQUIRE((x >= margin && x < width - margin && y >= margin && y < height - margin));
+        const auto column = static_cast<std::size_t>(x);
+        const auto row = static_cast<std::size_t>(y);
+        std::vector<Pixel> found;
+        for (auto each_row = row - reach; each_row <= row + reach; ++each_row) {
+            for (auto each_column = column - reach; each_column <= column + reach; ++each_column) {
+                found.push_back(pixel(each_column, each_row));
+            }
+        }
+        return found;
     }
 
     // The pixel at the centre of the image, where the camera looks.
@@ -242,7 +277,8 @@ std::string describe(const Pixel& pixel) {
 }
 
 // Checks what the yard's skies show of the quarters in the four diagonal directions, from an eye
-// at its centre, 1.5 m up.
+// at its centre, 1.5 m up, in every pixel within two of where each direction is seen, which all
+// lie well inside its quarter.
 void check_quarters(const View& up, const View& down) {
     struct Seen {
         const View* view = nullptr;
@@ -260,9 +296,10 @@ void check_quarters(const View& up, const View& down) {
              Seen{.view = &down, .point = {.x = 3.0F, .y = 1.0F, .z = 0.0F}, .color = yellow},
              Seen{.view = &down, .point = {.x = 1.0F, .y = 1.0F, .z = 0.0F}, .color = green},
          }) {
-        const auto pixel = seen_by->at(point);
-        CAPTURE(point, describe(pixel));
-        CHECK(shows(pixel, color));
+        for (const auto& pixel : seen_by->around(point, 2)) {
+            CAPTURE(point, describe(pixel));
+            CHECK(shows(pixel, color));
+        }
     }
 }
 
@@ -292,6 +329,24 @@ TEST_CASE_METHOD(GpuTest,
                                             Angle::degrees(90.0F))),
                    view(renderer, camera_at(eye, Angle::degrees(-60.0F), Angle::degrees(-90.0F),
                                             Angle::degrees(45.0F))));
+}
+
+TEST_CASE_METHOD(GpuTest,
+                 "a sky shows its backdrop toward -X, where the image's left and right edges meet, "
+                 "as sharply as anywhere else",
+                 "[renderer]") {
+    const auto map = yard_map();
+    auto renderer = renderer_of(map, yard_assets(blue_at_its_edges()));
+    const Vector3 eye{.x = 2.0F, .y = 2.0F, .z = 1.5F};
+    // Rolled, so that the join crosses the image aslant, through pixels that shade together.
+    const auto toward_minus_x =
+        view(renderer,
+             camera_at(eye, Angle::degrees(180.0F), Angle::degrees(45.0F), Angle::degrees(30.0F)));
+
+    for (const auto& pixel : toward_minus_x.around({.x = 1.0F, .y = 2.0F, .z = 2.5F}, 3)) {
+        CAPTURE(describe(pixel));
+        CHECK(shows(pixel, blue));
+    }
 }
 
 TEST_CASE_METHOD(GpuTest,

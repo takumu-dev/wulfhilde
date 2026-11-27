@@ -81,16 +81,14 @@ float3 backdrop_texel(Texture2D<float4> image, SamplerState image_sampler, float
     let toward = normalize(direction);
     let u = 0.5 - (atan2(toward.y, toward.x) / (2.0 * pi));
     let v = acos(clamp(toward.z, -1.0, 1.0)) / pi;
-    // u wraps from 1 to 0 behind +X, where its derivatives would pick the smallest mip level. The
-    // same u wrapped in front instead is smooth there, so whichever of the two changes less across
-    // the pixels is sampled, by the derivatives of its own.
-    let wrapped_ahead = frac(u + 0.5) - 0.5;
-    let ahead = fwidth(wrapped_ahead) < fwidth(u);
-    let along = ahead ? wrapped_ahead : u;
-    let along_x = ahead ? ddx(wrapped_ahead) : ddx(u);
-    let along_y = ahead ? ddy(wrapped_ahead) : ddy(u);
+    // u wraps from 1 to 0 toward -X, where its derivatives would be nearly a whole turn and pick the
+    // coarsest mip level. Away from there u changes across neighbouring pixels by far less than half
+    // a turn, so its derivatives are taken as the nearest change, less any whole turns.
+    let u_x = ddx(u);
+    let u_y = ddy(u);
     return image
-        .SampleGrad(image_sampler, float2(along, v), float2(along_x, ddx(v)), float2(along_y, ddy(v)))
+        .SampleGrad(image_sampler, float2(u, v), float2(u_x - round(u_x), ddx(v)),
+                    float2(u_y - round(u_y), ddy(v)))
         .rgb;
 }
 
