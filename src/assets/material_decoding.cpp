@@ -279,26 +279,6 @@ std::optional<OcclusionDescription> read_occlusion(const Field& field, JsonFile&
     return description;
 }
 
-/// Reports a member that may not sit beside another.
-struct ReportConflict {
-    /// What the object that has both is, for messages.
-    std::string_view noun;
-
-    /// The member written beside it.
-    std::string_view other;
-
-    /// The member that conflicts with it.
-    std::string_view name;
-
-    std::optional<std::monostate> operator()(const Field& field, JsonFile& file) const {
-        report_at(field, AssetProblemCode::conflicting_members,
-                  std::format("the {} has both {:?} and {:?}, but may have only one of them", noun,
-                              other, name),
-                  file);
-        return std::nullopt;
-    }
-};
-
 std::optional<EmissionDescription> read_emission(const Field& field, JsonFile& file) {
     constexpr std::string_view noun = "emission";
     auto object = ReadObject{.noun = noun}(field, file);

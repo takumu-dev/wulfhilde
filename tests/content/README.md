@@ -31,9 +31,13 @@ finished: open each map in the viewer, and look at what it says needs eyes.
 
 ### `sectors`
 
-One concave sector, the hall: an L of two arms 4 m wide, one 12 m long along X and the other 10 m
+A concave sector, the hall: an L of two arms 4 m wide, one 12 m long along X and the other 10 m
 long along Y, under a ceiling 4 m up, in white ambient light of 250 lux. The player starts in the
 arm along X, facing down it. Its surfaces are dressed in the debug-grid materials of their roles.
+
+At the end of the arm along Y, a doorway 2 m wide opens north into the gallery, a square 4 m on a
+side at the hall's heights. The gallery's whole east wall opens into the bay, another square,
+whose ceiling is a metre higher, so that the bay's side of that opening has an upper strip.
 
 The arm along X has each long side split into walls whose materials lie differently, each lined up
 with its neighbour's grid. Along the south side, from x = 0: a plain wall to x = 4.6; a wall offset
@@ -44,10 +48,12 @@ north side, from x = 12: a wall at twice the size, then from x = 7.5 one turned 
 
 - **Cases**: a concave sector, which no convex piece needs to be cut from; walls that run to the
   right from their starts as they are seen from inside, with height as v; floors and ceilings along
-  X and Y, so the ceiling's grid reads mirrored from below; and a surface's offset, scale and
-  rotation.
+  X and Y, so the ceiling's grid reads mirrored from below; a surface's offset, scale and
+  rotation; and sectors beyond wall portals, seen and walked into through their openings.
 - **Cameras**: `mapping`, from the far end of the arm along X back toward the corner where the arm
   along Y opens, showing both split sides of the arm, the floor and the ceiling.
 - **Needs eyes**: the grids stay sharp along the floor and the walls far down the arm, and blur
   there with `--anisotropy 1`; every label reads the right way round, except on the ceiling, which
-  is mirrored, and on the walls turned 90° and 180°.
+  is mirrored, and on the walls turned 90° and 180°. From the hall, the gallery and the bay show
+  through the doorway with nothing missing at its edges, and the player walks through both openings
+  without a hitch; from the bay, the upper strip shows above the opening into the gallery.

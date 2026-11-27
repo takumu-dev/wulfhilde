@@ -3,6 +3,7 @@
 #include "world_printing.hpp" // IWYU pragma: keep
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/exposure.hpp>
+#include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
@@ -13,6 +14,7 @@
 #include <functional>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 using wulfhilde::AmbientLight;
@@ -158,10 +160,14 @@ TEST_CASE("a material that isn't an asset path is a problem at it", "[world]") {
     auto description = hall_map();
     description.sectors.at(0).ceiling.material = "Test/Ceiling.png";
     description.sectors.at(0).loops.at(0).at(1).surface.material = "test/wall.png";
+    description.sectors.at(0).loops.at(0).at(2).upper = {.material = "test/Upper"};
+    description.sectors.at(0).loops.at(0).at(2).lower = {.material = "test/lower strip"};
     CHECK(problems_in(description) ==
           std::vector<Problem>{
               {MapProblemCode::invalid_asset_path, "/sectors/0/ceiling/material"},
               {MapProblemCode::invalid_asset_path, "/sectors/0/loops/0/1/surface/material"},
+              {MapProblemCode::invalid_asset_path, "/sectors/0/loops/0/2/upper/material"},
+              {MapProblemCode::invalid_asset_path, "/sectors/0/loops/0/2/lower/material"},
           });
 
     description = hall_map();
@@ -430,4 +436,161 @@ TEST_CASE("an exposure range may be a single exposure, below 0 EV100, and compen
 
     description.exposure = {.min = -6.0F, .max = 20.0F, .compensation = 4.5F};
     CHECK(problems_in(description).empty());
+}
+
+TEST_CASE("the hall and the gallery joined by a doorway are a valid map", "[world]") {
+    CHECK(problems_in(doorway_map()).empty());
+}
+
+TEST_CASE("a wall with the id of an earlier one is a problem at its id", "[world]") {
+    auto description = doorway_map();
+    description.sectors.at(1).loops.at(0).at(4).id = "hall-door";
+    description.sectors.at(1).loops.at(0).at(5).id = "hall-door";
+
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{
+              {MapProblemCode::duplicate_wall_id, "/sectors/1/loops/0/4/id"},
+              {MapProblemCode::duplicate_wall_id, "/sectors/1/loops/0/5/id"},
+          });
+    description.sectors.at(1).loops.at(0).at(5).id.reset();
+    CHECK(only_problem_in(description).message ==
+          R"(wall /sectors/0/loops/0/3 already has the id "hall-door")");
+}
+
+TEST_CASE("a portal's side that names no wall, or no sector, is a problem at the name", "[world]") {
+    auto description = doorway_map();
+    description.portals.at(0).b.id = "cellar-door";
+
+    const auto problem = only_problem_in(description);
+    CHECK(problem.code == MapProblemCode::unknown_wall);
+    CHECK(problem.pointer == "/portals/0/b/wall");
+    CHECK(problem.message == R"(no wall has the id "cellar-door")");
+
+    description = doorway_map();
+    description.portals.push_back({
+        .a = {.kind = wulfhilde::PortalSideKind::floor, .id = "cellar"},
+        .b = {.kind = wulfhilde::PortalSideKind::ceiling, .id = "hall"},
+    });
+    CHECK(problems_in(description) == std::vector<Problem>{
+                                          {MapProblemCode::unknown_sector, "/portals/1/a/floor"},
+                                          {MapProblemCode::unsupported_portal, "/portals/1"},
+                                      });
+}
+
+TEST_CASE("a portal that links a wall to a floor or a ceiling is a problem at the portal",
+          "[world]") {
+    for (const auto kind : {wulfhilde::PortalSideKind::floor, wulfhilde::PortalSideKind::ceiling}) {
+        auto description = doorway_map();
+        description.portals.at(0).b = {.kind = kind, .id = "gallery"};
+        CAPTURE(std::to_underlying(kind));
+
+        CHECK(problems_in(description) ==
+              std::vector<Problem>{{MapProblemCode::unlike_portal_sides, "/portals/0"}});
+    }
+    auto description = doorway_map();
+    description.portals.at(0).a = {.kind = wulfhilde::PortalSideKind::ceiling, .id = "hall"};
+    CHECK(only_problem_in(description).message ==
+          "the portal links a ceiling to a wall, but walls link only to walls");
+}
+
+TEST_CASE("a portal between floors and ceilings is a problem at the portal, until they are "
+          "supported",
+          "[world]") {
+    auto description = doorway_map();
+    description.portals.push_back({
+        .a = {.kind = wulfhilde::PortalSideKind::ceiling, .id = "hall"},
+        .b = {.kind = wulfhilde::PortalSideKind::floor, .id = "gallery"},
+    });
+
+    const auto problem = only_problem_in(description);
+    CHECK(problem.code == MapProblemCode::unsupported_portal);
+    CHECK(problem.pointer == "/portals/1");
+    CHECK(problem.message == "the portal links a ceiling to a floor, which this version of the "
+                             "engine doesn't support");
+}
+
+TEST_CASE("a wall portal whose walls don't run between the same corners in opposite directions "
+          "is a problem at the portal",
+          "[world]") {
+    struct Case {
+        std::string name;
+        std::function<void(MapDescription&)> change;
+    };
+
+    const std::vector<Case> cases{
+        {
+            .name = "a side shorter than the other",
+            .change =
+                [](MapDescription& d) {
+                    d.sectors.at(1).loops.at(0).at(2).start = {.x = 2.5F, .y = 4.0F};
+                },
+        },
+        {
+            .name = "a corner a millimetre out",
+            .change =
+                [](MapDescription& d) {
+                    d.sectors.at(1).loops.at(0).at(1).start = {.x = 1.001F, .y = 4.0F};
+                },
+        },
+        {
+            .name = "both walls running the same way",
+            .change = [](MapDescription& d) { d.portals.at(0).b.id = "hall-door"; },
+        },
+    };
+    for (const auto& [name, change] : cases) {
+        auto description = doorway_map();
+        change(description);
+        CAPTURE(name);
+
+        CHECK(problems_in(description) ==
+              std::vector<Problem>{{MapProblemCode::mismatched_portal_walls, "/portals/0"}});
+    }
+    auto description = doorway_map();
+    description.sectors.at(1).loops.at(0).at(2).start = {.x = 2.5F, .y = 4.0F};
+    CHECK(only_problem_in(description).message ==
+          "the portal's walls must run between the same corners in opposite directions, but "
+          "/sectors/0/loops/0/3 runs from (3, 4) to (1, 4), and /sectors/1/loops/0/1 from (1, 4) "
+          "to (2.5, 4)");
+}
+
+TEST_CASE("a wall portal isn't checked for its corners where a wall's corner is beyond the "
+          "map's bounds",
+          "[world]") {
+    auto description = doorway_map();
+    description.sectors.at(1).loops.at(0).at(2).start.x = 5000.0F;
+
+    const auto problems = problems_in(description);
+    CHECK(std::ranges::find(problems, MapProblemCode::mismatched_portal_walls, &Problem::code) ==
+          problems.end());
+}
+
+TEST_CASE("a wall that is a side of an earlier portal is a problem at the later side", "[world]") {
+    auto description = doorway_map();
+    description.sectors.at(1).loops.at(0).at(0).id = "gallery-west";
+    description.portals.push_back({.a = {.id = "gallery-door"}, .b = {.id = "gallery-west"}});
+
+    // The second portal's walls don't meet in reverse either.
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{
+              {MapProblemCode::wall_in_two_portals, "/portals/1/a/wall"},
+              {MapProblemCode::mismatched_portal_walls, "/portals/1"},
+          });
+    const auto map = wulfhilde::Map::create(description);
+    REQUIRE(!map.has_value());
+    CHECK(map.error().problems.at(0).message ==
+          "the wall /sectors/1/loops/0/1 is already a side of /portals/0");
+}
+
+TEST_CASE("problems in portals come after the sectors' and before the start position's",
+          "[world]") {
+    auto description = doorway_map();
+    description.sectors.at(1).ceiling.material = "test/Ceiling";
+    description.portals.at(0).a.id = "front-door";
+    description.start.sector = "yard";
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{
+              {MapProblemCode::invalid_asset_path, "/sectors/1/ceiling/material"},
+              {MapProblemCode::unknown_wall, "/portals/0/a/wall"},
+              {MapProblemCode::unknown_sector, "/start/sector"},
+          });
 }

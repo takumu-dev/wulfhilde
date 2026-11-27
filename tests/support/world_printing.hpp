@@ -10,6 +10,8 @@
 #include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map_problem.hpp>
+#include <wulfhilde/world/opening.hpp>
+#include <wulfhilde/world/portal_link.hpp>
 #include <wulfhilde/world/surface.hpp>
 #include <wulfhilde/world/surface_ref.hpp>
 
@@ -73,5 +75,18 @@ template <> struct Catch::StringMaker<wulfhilde::SurfaceRef> {
             return std::format("the ceiling of sector #{}", ceiling->sector.index());
         }
         return std::format("wall #{}", std::get<wulfhilde::WallId>(surface).index());
+    }
+};
+
+template <> struct Catch::StringMaker<wulfhilde::PortalLink> {
+    static std::string convert(const wulfhilde::PortalLink& link) {
+        return std::format("through portal #{} to wall #{}", link.portal.index(),
+                           link.wall.index());
+    }
+};
+
+template <> struct Catch::StringMaker<wulfhilde::Opening> {
+    static std::string convert(const wulfhilde::Opening& opening) {
+        return std::format("from {} m to {} m", opening.bottom, opening.top);
     }
 };

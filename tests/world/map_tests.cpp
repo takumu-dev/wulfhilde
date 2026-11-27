@@ -8,12 +8,19 @@
 #include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
+#include <wulfhilde/world/portal.hpp>
+#include <wulfhilde/world/portal_link.hpp>
 #include <wulfhilde/world/surface.hpp>
+#include <wulfhilde/world/surface_ref.hpp>
 
+#include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using wulfhilde::AmbientLight;
@@ -21,8 +28,11 @@ using wulfhilde::Angle;
 using wulfhilde::Exposure;
 using wulfhilde::Location;
 using wulfhilde::MaterialId;
+using wulfhilde::PortalId;
+using wulfhilde::PortalLink;
 using wulfhilde::SectorId;
 using wulfhilde::Surface;
+using wulfhilde::SurfaceRef;
 using wulfhilde::Vector2;
 using wulfhilde::WallId;
 
@@ -167,4 +177,68 @@ TEST_CASE("the start position is a location in the sector it names, with a facin
           Location{.sector = SectorId{1}, .point = {.x = 11.5F, .y = 0.25F, .z = 0.0F}});
     CHECK(map.start().yaw == Angle::degrees(135.0F));
     CHECK(map.start().pitch == Angle::degrees(-10.0F));
+}
+
+TEST_CASE("a portal has the walls it links as its sides, and keeps its properties", "[world]") {
+    auto description = doorway_map();
+    description.portals.at(0).properties = R"({"locked": false})";
+    const auto map = make_map(description);
+
+    REQUIRE(map.portals().size() == 1);
+    const auto& portal = map.portal(PortalId{0});
+    CHECK(portal.a == SurfaceRef{WallId{3}});
+    CHECK(portal.b == SurfaceRef{WallId{7}});
+    CHECK(portal.properties == R"({"locked": false})");
+}
+
+TEST_CASE("each side of a portal links through it to the other, and a solid wall links nowhere",
+          "[world]") {
+    const auto map = make_map(doorway_map());
+
+    CHECK(map.wall(WallId{3}).link == PortalLink{.portal = PortalId{0}, .wall = WallId{7}});
+    CHECK(map.wall(WallId{7}).link == PortalLink{.portal = PortalId{0}, .wall = WallId{3}});
+    CHECK(map.wall(WallId{7}).sector == SectorId{1});
+    for (const auto solid : {WallId{0}, WallId{2}, WallId{4}, WallId{6}, WallId{8}}) {
+        CAPTURE(solid);
+        CHECK(map.wall(solid).link == std::nullopt);
+    }
+}
+
+TEST_CASE("a map without portals has none", "[world]") {
+    CHECK(make_map(hall_map()).portals().empty());
+}
+
+TEST_CASE("a wall keeps its id, if it has one", "[world]") {
+    const auto map = make_map(doorway_map());
+    CHECK(map.wall(WallId{3}).id == "hall-door");
+    CHECK(map.wall(WallId{7}).id == "gallery-door");
+    CHECK(map.wall(WallId{0}).id == std::nullopt);
+}
+
+TEST_CASE("a wall's strips have surfaces of their own, or else the wall's", "[world]") {
+    auto description = doorway_map();
+    auto& door = description.sectors.at(0).loops.at(0).at(3);
+    door.surface = {.material = "test/door", .scale = {.x = 2.0F, .y = 2.0F}};
+    door.upper = {.material = "test/lintel", .offset = {.y = 0.5F}};
+    description.sectors.at(1).loops.at(0).at(1).lower = {
+        .material = "test/sill",
+        .rotation = Angle::degrees(90.0F),
+    };
+    const auto map = make_map(description);
+
+    const auto material = [&map](std::string_view path) {
+        const auto materials = map.materials();
+        return MaterialId{
+            static_cast<std::uint32_t>(std::ranges::find(materials, path) - materials.begin())};
+    };
+    const auto& hall_door = map.wall(WallId{3});
+    CHECK(hall_door.surface ==
+          Surface{.material = material("test/door"), .scale = {.x = 2.0F, .y = 2.0F}});
+    CHECK(hall_door.upper == Surface{.material = material("test/lintel"), .offset = {.y = 0.5F}});
+    CHECK(hall_door.lower == hall_door.surface);
+
+    const auto& gallery_door = map.wall(WallId{7});
+    CHECK(gallery_door.upper == Surface{.material = material("test/wall")});
+    CHECK(gallery_door.lower ==
+          Surface{.material = material("test/sill"), .rotation = Angle::degrees(90.0F)});
 }

@@ -9,6 +9,9 @@ wulfhilde_add_module(world
         include/wulfhilde/world/map_description.hpp
         include/wulfhilde/world/map_load_error.hpp
         include/wulfhilde/world/map_problem.hpp
+        include/wulfhilde/world/opening.hpp
+        include/wulfhilde/world/portal.hpp
+        include/wulfhilde/world/portal_link.hpp
         include/wulfhilde/world/sector.hpp
         include/wulfhilde/world/start_position.hpp
         include/wulfhilde/world/surface.hpp

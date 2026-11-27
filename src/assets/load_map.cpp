@@ -51,6 +51,7 @@ MapProblemCode map_problem_code(AssetProblemCode code) {
     case AssetProblemCode::number_out_of_range:
         return MapProblemCode::number_out_of_range;
     case AssetProblemCode::conflicting_members:
+        return MapProblemCode::conflicting_members;
     case AssetProblemCode::member_without_texture:
     case AssetProblemCode::unknown_channel:
     case AssetProblemCode::invalid_asset_path:

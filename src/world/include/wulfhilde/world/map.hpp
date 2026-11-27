@@ -9,6 +9,8 @@
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/map_load_error.hpp>
+#include <wulfhilde/world/opening.hpp>
+#include <wulfhilde/world/portal.hpp>
 #include <wulfhilde/world/sector.hpp>
 #include <wulfhilde/world/start_position.hpp>
 #include <wulfhilde/world/trace.hpp>
@@ -52,6 +54,15 @@ class Map {
     /// \return The wall.
     [[nodiscard]] const Wall& wall(WallId wall) const;
 
+    /// Returns the map's portals, each at the index of its ID.
+    [[nodiscard]] std::span<const Portal> portals() const noexcept { return portals_; }
+
+    /// Returns one of the map's portals.
+    ///
+    /// \param portal The portal's ID, which this map issued.
+    /// \return The portal.
+    [[nodiscard]] const Portal& portal(PortalId portal) const;
+
     /// Returns where the player starts.
     [[nodiscard]] const StartPosition& start() const noexcept { return start_; }
 
@@ -85,12 +96,22 @@ class Map {
     /// \return The height of the ceiling at the point's X and Y, in metres.
     [[nodiscard]] float ceiling_height(const Location& location) const;
 
+    /// Returns the opening of a wall that is a side of a portal, through which the sector beyond is
+    /// seen and reached.
+    ///
+    /// \param wall The wall's ID, which this map issued.
+    /// \return The opening, from the higher of the two sectors' floors to the lower of their
+    ///         ceilings, or nothing for a solid wall.
+    [[nodiscard]] std::optional<Opening> opening(WallId wall) const;
+
     /// Moves a location in a straight line through the map, stopping at the first surface it meets.
     ///
     /// Surfaces are met from the front only: a wall from inside its sector, a floor moving down and
-    /// a ceiling moving up. A trace that starts on a surface and moves into it stops at once, one
-    /// that ends exactly on a surface has met it, and one through a corner stops at one of the
-    /// corner's walls.
+    /// a ceiling moving up. A trace that reaches a wall portal within its opening, its edges
+    /// included, carries on into the sector beyond, and one that reaches it above or below meets
+    /// the strip there, which is the wall. A trace that starts on a surface and moves into it stops
+    /// at once, one that ends exactly on a surface has met it, and one through a corner stops at
+    /// one of the corner's walls, a solid one before an opening.
     ///
     /// \param from Where the trace starts, whose sector this map issued.
     /// \param motion How far the trace moves and which way, in the coordinates of the start's
@@ -113,6 +134,12 @@ class Map {
     /// \param start Where the player starts.
     explicit Map(const StartPosition& start) noexcept : start_(start) {}
 
+    /// Returns one of the map's walls to change, for `create` to link.
+    ///
+    /// \param wall The wall's ID, which this map issued.
+    /// \return The wall.
+    Wall& wall_at(WallId wall);
+
     /// The sectors, by ID.
     std::vector<Sector> sectors_;
 
@@ -121,6 +148,9 @@ class Map {
 
     /// The walls, by ID.
     std::vector<Wall> walls_;
+
+    /// The portals, by ID.
+    std::vector<Portal> portals_;
 
     /// The asset path of each material, by ID.
     std::vector<std::string> materials_;
