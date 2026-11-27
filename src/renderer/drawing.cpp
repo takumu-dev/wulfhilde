@@ -111,7 +111,7 @@ constexpr VkBufferUsageFlags shader_buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFE
 // first and after each.
 constexpr std::array<std::string_view, 3> timed_passes{"main", "exposure", "resolve"};
 
-constexpr std::uint32_t timestamp_count = timed_passes.size() + 1;
+constexpr auto timestamp_count = narrow<std::uint32_t>(timed_passes.size() + 1);
 
 // From a camera's sector's coordinates into Vulkan's clip space: x to the right, y down, and depth
 // from 1 at the near plane to 0 infinitely far away.
