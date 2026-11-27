@@ -1,5 +1,5 @@
-// A map's sectors as triangles, worked out once when the map is set, each sector's triangles in a
-// range of vertices of its own.
+// A map's sectors as triangles, worked out once when the map is set, each surface's triangles in a
+// range of vertices of its own, and each sector's surfaces one after another.
 #pragma once
 
 #include <wulfhilde/assets/material.hpp>
@@ -27,16 +27,27 @@ struct SectorVertex {
     std::uint32_t sector = 0;
 };
 
-/// The vertices of one sector's triangles, among those of the whole map.
-struct VertexRange {
+/// A run of items in a list: the index of the first, and how many there are.
+struct Range {
     std::size_t first = 0;
     std::size_t count = 0;
 };
 
-/// A map's sectors as lists of triangles, each sector's in the range at its ID's index.
+/// The triangles of one surface: their vertices among those of the whole map, and the box that
+/// holds them, along the axes of their sector's coordinates, from its lowest corner to its highest.
+struct SurfaceTriangles {
+    Range vertices;
+    Vector3 lowest;
+    Vector3 highest;
+};
+
+/// A map's sectors as lists of triangles, surface by surface: each wall's strips or the whole wall,
+/// then the floor, then the ceiling. Each sector's surfaces are those in the range at its ID's
+/// index.
 struct SectorGeometry {
     std::vector<SectorVertex> vertices;
-    std::vector<VertexRange> sectors;
+    std::vector<SurfaceTriangles> surfaces;
+    std::vector<Range> sectors;
 };
 
 /// Triangulates every sector of a map: each solid wall as two triangles from the floor to the

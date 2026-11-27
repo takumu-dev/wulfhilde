@@ -39,7 +39,8 @@ struct FrameMeasurement {
     /// How many shadow maps the frame rendered.
     std::size_t shadow_maps = 0;
 
-    /// How many draws the frame's views recorded for the map's surfaces.
+    /// How many draws the frame's views made for the map's surfaces: one for each surface seen, a
+    /// strip or a whole wall, a floor or a ceiling, in each view that sees it.
     std::size_t draws = 0;
 
     /// The device memory the renderer held once the frame was done, in bytes: what it allocated

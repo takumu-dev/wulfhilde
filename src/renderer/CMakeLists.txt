@@ -39,6 +39,8 @@ wulfhilde_add_module(renderer
         owned_handle.hpp
         pipelines.cpp
         pipelines.hpp
+        portal_traversal.cpp
+        portal_traversal.hpp
         presentation.cpp
         presentation.hpp
         renderer.cpp
@@ -79,6 +81,7 @@ wulfhilde_renderer_settings(wulfhilde_renderer)
 
 wulfhilde_add_shaders(wulfhilde_renderer
     SOURCES
+        shaders/culling.slang
         shaders/metering.slang
         shaders/resolve.slang
         shaders/sectors.slang
