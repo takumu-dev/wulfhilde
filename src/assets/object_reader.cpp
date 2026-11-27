@@ -7,6 +7,7 @@
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
+#include <wulfhilde/world/asset_path.hpp>
 
 #include <pedantjson/pedantjson.hpp>
 
@@ -159,6 +160,36 @@ std::optional<std::monostate> ReportConflict::operator()(const Field& field, Jso
                           other, name),
               file);
     return std::nullopt;
+}
+
+std::string_view number_text(const Field& field) {
+    return field.value.as_number().transform(&pedantjson::Number::text).value_or("");
+}
+
+std::optional<float> read_nits(const Field& field, JsonFile& file) {
+    return read_number_in(
+        field, file, [](float value) { return value >= 0.0F; },
+        AssetProblemCode::light_level_out_of_range,
+        [](std::string_view text) {
+            return std::format("{} nits isn't a light level, which is 0 or more", text);
+        });
+}
+
+std::optional<ImageReference> read_image_reference(const Field& field, JsonFile& file) {
+    auto path = read_string(field, file);
+    if (!path) {
+        return std::nullopt;
+    }
+    // A path that isn't an asset path may lead out of the content root.
+    if (!is_asset_path(*path)) {
+        report_at(field, AssetProblemCode::invalid_asset_path,
+                  std::format(R"("{}" isn't an asset path, which is segments of a-z, 0-9, _ and - )"
+                              "separated by / and without an extension",
+                              *path),
+                  file);
+        return std::nullopt;
+    }
+    return ImageReference{.path = std::move(*path), .field = field};
 }
 
 std::optional<std::vector<Field>> read_array(const Field& field, JsonFile& file) {

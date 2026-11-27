@@ -7,8 +7,8 @@ cases side by side, and every one of them loads without a problem. The viewer op
 wulfhilde-viewer tests/content/sectors.map.json
 ```
 
-Every map here passes `schema/map.schema.json`, and every material `schema/material.schema.json`,
-which the `lint` preset checks. The viewer's tests load each map and its assets through the assets
+Every map here passes `schema/map.schema.json`, every material `schema/material.schema.json` and
+every backdrop `schema/backdrop.schema.json`, which the `lint` preset checks. The viewer's tests load each map and its assets through the assets
 module, and render each map's cameras, comparing each image with its reference in
 `tests/viewer/references/<map>/<camera>.png`. Each map has a timed benchmark walk, which
 `wulfhilde-viewer <map> --benchmark <walk>` plays, apart from the goal-based walks of the viewer's
@@ -20,7 +20,11 @@ one for each role a surface plays: `floor`, `ceiling`, `wall`, `upper_strip`, `l
 `portal_side` for the solid part of a transformed portal's side. Each is a 512 px colour texture
 covering 1 m, in a colour of its own, ruled every metre and every 0.25 m, with arrows along +u and
 +v from the corner where they start, and the role's name. To change them, change the script, run
-it, and commit what it writes:
+it, and commit what it writes. It writes the debug compass backdrops in `backdrops/` too, one in
+blue and one in amber, each an equirectangular image of 1024 by 512 px at 2,000 nits: a sky of its
+tint above a darker ground, with a dark line along the horizon, rings every 30° of elevation, a
+meridian every 45° of turn, `+X`, `+Y`, `-X` and `-Y` at 15° and 45° above and below the horizon,
+a light cap straight up and a dark cap straight down.
 
 ```sh
 python3 tests/content/write_debug_content.py
@@ -62,3 +66,25 @@ north side, from x = 12: a wall at twice the size, then from x = 7.5 one turned 
   is mirrored, and on the walls turned 90° and 180°. From the hall, the gallery and the bay show
   through the doorway with nothing missing at its edges, and the player walks through both openings
   without a hitch; from the bay, the upper strip shows above the opening into the gallery.
+
+### `outdoors`
+
+The yard, a square 8 m on a side under a blue compass sky 6 m up, opens east across its whole wall
+into the field, another square under the amber compass sky, shown at 500 nits rather than the
+backdrop's 2,000. Both lie in white ambient light of 10,000 lux. The player starts in the yard,
+facing south over its edge, where an abyss 6 m across falls to a sky floor 8 m down that shows the
+blue backdrop's lower half. A bridge 2 m wide crosses the abyss at the yard's height to the ledge
+beyond, and the abyss's walls beside the bridge, the yard and the ledge are their lower strips.
+
+- **Cases**: two neighbouring skies of different backdrops, one at nits of its own; skies fixed to
+  their sectors' coordinates, which share the same axes through ordinary portals, so the meridians
+  and rings carry on across the opening; and a sky floor that a body falls onto and stands on.
+- **Cameras**: `skies`, from the yard's west side, east and up across the opening into the field;
+  `abyss`, from the yard's edge, down into the abyss beside the bridge.
+- **Benchmark walk**: `tour`, 11.25 s: south across the bridge to the ledge, back into the yard,
+  then east into the field, turning to look back.
+- **Needs eyes**: `+X` stands at the meridian straight east of the yard, `+Y` to its left and the
+  light cap straight up; the meridians and rings run on unbroken from the yard's sky into the
+  field's, which is dimmer; no line shows down the backdrop's seam behind `-X`; looking down from
+  the bridge, the abyss shows the ground's labels and the dark cap; and a player who steps off the
+  bridge falls and stands on the abyss's floor.

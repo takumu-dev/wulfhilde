@@ -18,6 +18,7 @@
 #include <wulfhilde/core/matrix4.hpp>
 #include <wulfhilde/core/narrow.hpp>
 #include <wulfhilde/core/rigid_transform.hpp>
+#include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/core/vector4.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/device_error.hpp>
@@ -56,6 +57,7 @@ namespace {
 struct MaterialShading {
     Color base_color;
     DescriptorHandle color_texture;
+    std::uint32_t sky = 0;
 };
 
 // The C++ twin of the sector shaders' `SectorShading`.
@@ -70,6 +72,9 @@ struct SceneConstants {
     std::uint64_t materials = 0;
     std::uint64_t sectors = 0;
     DescriptorHandle texture_sampler;
+    Vector3 eye;
+    DescriptorHandle backdrop_sampler;
+    float unused = 0.0F;
 };
 
 // The C++ twin of the resolve shaders' push constants.
@@ -278,17 +283,19 @@ upload_textures(Device& device, std::span<const TextureImage* const> images) {
     return textures;
 }
 
-// Makes the sampler that reads every texture: repeating, filtered trilinearly between mip levels,
-// and anisotropically with up to the given number of samples, where more than one.
-std::expected<SamplerHandle, DeviceError> create_texture_sampler(const Device& device,
-                                                                 std::size_t anisotropy) {
+// Makes a sampler that reads textures, filtered trilinearly between mip levels, and anisotropically
+// with up to the given number of samples, where more than one. Textures repeat along u, and along v
+// as the address mode says.
+std::expected<SamplerHandle, DeviceError>
+create_texture_sampler(const Device& device, std::size_t anisotropy,
+                       VkSamplerAddressMode address_v = VK_SAMPLER_ADDRESS_MODE_REPEAT) {
     const VkSamplerCreateInfo info{
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = VK_FILTER_LINEAR,
         .minFilter = VK_FILTER_LINEAR,
         .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
         .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeV = address_v,
         .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .anisotropyEnable = anisotropy > 1 ? VK_TRUE : VK_FALSE,
         .maxAnisotropy = static_cast<float>(anisotropy),
@@ -296,7 +303,7 @@ std::expected<SamplerHandle, DeviceError> create_texture_sampler(const Device& d
     };
     VkSampler sampler = VK_NULL_HANDLE;
     if (const auto error = failure(vkCreateSampler(device.get(), &info, nullptr, &sampler),
-                                   "creating the textures' sampler")) {
+                                   "creating a sampler of textures")) {
         return std::unexpected(*error);
     }
     return SamplerHandle(device.get(), sampler);
@@ -498,6 +505,12 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
     if (!sampler) {
         return std::unexpected(std::move(sampler).error());
     }
+    // A backdrop's image goes once around, but only from straight up to straight down.
+    auto backdrop_sampler =
+        create_texture_sampler(device, settings.anisotropy, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    if (!backdrop_sampler) {
+        return std::unexpected(std::move(backdrop_sampler).error());
+    }
     auto metering = Metering::create(device, settings);
     if (!metering) {
         return std::unexpected(std::move(metering).error());
@@ -511,19 +524,25 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
         timestamps = std::move(*made);
     }
     const auto sampler_descriptor = device.descriptors().add_sampler(sampler->get());
+    const auto backdrop_sampler_descriptor =
+        device.descriptors().add_sampler(backdrop_sampler->get());
     return std::make_unique<Drawing>(
         Key{}, samples,
         std::make_unique<Pipelines>(std::move(*scene), std::move(*gather), std::move(*meter),
                                     std::move(*resolve), std::move(present)),
-        std::move(*sampler), sampler_descriptor, std::move(*metering), std::move(timestamps));
+        std::move(*sampler), sampler_descriptor, std::move(*backdrop_sampler),
+        backdrop_sampler_descriptor, std::move(*metering), std::move(timestamps));
 }
 
 Drawing::Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
                  SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor,
+                 SamplerHandle backdrop_sampler, DescriptorHandle backdrop_sampler_descriptor,
                  std::unique_ptr<Metering> metering, QueryPoolHandle timestamps) noexcept
     : samples_(samples), pipelines_(std::move(pipelines)),
       texture_sampler_(std::move(texture_sampler)), sampler_descriptor_(sampler_descriptor),
-      metering_(std::move(metering)), timestamps_(std::move(timestamps)) {}
+      backdrop_sampler_(std::move(backdrop_sampler)),
+      backdrop_sampler_descriptor_(backdrop_sampler_descriptor), metering_(std::move(metering)),
+      timestamps_(std::move(timestamps)) {}
 
 Drawing::~Drawing() = default;
 
@@ -559,13 +578,24 @@ std::expected<void, DeviceError> Drawing::set_map(Device& device, const Map& map
     }
     const auto white = texture_descriptors_.at(assets.images.size());
 
+    // The materials, then each sky, which shades its backdrop's image at its own nits or else the
+    // backdrop's.
     std::vector<MaterialShading> materials;
-    materials.reserve(assets.materials.size());
+    materials.reserve(assets.materials.size() + triangles.skies.size());
     for (const auto& material : assets.materials) {
         materials.push_back({
             .base_color = material.color.factor,
             .color_texture =
                 material.color.texture ? texture_descriptors_.at(*material.color.texture) : white,
+        });
+    }
+    for (const auto& sky : triangles.skies) {
+        const auto& backdrop = assets.backdrops.at(sky.backdrop.index());
+        const auto nits = sky.nits.value_or(backdrop.nits);
+        materials.push_back({
+            .base_color = {.r = nits, .g = nits, .b = nits},
+            .color_texture = texture_descriptors_.at(backdrop.image),
+            .sky = 1,
         });
     }
     std::vector<SectorShading> sectors;
@@ -628,6 +658,8 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands, cons
         .materials = geometry_->materials.address(),
         .sectors = geometry_->sectors.address(),
         .texture_sampler = sampler_descriptor_,
+        .eye = camera.location.point,
+        .backdrop_sampler = backdrop_sampler_descriptor_,
     };
     const ResolveConstants resolve_constants{
         .scene = targets_->scene_descriptor,

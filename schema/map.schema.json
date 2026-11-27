@@ -163,10 +163,31 @@
         "rotation": { "$ref": "#/$defs/rotation" }
       }
     },
-    "floorOrCeiling": {
-      "description": "A sector's floor or ceiling: the height it lies at, and the material that covers it, with u and v along X and Y.",
+    "sky": {
+      "description": "A sky, which shows an infinitely distant backdrop instead of a material. The backdrop is fixed to the sector's coordinates.",
       "type": "object",
-      "required": ["height", "material"],
+      "required": ["backdrop"],
+      "additionalProperties": false,
+      "properties": {
+        "backdrop": {
+          "description": "The asset path of the backdrop, a file ending .backdrop.json under the content root, in /-separated segments of a-z, 0-9, _ and -, without the extension.",
+          "$ref": "#/$defs/assetPath"
+        },
+        "nits": {
+          "description": "The luminance of the backdrop's white, in nits, in place of the backdrop's own.",
+          "$ref": "#/$defs/number",
+          "minimum": 0
+        }
+      }
+    },
+    "floorOrCeiling": {
+      "description": "A sector's floor or ceiling: the height it lies at, and either the material that covers it, with u and v along X and Y, or a sky, but not both.",
+      "type": "object",
+      "required": ["height"],
+      "oneOf": [{ "required": ["material"] }, { "required": ["sky"] }],
+      "dependentSchemas": {
+        "sky": { "properties": { "offset": false, "scale": false, "rotation": false } }
+      },
       "additionalProperties": false,
       "properties": {
         "height": {
@@ -176,7 +197,8 @@
         "material": { "$ref": "#/$defs/materialPath" },
         "offset": { "$ref": "#/$defs/offset" },
         "scale": { "$ref": "#/$defs/scale" },
-        "rotation": { "$ref": "#/$defs/rotation" }
+        "rotation": { "$ref": "#/$defs/rotation" },
+        "sky": { "$ref": "#/$defs/sky" }
       }
     },
     "wall": {

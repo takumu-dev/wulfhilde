@@ -4,6 +4,7 @@
 #include "world_printing.hpp" // IWYU pragma: keep
 #include <wulfhilde/assets/asset_error.hpp>
 #include <wulfhilde/assets/asset_problem.hpp>
+#include <wulfhilde/assets/backdrop.hpp>
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/map_assets.hpp>
 #include <wulfhilde/assets/material.hpp>
@@ -29,6 +30,7 @@
 #include <vector>
 
 using wulfhilde::AssetProblemCode;
+using wulfhilde::Backdrop;
 using wulfhilde::Channel;
 using wulfhilde::Color;
 using wulfhilde::ColorSpace;
@@ -69,6 +71,39 @@ Map map_of(const std::string& floor, const std::string& ceiling, const std::stri
 // A map whose every surface carries one material.
 Map map_of(const std::string& material) { return map_of(material, material, material); }
 
+// The content root of the backdrops tests, whose images are the materials tests'.
+ContentRoot assets_root() { return open_root(test_files()); }
+
+// A map of one square sector whose floor and ceiling are skies of the backdrops given, or carry
+// the material its walls carry where none is given.
+Map map_under(const std::optional<std::string>& floor, const std::optional<std::string>& ceiling,
+              const std::string& wall = "materials/valid/plain") {
+    const auto surface = [&wall](float x, float y) {
+        return wulfhilde::WallDescription{.start = {.x = x, .y = y}, .surface = {.material = wall}};
+    };
+    const auto cover = [&wall](float height, const std::optional<std::string>& backdrop) {
+        wulfhilde::FloorOrCeilingDescription description{.height = height, .material = wall};
+        if (backdrop) {
+            description.sky = wulfhilde::SkyDescription{.backdrop = *backdrop};
+        }
+        return description;
+    };
+    auto map = Map::create({
+        .sectors =
+            {
+                {
+                    .id = "yard",
+                    .floor = cover(0.0F, floor),
+                    .ceiling = cover(3.0F, ceiling),
+                    .loops = {{surface(0, 0), surface(4, 0), surface(4, 4), surface(0, 4)}},
+                },
+            },
+        .start = {.sector = "yard", .point = {.x = 2.0F, .y = 2.0F, .z = 0.0F}},
+    });
+    REQUIRE(map.has_value());
+    return std::move(*map);
+}
+
 MapAssets load_valid(const ContentRoot& root, const Map& map) {
     auto assets = load_map_assets(root, map);
     if (!assets) {
@@ -107,6 +142,15 @@ void write_material_reading(const std::filesystem::path& directory, std::string_
     }
     write_text(directory / std::format("{}.material.json", material),
                std::format("{{ {} }}", members));
+}
+
+// Writes a backdrop of an image at a brightness.
+void write_backdrop(const std::filesystem::path& directory, std::string_view name,
+                    std::string_view image, float nits) {
+    write_text(directory / std::format("{}.backdrop.json", name),
+               std::format(R"({{ "format": "wulfhilde-backdrop", "version": 1, "image": "{}", )"
+                           R"("nits": {} }})",
+                           image, nits));
 }
 
 // Writes a PNG of 8-bit red, green and blue, rows from the top.
@@ -394,4 +438,85 @@ TEST_CASE("an image's colour space comes from the property that reads it, never 
     CHECK(assets.images.at(0).color_space == ColorSpace::srgb);
     CHECK(assets.images.at(0).levels.at(0).texels == texels({0, 0, 0, 255, 255, 255, 255, 255}));
     CHECK(assets.images.at(0).levels.at(1).texels == texels({188, 188, 188, 255}));
+}
+
+TEST_CASE("a backdrop loads as its brightness and its image, read as a colour", "[assets]") {
+    const auto assets = load_valid(assets_root(), map_under(std::nullopt, "backdrops/valid/plain"));
+
+    CHECK(assets.backdrops == std::vector<Backdrop>{{.nits = 1'000.0F, .image = 0}});
+    REQUIRE(assets.images.size() == 1);
+    CHECK(assets.images.at(0).path == "materials/textures/rgb");
+    CHECK(assets.images.at(0).color_space == ColorSpace::srgb);
+    CHECK(assets.images.at(0).levels.at(0).width == 2);
+}
+
+TEST_CASE("each invalid backdrop reports exactly the problems written beside it", "[assets]") {
+    const auto root = assets_root();
+    const auto invalid = test_files() / "backdrops" / "invalid";
+    const auto backdrops = asset_paths(invalid, wulfhilde::backdrop_extension);
+    CHECK(backdrops == asset_paths(invalid, ".expected"));
+    CHECK(backdrops.size() >= 15);
+
+    for (const auto& path : backdrops) {
+        CAPTURE(path);
+        const auto assets =
+            load_map_assets(root, map_under(std::nullopt, "backdrops/invalid/" + path));
+        REQUIRE(!assets.has_value());
+        CHECK(std::format("{}\n", assets.error()) == read_text(invalid / (path + ".expected")));
+    }
+}
+
+TEST_CASE("the backdrops are held by the IDs the map gives them", "[assets]") {
+    const auto assets =
+        load_valid(assets_root(), map_under("backdrops/valid/grey", "backdrops/valid/plain"));
+
+    CHECK(assets.backdrops == std::vector<Backdrop>{
+                                  {.nits = 0.5F, .image = 0},
+                                  {.nits = 1'000.0F, .image = 1},
+                              });
+    REQUIRE(assets.images.size() == 2);
+    CHECK(assets.images.at(0).path == "materials/textures/grey");
+    CHECK(assets.images.at(1).path == "materials/textures/rgb");
+}
+
+TEST_CASE("a missing backdrop is reported once, at the first sky that shows it", "[assets]") {
+    const auto assets =
+        load_map_assets(assets_root(), map_under("backdrops/missing", "backdrops/missing"));
+
+    REQUIRE(!assets.has_value());
+    REQUIRE(assets.error().problems.size() == 1);
+    CHECK(assets.error().problems.at(0).code == AssetProblemCode::missing_file);
+    CHECK(
+        std::format("{}", assets.error()) ==
+        "there is no file at \"backdrops/missing.backdrop.json\" (/sectors/0/floor/sky/backdrop)");
+}
+
+TEST_CASE("every problem in every material and backdrop is reported at once, the materials' first",
+          "[assets]") {
+    const auto assets = load_map_assets(
+        assets_root(), map_under("backdrops/invalid/wrong_type",
+                                 "backdrops/invalid/nits_out_of_range", "materials/missing"));
+
+    REQUIRE(!assets.has_value());
+    const auto invalid = test_files() / "backdrops" / "invalid";
+    CHECK(std::format("{}\n", assets.error()) ==
+          "there is no file at \"materials/missing.material.json\" "
+          "(/sectors/0/loops/0/0/surface/material)\n" +
+              read_text(invalid / "wrong_type.expected") +
+              read_text(invalid / "nits_out_of_range.expected"));
+}
+
+TEST_CASE("an image that a material and a backdrop both read as a colour is held once",
+          "[assets]") {
+    const auto directory = scratch_directory("load_map_assets_backdrop_image");
+    write_rgb_png(directory / "bricks.png", 2, 1, {10, 20, 30, 40, 50, 60});
+    write_color_material(directory, "wall", "bricks");
+    write_backdrop(directory, "painted", "bricks", 20.0F);
+
+    const auto assets =
+        load_valid(open_root(directory), map_under(std::nullopt, "painted", "wall"));
+
+    CHECK(assets.images.size() == 1);
+    CHECK(assets.materials.at(0).color.texture == 0);
+    CHECK(assets.backdrops == std::vector<Backdrop>{{.nits = 20.0F, .image = 0}});
 }

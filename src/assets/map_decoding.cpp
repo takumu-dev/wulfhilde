@@ -15,6 +15,7 @@
 #include <pedantjson/pedantjson.hpp>
 
 #include <array>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -55,11 +56,10 @@ std::optional<Exposure> read_exposure(const Field& field, JsonFile& file) {
     return exposure;
 }
 
-/// Reads the members that say which material covers a surface and how it lies there, which a wall's
-/// surface and a floor or a ceiling share, into a description that holds its defaults.
+/// Reads the members that say how a material lies on a surface, which a wall's surface and a floor
+/// or a ceiling share, into a description that holds their defaults.
 template <typename Description>
-void read_surface_members(ObjectReader& object, Description& description) {
-    description.material = object.required("material", read_string).value_or("");
+void read_placement_members(ObjectReader& object, Description& description) {
     description.offset = object.optional("offset", read_vector2).value_or(description.offset);
     description.scale = object.optional("scale", read_vector2).value_or(description.scale);
     description.rotation = object.optional("rotation", read_angle).value_or(description.rotation);
@@ -70,13 +70,32 @@ std::optional<SurfaceDescription> read_surface(const Field& field, JsonFile& fil
     if (!surface) {
         return std::nullopt;
     }
-    SurfaceDescription description;
-    read_surface_members(*surface, description);
+    SurfaceDescription description{
+        .material = surface->required("material", read_string).value_or(""),
+    };
+    read_placement_members(*surface, description);
     surface->finish();
     return description;
 }
 
-/// Reads a floor or a ceiling, whose surface's members sit beside its height.
+std::optional<SkyDescription> read_sky(const Field& field, JsonFile& file) {
+    auto sky = ReadObject{.noun = "sky"}(field, file);
+    if (!sky) {
+        return std::nullopt;
+    }
+    SkyDescription description{
+        .backdrop = sky->required("backdrop", read_string).value_or(""),
+        .nits = sky->optional("nits", read_number),
+    };
+    sky->finish();
+    return description;
+}
+
+/// The members of a floor or a ceiling that say which material covers it and how, none of which
+/// a sky may have.
+constexpr std::array surface_members{"material", "offset", "scale", "rotation"};
+
+/// Reads a floor or a ceiling, whose surface's members, or else its sky, sit beside its height.
 struct ReadFloorOrCeiling {
     /// Which of the two it is, for messages.
     std::string_view noun;
@@ -89,7 +108,23 @@ struct ReadFloorOrCeiling {
         FloorOrCeilingDescription description{
             .height = object->required("height", read_number).value_or(0.0F),
         };
-        read_surface_members(*object, description);
+        if (object->has("sky")) {
+            description.sky = object->required("sky", read_sky).value_or(SkyDescription{});
+            for (const auto* const name : surface_members) {
+                std::ignore = object->optional(
+                    name, ReportConflict{.noun = noun, .other = "sky", .name = name});
+            }
+        } else {
+            if (object->has("material")) {
+                description.material = object->required("material", read_string).value_or("");
+            } else {
+                object->report(AssetProblemCode::missing_member,
+                               std::format(R"(the {} has no "material" or "sky", which it must )"
+                                           "have one of",
+                                           noun));
+            }
+            read_placement_members(*object, description);
+        }
         object->finish();
         return description;
     }

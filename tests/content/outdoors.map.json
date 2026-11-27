@@ -1,0 +1,102 @@
+{
+  "$schema": "../../schema/map.schema.json",
+  "format": "wulfhilde-map",
+  "version": 1,
+  "ambient": { "color": [1, 1, 1], "lux": 10000 },
+  "sectors": [
+    {
+      "id": "yard",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 6, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "id": "yard-west-edge", "start": [0, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "yard-bridge", "start": [3, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "yard-east-edge", "start": [5, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "yard-field", "start": [8, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [8, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, 8], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "field",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 6, "sky": { "backdrop": "backdrops/compass_amber", "nits": 500 } },
+      "loops": [
+        [
+          { "start": [8, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [16, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [16, 8], "surface": { "material": "materials/grid/wall" } },
+          { "id": "field-yard", "start": [8, 8], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "abyss-west",
+      "floor": { "height": -8, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "ceiling": { "height": 6, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "id": "abyss-west-ledge", "start": [0, -6], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "id": "abyss-west-bridge", "start": [3, -6], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "id": "abyss-west-yard", "start": [3, 0], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "start": [0, 0], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "bridge",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 6, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "id": "bridge-ledge", "start": [3, -6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bridge-east", "start": [5, -6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bridge-yard", "start": [5, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bridge-west", "start": [3, 0], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "abyss-east",
+      "floor": { "height": -8, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "ceiling": { "height": 6, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "id": "abyss-east-ledge", "start": [5, -6], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "start": [8, -6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "abyss-east-yard", "start": [8, 0], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "id": "abyss-east-bridge", "start": [5, 0], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } }
+        ]
+      ]
+    },
+    {
+      "id": "ledge",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 6, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "start": [0, -9], "surface": { "material": "materials/grid/wall" } },
+          { "start": [8, -9], "surface": { "material": "materials/grid/wall" } },
+          { "id": "ledge-abyss-east", "start": [8, -6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "ledge-bridge", "start": [5, -6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "ledge-abyss-west", "start": [3, -6], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, -6], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    }
+  ],
+  "portals": [
+    { "a": { "wall": "yard-field" }, "b": { "wall": "field-yard" } },
+    { "a": { "wall": "yard-west-edge" }, "b": { "wall": "abyss-west-yard" } },
+    { "a": { "wall": "yard-bridge" }, "b": { "wall": "bridge-yard" } },
+    { "a": { "wall": "yard-east-edge" }, "b": { "wall": "abyss-east-yard" } },
+    { "a": { "wall": "abyss-west-bridge" }, "b": { "wall": "bridge-west" } },
+    { "a": { "wall": "bridge-east" }, "b": { "wall": "abyss-east-bridge" } },
+    { "a": { "wall": "abyss-west-ledge" }, "b": { "wall": "ledge-abyss-west" } },
+    { "a": { "wall": "bridge-ledge" }, "b": { "wall": "ledge-bridge" } },
+    { "a": { "wall": "abyss-east-ledge" }, "b": { "wall": "ledge-abyss-east" } }
+  ],
+  "start": { "sector": "yard", "point": [4, 5, 0], "yaw": -90 }
+}

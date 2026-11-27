@@ -10,6 +10,7 @@
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/opening.hpp>
 #include <wulfhilde/world/sector.hpp>
+#include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/surface.hpp>
 #include <wulfhilde/world/wall.hpp>
 
@@ -24,12 +25,15 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <span>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace wulfhilde::detail {
@@ -91,14 +95,16 @@ class MaterialPlacement {
     double whole_y_ = 0.0;
 };
 
+// Each corner of a triangle carries the index of what shades it: its surface's material, or its
+// sky, numbered after the map's materials.
 void add_triangle(std::vector<SectorVertex>& vertices, const std::array<Vector3, 3>& corners,
-                  const std::array<Vector2, 3>& texture_coordinates, MaterialId material,
+                  const std::array<Vector2, 3>& texture_coordinates, std::uint32_t shading,
                   SectorId sector) {
     for (std::size_t index = 0; const auto& corner : corners) {
         vertices.push_back({
             .position = corner,
             .texture_coordinates = texture_coordinates.at(index),
-            .material = material.index(),
+            .material = shading,
             .sector = sector.index(),
         });
         ++index;
@@ -123,9 +129,9 @@ void add_wall_band(std::vector<SectorVertex>& vertices, const Wall& wall, const 
     const auto at_end_high = placement({.x = end_u, .y = high});
 
     add_triangle(vertices, {start_low, start_high, end_high},
-                 {at_start_low, at_start_high, at_end_high}, surface.material, wall.sector);
+                 {at_start_low, at_start_high, at_end_high}, surface.material.index(), wall.sector);
     add_triangle(vertices, {start_low, end_high, end_low}, {at_start_low, at_end_high, at_end_low},
-                 surface.material, wall.sector);
+                 surface.material.index(), wall.sector);
 }
 
 // A solid wall stands from the floor to the ceiling. A side of a portal is open between, and only
@@ -148,22 +154,40 @@ void add_wall(std::vector<SectorVertex>& vertices, const Map& map, WallId id, co
     }
 }
 
+// Returns the index of what shades a sky: the map's materials come first, then each distinct sky,
+// which this adds to the geometry's skies the first time it is met.
+std::uint32_t sky_shading(SectorGeometry& geometry, const Sky& sky,
+                          std::span<const Material> materials) {
+    auto found = std::ranges::find(geometry.skies, sky);
+    if (found == geometry.skies.end()) {
+        geometry.skies.push_back(sky);
+        found = std::prev(geometry.skies.end());
+    }
+    return narrow<std::uint32_t>(materials.size() +
+                                 static_cast<std::size_t>(found - geometry.skies.begin()));
+}
+
 // The floor faces up and the ceiling down, so the floor's triangles run anticlockwise seen from
-// above and the ceiling's clockwise. Each triangle is three indices into the sector's corners.
-void add_floor_or_ceiling(std::vector<SectorVertex>& vertices, SectorId sector,
+// above and the ceiling's clockwise. Each triangle is three indices into the sector's corners. A
+// sky samples its backdrop by direction, not by texture coordinates, so it has none.
+void add_floor_or_ceiling(SectorGeometry& geometry, SectorId sector,
                           const std::vector<Vector2>& corners,
                           const std::vector<std::uint32_t>& triangles,
-                          const FloorOrCeiling& surface, bool faces_up,
+                          const FloorOrCeiling& floor_or_ceiling, bool faces_up,
                           std::span<const Material> materials) {
-    const MaterialPlacement placement(surface.surface, materials, corners.front());
-    std::vector<Vector2> coordinates;
-    coordinates.reserve(corners.size());
-    for (const auto& corner : corners) {
-        coordinates.push_back(placement(corner));
+    std::vector<Vector2> coordinates(corners.size());
+    std::uint32_t shading = 0;
+    if (const auto* const sky = std::get_if<Sky>(&floor_or_ceiling.cover)) {
+        shading = sky_shading(geometry, *sky, materials);
+    } else {
+        const auto& surface = std::get<Surface>(floor_or_ceiling.cover);
+        const MaterialPlacement placement(surface, materials, corners.front());
+        std::ranges::transform(corners, coordinates.begin(), placement);
+        shading = surface.material.index();
     }
 
-    const auto lift = [&surface](const Vector2& point) {
-        return Vector3{.x = point.x, .y = point.y, .z = surface.height};
+    const auto lift = [&floor_or_ceiling](const Vector2& point) {
+        return Vector3{.x = point.x, .y = point.y, .z = floor_or_ceiling.height};
     };
     for (std::size_t first = 0; first + 2 < triangles.size(); first += 3) {
         auto a = triangles.at(first);
@@ -172,9 +196,9 @@ void add_floor_or_ceiling(std::vector<SectorVertex>& vertices, SectorId sector,
         if ((twice_area(corners.at(a), corners.at(b), corners.at(c)) > 0.0F) != faces_up) {
             std::swap(a, b);
         }
-        add_triangle(vertices, {lift(corners.at(a)), lift(corners.at(b)), lift(corners.at(c))},
-                     {coordinates.at(a), coordinates.at(b), coordinates.at(c)},
-                     surface.surface.material, sector);
+        add_triangle(geometry.vertices,
+                     {lift(corners.at(a)), lift(corners.at(b)), lift(corners.at(c))},
+                     {coordinates.at(a), coordinates.at(b), coordinates.at(c)}, shading, sector);
     }
 }
 
@@ -200,9 +224,8 @@ SectorGeometry triangulate(const Map& map, std::span<const Material> materials) 
             }
         }
         const auto flat_triangles = mapbox::earcut<std::uint32_t>(loops);
-        add_floor_or_ceiling(geometry.vertices, id, corners, flat_triangles, sector.floor, true,
-                             materials);
-        add_floor_or_ceiling(geometry.vertices, id, corners, flat_triangles, sector.ceiling, false,
+        add_floor_or_ceiling(geometry, id, corners, flat_triangles, sector.floor, true, materials);
+        add_floor_or_ceiling(geometry, id, corners, flat_triangles, sector.ceiling, false,
                              materials);
 
         geometry.sectors.push_back({.first = first, .count = geometry.vertices.size() - first});

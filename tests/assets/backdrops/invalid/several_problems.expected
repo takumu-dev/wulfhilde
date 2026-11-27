@@ -1,0 +1,3 @@
+backdrops/invalid/several_problems.backdrop.json:1:1: the backdrop has no "image", which it must have
+backdrops/invalid/several_problems.backdrop.json:4:11: expected a number, not an array (/nits)
+backdrops/invalid/several_problems.backdrop.json:5:3: a backdrop has no member "imgae" (/imgae)

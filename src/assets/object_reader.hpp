@@ -173,6 +173,43 @@ read_numbers(const Field& field, JsonFile& file, ReadElement read_element) {
     return read ? std::optional(numbers) : std::nullopt;
 }
 
+/// Returns a number's text, as the file writes it, or empty for a value that isn't a number.
+[[nodiscard]] std::string_view number_text(const Field& field);
+
+/// Reads a number that must lie in a range, reporting one outside it at the number.
+///
+/// \param in_range Whether a value lies in the range.
+/// \param code The kind of problem a value outside it is.
+/// \param describe What is wrong with a value outside it, given its text.
+template <typename InRange, typename Describe>
+[[nodiscard]] std::optional<float> read_number_in(const Field& field, JsonFile& file,
+                                                  InRange in_range, AssetProblemCode code,
+                                                  Describe describe) {
+    const auto value = read_number(field, file);
+    if (value && !in_range(*value)) {
+        report_at(field, code, describe(number_text(field)), file);
+        return std::nullopt;
+    }
+    return value;
+}
+
+/// Reads a light level in nits, which is 0 or more.
+[[nodiscard]] std::optional<float> read_nits(const Field& field, JsonFile& file);
+
+/// An image as a material's or a backdrop's file names it: its asset path, and the value that
+/// writes it.
+struct ImageReference {
+    /// The image's asset path, whose syntax is checked.
+    std::string path;
+
+    /// The value that writes it, where a problem with the image as it is read there lies.
+    Field field;
+};
+
+/// Reads an image's asset path, reporting one that breaks the syntax of an asset path.
+[[nodiscard]] std::optional<ImageReference> read_image_reference(const Field& field,
+                                                                 JsonFile& file);
+
 /// Reads a value as an angle, a number of degrees.
 [[nodiscard]] std::optional<Angle> read_angle(const Field& field, JsonFile& file);
 

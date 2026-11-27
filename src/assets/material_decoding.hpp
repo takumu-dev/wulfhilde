@@ -11,15 +11,6 @@
 
 namespace wulfhilde::detail {
 
-/// A texture as a material's file names it: an image's asset path, and the value that writes it.
-struct TextureReference {
-    /// The image's asset path, whose syntax is checked.
-    std::string path;
-
-    /// The value that writes it, where a problem with the image as this property reads it lies.
-    Field field;
-};
-
 /// A channel as a single-value property names it, and the value that writes it.
 struct ChannelReference {
     /// The channel.
@@ -35,7 +26,7 @@ struct ColorDescription {
     Color factor{.r = 1.0F, .g = 1.0F, .b = 1.0F};
 
     /// The texture, or nothing for none.
-    std::optional<TextureReference> texture{};
+    std::optional<ImageReference> texture{};
 };
 
 /// A single-value property, as a material's file writes it.
@@ -44,7 +35,7 @@ struct ValueDescription {
     float factor = 1.0F;
 
     /// The texture, or nothing for none.
-    std::optional<TextureReference> texture{};
+    std::optional<ImageReference> texture{};
 
     /// The channel of the texture it reads, or nothing if the file names none.
     std::optional<ChannelReference> channel{};
@@ -53,7 +44,7 @@ struct ValueDescription {
 /// A material's normal texture, as its file writes it.
 struct NormalDescription {
     /// The texture.
-    TextureReference texture;
+    ImageReference texture;
 
     /// What the texture's u and v components are multiplied by.
     float scale = 1.0F;
@@ -77,7 +68,7 @@ struct EmissionDescription {
     Color color{.r = 1.0F, .g = 1.0F, .b = 1.0F};
 
     /// The texture, or nothing for none.
-    std::optional<TextureReference> texture{};
+    std::optional<ImageReference> texture{};
 };
 
 /// A material as its file writes it, with its textures still named by asset path.

@@ -1,0 +1,2 @@
+sky_and_material.map.json:8:80: the ceiling has both "sky" and "material", but may have only one of them (/sectors/0/ceiling/material)
+sky_and_material.map.json:8:106: the ceiling has both "sky" and "offset", but may have only one of them (/sectors/0/ceiling/offset)

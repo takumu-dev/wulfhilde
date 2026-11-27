@@ -201,12 +201,14 @@ departs from them, it says so.
   build tree to read back.
 - A map's schema, `schema/map.schema.json`, its loader and the maps of the tests change together, in
   one commit, and so do a material's, `schema/material.schema.json`, and the materials of the
-  tests. Each map in `tests/assets/invalid/`, and each material in
-  `tests/assets/materials/invalid/`, holds one mistake, or a few to show several problems at once,
-  beside a `.expected` file of its problems, formatted exactly. The `lint` preset checks that the
-  schema rejects every one of them, except those in `loader_only/`, which hold the mistakes no
-  schema can state and which it must accept, and that it accepts every map and material in
-  `tests/content/`, and every one in `tests/assets/valid/` and `tests/assets/materials/valid/`.
+  tests, and a backdrop's, `schema/backdrop.schema.json`, and the backdrops of the tests. Each map
+  in `tests/assets/invalid/`, each material in `tests/assets/materials/invalid/` and each backdrop
+  in `tests/assets/backdrops/invalid/` holds one mistake, or a few to show several problems at
+  once, beside a `.expected` file of its problems, formatted exactly. The `lint` preset checks that
+  the schema rejects every one of them, except those in `loader_only/`, which hold the mistakes no
+  schema can state and which it must accept, and that it accepts every map, material and backdrop
+  in `tests/content/`, and every one in `tests/assets/valid/`, `tests/assets/materials/valid/` and
+  `tests/assets/backdrops/valid/`.
 - Every test carries exactly one CTest label: `unit` (the CPU only), `gpu` (a Vulkan device, where
   any validation message fails the test) or `image` (rendered and compared with a reference image).
   Its name begins with its module, matching its Catch2 tag (`[core]`), or with `build` or

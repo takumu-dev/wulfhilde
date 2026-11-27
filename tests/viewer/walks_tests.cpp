@@ -47,3 +47,43 @@ TEST_CASE("sectors: from the hall, the body walks through the doorway into the g
 
     check_walk(walked, {.sectors = {"hall", "gallery", "bay"}});
 }
+
+TEST_CASE("outdoors: walking south from the start, the body crosses the bridge over the abyss to "
+          "the ledge beyond",
+          "[viewer]") {
+    const auto map = load_test_map("outdoors");
+
+    const auto walked =
+        walk(map, {
+                      {.actions = {.forward = 1.0F}, .until = "ledge", .timeout = 6.0F},
+                  });
+
+    check_walk(walked, {.sectors = {"yard", "bridge", "ledge"}});
+}
+
+TEST_CASE("outdoors: stepping off the bridge, the body falls into the abyss and stands on its sky "
+          "floor",
+          "[viewer]") {
+    const auto map = load_test_map("outdoors");
+
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .until = "bridge",
+                                          .timeout = 4.0F,
+                                      },
+                                      {.actions = {.forward = 1.0F}, .timeout = 1.0F},
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(90.0F),
+                                          .timeout = 3.0F,
+                                      },
+                                  });
+
+    check_walk(walked, {.sectors = {"yard", "bridge", "abyss-east"}});
+    // The abyss's sky floor lies at -8 m, and the body's centre stands 0.9 m above what it stands
+    // on.
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(std::abs(end.z - -7.1F) < 1e-3F);
+}

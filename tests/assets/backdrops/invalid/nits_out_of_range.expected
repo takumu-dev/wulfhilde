@@ -1,0 +1,1 @@
+backdrops/invalid/nits_out_of_range.backdrop.json:5:11: -1 nits isn't a light level, which is 0 or more (/nits)

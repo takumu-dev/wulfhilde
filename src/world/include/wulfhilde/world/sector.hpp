@@ -5,20 +5,25 @@
 
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/ids.hpp>
+#include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/surface.hpp>
 
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace wulfhilde {
+
+/// What covers a floor or a ceiling: a surface's material, with u and v along X and Y, or a sky.
+using Cover = std::variant<Surface, Sky>;
 
 /// A sector's floor or ceiling, as a map holds it: the height it lies at, and what covers it.
 struct FloorOrCeiling {
     /// The height it lies at, in metres.
     float height = 0.0F;
 
-    /// What covers it, with u and v along X and Y.
-    Surface surface;
+    /// What covers it.
+    Cover cover;
 };
 
 /// A sector of a map: a region bounded by a loop of walls, with a floor below and a ceiling above.

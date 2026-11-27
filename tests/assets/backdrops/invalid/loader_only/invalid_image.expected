@@ -1,0 +1,1 @@
+materials/textures/not_png.png: the file isn't a PNG image that can be decoded: PNG file is smaller than a PNG header, named first by backdrops/invalid/loader_only/invalid_image.backdrop.json at 4:12 (/image)

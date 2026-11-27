@@ -104,14 +104,15 @@ class Map {
     ///         ceilings, or nothing for a solid wall.
     [[nodiscard]] std::optional<Opening> opening(WallId wall) const;
 
-    /// Moves a location in a straight line through the map, stopping at the first surface it meets.
+    /// Moves a location in a straight line through the map, stopping at the first surface or sky it
+    /// meets.
     ///
-    /// Surfaces are met from the front only: a wall from inside its sector, a floor moving down and
-    /// a ceiling moving up. A trace that reaches a wall portal within its opening, its edges
-    /// included, carries on into the sector beyond, and one that reaches it above or below meets
-    /// the strip there, which is the wall. A trace that starts on a surface and moves into it stops
-    /// at once, one that ends exactly on a surface has met it, and one through a corner stops at
-    /// one of the corner's walls, a solid one before an opening.
+    /// Surfaces and skies are met from the front only: a wall from inside its sector, a floor or a
+    /// sky below moving down and a ceiling or a sky above moving up. A trace that reaches a wall
+    /// portal within its opening, its edges included, carries on into the sector beyond, and one
+    /// that reaches it above or below meets the strip there, which is the wall. A trace that starts
+    /// on a surface and moves into it stops at once, one that ends exactly on a surface has met it,
+    /// and one through a corner stops at one of the corner's walls, a solid one before an opening.
     ///
     /// \param from Where the trace starts, whose sector this map issued.
     /// \param motion How far the trace moves and which way, in the coordinates of the start's
@@ -123,6 +124,9 @@ class Map {
     /// Returns the asset path of each material the map's surfaces carry, each at the index of its
     /// ID.
     [[nodiscard]] std::span<const std::string> materials() const noexcept { return materials_; }
+
+    /// Returns the asset path of each backdrop the map's skies show, each at the index of its ID.
+    [[nodiscard]] std::span<const std::string> backdrops() const noexcept { return backdrops_; }
 
     /// Returns game-defined data that the engine keeps and ignores: the JSON text of an object, or
     /// empty for none.
@@ -154,6 +158,9 @@ class Map {
 
     /// The asset path of each material, by ID.
     std::vector<std::string> materials_;
+
+    /// The asset path of each backdrop, by ID.
+    std::vector<std::string> backdrops_;
 
     /// Where the player starts.
     StartPosition start_;

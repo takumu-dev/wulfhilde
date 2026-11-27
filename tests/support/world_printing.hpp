@@ -12,6 +12,8 @@
 #include <wulfhilde/world/map_problem.hpp>
 #include <wulfhilde/world/opening.hpp>
 #include <wulfhilde/world/portal_link.hpp>
+#include <wulfhilde/world/sector.hpp>
+#include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/surface.hpp>
 #include <wulfhilde/world/surface_ref.hpp>
 
@@ -40,6 +42,22 @@ template <> struct Catch::StringMaker<wulfhilde::Surface> {
                            StringMaker<wulfhilde::Vector2>::convert(surface.offset),
                            StringMaker<wulfhilde::Vector2>::convert(surface.scale),
                            StringMaker<wulfhilde::Angle>::convert(surface.rotation));
+    }
+};
+
+template <> struct Catch::StringMaker<wulfhilde::Sky> {
+    static std::string convert(const wulfhilde::Sky& sky) {
+        return std::format("sky of backdrop #{} at {}", sky.backdrop.index(),
+                           sky.nits ? std::format("{} nits", *sky.nits) : "the backdrop's nits");
+    }
+};
+
+template <> struct Catch::StringMaker<wulfhilde::Cover> {
+    static std::string convert(const wulfhilde::Cover& cover) {
+        if (const auto* sky = std::get_if<wulfhilde::Sky>(&cover)) {
+            return Catch::StringMaker<wulfhilde::Sky>::convert(*sky);
+        }
+        return Catch::StringMaker<wulfhilde::Surface>::convert(std::get<wulfhilde::Surface>(cover));
     }
 };
 

@@ -6,6 +6,7 @@
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/sky.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -15,8 +16,9 @@
 namespace wulfhilde::detail {
 
 /// The C++ twin of the sector shaders' `SectorVertex`: one corner of a triangle of a sector's
-/// surface, in the sector's coordinates, with where the material's textures are sampled there, the
-/// material that covers the surface and the sector.
+/// surface or sky, in the sector's coordinates, with where the material's textures are sampled
+/// there, what shades it and the sector. What shades it is the index of the surface's material, or
+/// of the sky among the geometry's skies after the map's materials.
 ///
 /// The texture coordinates count repeats of the material from the top-left corner of its images,
 /// as Vulkan samples them, so x runs along u and y against v.
@@ -33,15 +35,18 @@ struct VertexRange {
     std::size_t count = 0;
 };
 
-/// A map's sectors as lists of triangles, each sector's in the range at its ID's index.
+/// A map's sectors as lists of triangles, each sector's in the range at its ID's index, and each
+/// distinct sky that they show, in the order they are first met.
 struct SectorGeometry {
     std::vector<SectorVertex> vertices;
     std::vector<VertexRange> sectors;
+    std::vector<Sky> skies;
 };
 
 /// Triangulates every sector of a map: each solid wall as two triangles from the floor to the
 /// ceiling, each side of a portal as two triangles for each of its strips, below and above its
-/// opening, and the floor and the ceiling across the sector's loops, concave or not. Every
+/// opening, and the floor and the ceiling across the sector's loops, concave or not, whether a
+/// surface or a sky. Every
 /// triangle's corners run anticlockwise seen from the side its surface faces: into the sector.
 ///
 /// Each surface's material lies on it as the map says, a strip's as its wall's. On a wall, u runs

@@ -153,8 +153,8 @@
     {
       "name": "lint",
       "inherits": ["gcc", "debug"],
-      "displayName": "Formatting, documentation and the map schema",
-      "description": "Checks the formatting with clang-format, the documentation with Doxygen and the map schema with check-jsonschema, building nothing else.",
+      "displayName": "Formatting, documentation and the asset schemas",
+      "description": "Checks the formatting with clang-format, the documentation with Doxygen and the map, material and backdrop schemas with check-jsonschema, building nothing else.",
       "cacheVariables": {
         "VCPKG_MANIFEST_FEATURES": "",
         "WULFHILDE_BUILD_TESTS": false

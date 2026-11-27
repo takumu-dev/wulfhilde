@@ -35,6 +35,7 @@ wulfhilde_add_tests(renderer
         render_image_tests.cpp
         renderer_tests.cpp
         shader_function_tests.cpp
+        sky_tests.cpp
         test_pattern_tests.cpp
         textured_surface_tests.cpp
         window_tests.cpp
