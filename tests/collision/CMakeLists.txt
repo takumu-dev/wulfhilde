@@ -3,6 +3,7 @@ wulfhilde_add_tests(collision
         move_tests.cpp
         portal_tests.cpp
         settle_tests.cpp
+        step_tests.cpp
     LIBRARIES
         wulfhilde::collision
 )

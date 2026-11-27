@@ -42,18 +42,30 @@ side at the hall's heights. The gallery's whole east wall opens into the bay, an
 whose ceiling is a metre higher, so that the bay's side of that opening has an upper strip.
 
 The arm along X has each long side split into walls whose materials lie differently, each lined up
-with its neighbour's grid. Along the south side, from x = 0: a plain wall to x = 4.6; a wall offset
-by 4.6 m along u, which carries the first wall's grid on; and from x = 8.3, a wall offset by 8.3 m,
-turned 90° and at half the size, whose 0.5 m lines meet the others' 0.25 m and 1 m lines. Along the
-north side, from x = 12: a wall at twice the size, then from x = 7.5 one turned 180° and offset by
-4.5 m, whose lines still fall on whole metres.
+with its neighbour's grid, strips included. Along the south side, from x = 0: a plain wall to
+x = 4.6, split about the opening into the low passage between x = 1 and 3; a wall offset by 4.6 m
+along u, which carries the first wall's grid on; and from x = 8.3, a wall offset by 8.3 m, turned
+90° and at half the size, whose 0.5 m lines meet the others' 0.25 m and 1 m lines. Along the north
+side, from x = 12: a wall at twice the size, split about the foot of the stair between x = 9.5 and
+7.5, then one turned 180° and offset by 4.5 m, whose lines still fall on whole metres, split about
+the doorway into the nook between x = 6.5 and 5. Each piece is offset by its distance along the
+side, so its grid and its strip's carry on from the piece before.
+
+The steps and openings straddle the player's limits, a 0.4 m step and a body 1.8 m tall, with clear
+margins. North from the arm along X, a stair of three steps, each 0.3 m high and 0.5 m deep with a
+lower strip for its riser, climbs onto the ledge, 0.9 m up; and a doorway 1.5 m wide and 0.5 m deep,
+under a ceiling 2 m up that leaves an upper strip on either side, leads into the nook. Through the
+hall's west wall between y = 1 and 3, behind the start, is the high step, a sector 0.6 m up; and
+through the south wall, to the start's right, the low passage, under a ceiling 1.6 m up.
 
 - **Cases**: a concave sector, which no convex piece needs to be cut from; walls that run to the
   right from their starts as they are seen from inside, with height as v; floors and ceilings along
   X and Y, so the ceiling's grid reads mirrored from below; a surface's offset, scale and
-  rotation; and sectors beyond wall portals, seen and walked into through their openings.
+  rotation; sectors beyond wall portals, seen and walked into through their openings; steps the
+  player walks up and down, a step too high and a passage too low.
 - **Cameras**: `mapping`, from the far end of the arm along X back toward the corner where the arm
-  along Y opens, showing both split sides of the arm, the floor and the ceiling.
+  along Y opens, showing both split sides of the arm and their strips, the floor and the ceiling;
+  `stairs`, from the arm along X up the stair onto the ledge, with the doorway beside it.
 - **Benchmark walk**: `tour`, 19.5 s: down the arm along X to where `mapping` stands, back down
   it, up the arm along Y and through the doorway into the gallery, across into the bay and back,
   then back through the doorway to the start, facing as the start faces.
@@ -61,4 +73,7 @@ north side, from x = 12: a wall at twice the size, then from x = 7.5 one turned 
   there with `--anisotropy 1`; every label reads the right way round, except on the ceiling, which
   is mirrored, and on the walls turned 90° and 180°. From the hall, the gallery and the bay show
   through the doorway with nothing missing at its edges, and the player walks through both openings
-  without a hitch; from the bay, the upper strip shows above the opening into the gallery.
+  without a hitch; from the bay, the upper strip shows above the opening into the gallery. The
+  player walks up the stair onto the ledge and back down without stopping, the eye easing over
+  each step rather than jumping, and walks through the doorway into the nook; the high step and the
+  low passage stop the player.

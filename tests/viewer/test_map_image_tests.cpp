@@ -62,6 +62,15 @@ const std::vector<TestMapCameras>& test_map_cameras() {
                         .yaw = Angle::degrees(165.0F),
                         .pitch = Angle::degrees(-5.0F),
                     },
+                    // From the arm along X, up the stair onto the ledge, with the low doorway
+                    // into the nook beside it.
+                    {
+                        .name = "stairs",
+                        .sector = "hall",
+                        .point = {.x = 9.0F, .y = 0.6F, .z = 1.65F},
+                        .yaw = Angle::degrees(105.0F),
+                        .pitch = Angle::degrees(-8.0F),
+                    },
                 },
         },
     };

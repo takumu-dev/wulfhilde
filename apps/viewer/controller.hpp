@@ -100,7 +100,8 @@ class Controller {
     /// Returns where the player sees from, and which way.
     ///
     /// A body's eye is above its centre along its up, traced there so that it stops short of any
-    /// surface in its way.
+    /// surface in its way. It holds still through an instant step up or down, then eases back to
+    /// its height over the body.
     ///
     /// \param map The map, the one the body is in.
     /// \return The eye.
@@ -142,6 +143,10 @@ class Controller {
 
     /// What the body stands on, if anything.
     std::optional<wulfhilde::Ground> ground_;
+
+    /// How far the eye is above its height over the body, in metres, along the body's up: negative
+    /// just after a step up, easing back to zero.
+    float step_offset_ = 0.0F;
 };
 
 /// Returns the warning the viewer gives when its body doesn't fit at the map's start position,
