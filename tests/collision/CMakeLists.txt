@@ -1,6 +1,7 @@
 wulfhilde_add_tests(collision
     SOURCES
         move_tests.cpp
+        overlap_tests.cpp
         portal_tests.cpp
         settle_tests.cpp
         sky_tests.cpp

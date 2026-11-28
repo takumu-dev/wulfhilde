@@ -75,6 +75,15 @@ class Map {
     /// \return The sector's ID, or nothing if no sector has that id.
     [[nodiscard]] std::optional<SectorId> find_sector(std::string_view id) const noexcept;
 
+    /// Returns the sectors that share space with a sector: those whose volumes overlap its own,
+    /// within their walls seen from above and between their floors and ceilings. Sectors that only
+    /// meet at a wall, a corner, a floor or a ceiling share none, so a bridge over a passage
+    /// doesn't overlap it.
+    ///
+    /// \param sector The sector's ID, which this map issued.
+    /// \return The sectors, in order of their IDs, never the sector itself.
+    [[nodiscard]] std::span<const SectorId> overlapping(SectorId sector) const;
+
     /// Tells whether a location's point lies in its sector: within the sector's walls seen from
     /// above, and from its floor to its ceiling, all of them included.
     ///
@@ -146,6 +155,9 @@ class Map {
 
     /// The sectors, by ID.
     std::vector<Sector> sectors_;
+
+    /// The sectors that share space with each sector, by its ID.
+    std::vector<std::vector<SectorId>> overlapping_;
 
     /// Every sector's ID, ordered by the sector's id, for `find_sector`.
     std::vector<SectorId> sectors_by_name_;

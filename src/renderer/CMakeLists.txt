@@ -83,6 +83,7 @@ wulfhilde_add_shaders(wulfhilde_renderer
     SOURCES
         shaders/culling.slang
         shaders/metering.slang
+        shaders/openings.slang
         shaders/resolve.slang
         shaders/sectors.slang
     MODULE_DIRECTORIES

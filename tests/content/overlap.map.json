@@ -1,0 +1,130 @@
+{
+  "$schema": "../../schema/map.schema.json",
+  "format": "wulfhilde-map",
+  "version": 1,
+  "ambient": { "color": [1, 1, 1], "lux": 10000 },
+  "sectors": [
+    {
+      "id": "yard",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "id": "yard-chasm-west", "start": [0, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "yard-bridge", "start": [7, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "yard-chasm-east", "start": [9, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [16, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [16, 12], "surface": { "material": "materials/grid/wall" } },
+          { "start": [10, 12], "surface": { "material": "materials/grid/wall" } },
+          { "start": [10, 8], "surface": { "material": "materials/grid/wall" } },
+          { "id": "yard-door", "start": [8.6, 8], "surface": { "material": "materials/grid/wall" }, "upper": { "material": "materials/grid/upper_strip" } },
+          { "start": [7.4, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [6, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [6, 12], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, 12], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "hall",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 3.5, "material": "materials/grid/ceiling" },
+      "ambient": { "color": [1, 1, 1], "lux": 1000 },
+      "loops": [
+        [
+          { "start": [3, 8], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hall-door", "start": [7.4, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [8.6, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [13, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [13, 20], "surface": { "material": "materials/grid/wall" } },
+          { "start": [3, 20], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "chasm-west",
+      "floor": { "height": -3, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "id": "chasm-west-bank", "start": [0, -4], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "id": "chasm-west-passage", "start": [7, -4], "surface": { "material": "materials/grid/wall" }, "upper": { "material": "materials/grid/upper_strip" } },
+          { "id": "chasm-west-bridge", "start": [7, -2], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "id": "chasm-west-yard", "start": [7, 0], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "start": [0, 0], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "bridge",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "id": "bridge-bank", "start": [7, -4], "surface": { "material": "materials/grid/wall" } },
+          { "start": [9, -4], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bridge-chasm-east", "start": [9, -2], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bridge-yard", "start": [9, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bridge-chasm-west", "start": [7, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [7, -2], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "passage",
+      "floor": { "height": -3, "material": "materials/grid/floor" },
+      "ceiling": { "height": 0, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [7, -4], "surface": { "material": "materials/grid/wall" } },
+          { "id": "passage-chasm-east", "start": [9, -4], "surface": { "material": "materials/grid/wall" } },
+          { "start": [9, -2], "surface": { "material": "materials/grid/wall" } },
+          { "id": "passage-chasm-west", "start": [7, -2], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "chasm-east",
+      "floor": { "height": -3, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "id": "chasm-east-bank", "start": [9, -4], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "start": [16, -4], "surface": { "material": "materials/grid/wall" } },
+          { "id": "chasm-east-yard", "start": [16, 0], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "id": "chasm-east-bridge", "start": [9, 0], "surface": { "material": "materials/grid/wall" }, "lower": { "material": "materials/grid/lower_strip" } },
+          { "id": "chasm-east-passage", "start": [9, -2], "surface": { "material": "materials/grid/wall" }, "upper": { "material": "materials/grid/upper_strip" } }
+        ]
+      ]
+    },
+    {
+      "id": "bank",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "sky": { "backdrop": "backdrops/compass_blue" } },
+      "loops": [
+        [
+          { "start": [0, -8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [16, -8], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bank-chasm-east", "start": [16, -4], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bank-bridge", "start": [9, -4], "surface": { "material": "materials/grid/wall" } },
+          { "id": "bank-chasm-west", "start": [7, -4], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, -4], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    }
+  ],
+  "portals": [
+    { "a": { "wall": "yard-chasm-west" }, "b": { "wall": "chasm-west-yard" } },
+    { "a": { "wall": "yard-bridge" }, "b": { "wall": "bridge-yard" } },
+    { "a": { "wall": "yard-chasm-east" }, "b": { "wall": "chasm-east-yard" } },
+    { "a": { "wall": "yard-door" }, "b": { "wall": "hall-door" } },
+    { "a": { "wall": "chasm-west-bank" }, "b": { "wall": "bank-chasm-west" } },
+    { "a": { "wall": "chasm-west-passage" }, "b": { "wall": "passage-chasm-west" } },
+    { "a": { "wall": "chasm-west-bridge" }, "b": { "wall": "bridge-chasm-west" } },
+    { "a": { "wall": "bridge-bank" }, "b": { "wall": "bank-bridge" } },
+    { "a": { "wall": "bridge-chasm-east" }, "b": { "wall": "chasm-east-bridge" } },
+    { "a": { "wall": "chasm-east-bank" }, "b": { "wall": "bank-chasm-east" } },
+    { "a": { "wall": "chasm-east-passage" }, "b": { "wall": "passage-chasm-east" } }
+  ],
+  "start": { "sector": "yard", "point": [8, 4, 0], "yaw": 90 }
+}
