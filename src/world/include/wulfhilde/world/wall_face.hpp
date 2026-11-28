@@ -13,9 +13,11 @@ namespace wulfhilde {
 /// that a side of a portal is split into.
 ///
 /// Each part is a convex polygon in the wall's upright plane, given by its corners in the wall's
-/// sector's coordinates, which run anticlockwise as the wall is seen from its sector. A part that
-/// has no area has no corners. A floor or ceiling that slopes makes the edges along it slope, and
-/// where two floors or two ceilings cross along a side of a portal, a strip ends in a point there.
+/// sector's coordinates, which run anticlockwise as the wall is seen from its sector. No corner
+/// lies on the line between its neighbours, so every triangle of a fan from any corner has area,
+/// and a part that has no area, as floats, has no corners. A floor or ceiling that slopes makes
+/// the edges along it slope, and where two floors or two ceilings cross along a side of a portal,
+/// a strip ends in a point there.
 struct WallFace {
     /// The whole wall, from the floor to the ceiling, where the ceiling is above the floor.
     std::vector<Vector3> whole{};

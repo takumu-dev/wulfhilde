@@ -190,8 +190,25 @@ struct FaceLine {
     return kept;
 }
 
+/// Tells whether a corner of a polygon lies on the line through the corners either side of it, or
+/// on one of them, as the floats it is given in.
+[[nodiscard]] bool on_line_between(const Vector3& before, const Vector3& corner,
+                                   const Vector3& after) {
+    const auto to_corner = corner - before;
+    const auto to_after = after - before;
+    const auto x = (static_cast<double>(to_corner.y) * static_cast<double>(to_after.z)) -
+                   (static_cast<double>(to_corner.z) * static_cast<double>(to_after.y));
+    const auto y = (static_cast<double>(to_corner.z) * static_cast<double>(to_after.x)) -
+                   (static_cast<double>(to_corner.x) * static_cast<double>(to_after.z));
+    const auto z = (static_cast<double>(to_corner.x) * static_cast<double>(to_after.y)) -
+                   (static_cast<double>(to_corner.y) * static_cast<double>(to_after.x));
+    return x == 0.0 && y == 0.0 && z == 0.0;
+}
+
 /// Returns a polygon of a wall's plane as corners in its sector's coordinates, or none if it has
-/// no area.
+/// no area. A corner that single precision puts on the line between its neighbours is left out,
+/// so every triangle of a fan from any corner has area, and a polygon too thin to keep three
+/// corners has none.
 [[nodiscard]] std::vector<Vector3> face_corners(const std::vector<FacePoint>& polygon,
                                                 const detail::PlanPoint& start,
                                                 const detail::PlanPoint& end) {
@@ -214,6 +231,19 @@ struct FaceLine {
             .y = static_cast<float>(start.y + ((end.y - start.y) * point.along)),
             .z = static_cast<float>(point.z),
         });
+    }
+    for (std::size_t i = 0; corners.size() >= 3 && i < corners.size();) {
+        const auto& before = corners.at((i + corners.size() - 1) % corners.size());
+        const auto& after = corners.at((i + 1) % corners.size());
+        if (on_line_between(before, corners.at(i), after)) {
+            corners.erase(corners.begin() + static_cast<std::ptrdiff_t>(i));
+            i = 0;
+        } else {
+            ++i;
+        }
+    }
+    if (corners.size() < 3) {
+        return {};
     }
     return corners;
 }

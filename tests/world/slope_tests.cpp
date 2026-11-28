@@ -310,6 +310,28 @@ TEST_CASE("where the floors on either side of a wall portal cross, each side's l
                                            }));
 }
 
+TEST_CASE("a strip thinner than single precision can tell from no strip has no corners",
+          "[world]") {
+    // The hall's floor rises from 0.1 m at its south wall to just over 0.4 m at the door, by less
+    // than a step of a float, so the gallery's floor, at 0.4 m, lies just below it there.
+    auto description = doorway_map();
+    auto& hall_sector = description.sectors.at(0);
+    hall_sector.loops.at(0).at(0).id = "hall-south";
+    hall_sector.floor.height = 0.1F;
+    hall_sector.floor.slope = SlopeDescription{.hinge = "hall-south", .gradient = 0.075F};
+    description.sectors.at(1).floor.height = 0.4F;
+    const auto map = make_map(std::move(description));
+
+    CHECK(map.face(WallId{3}).lower.empty());
+    CHECK(map.face(WallId{7}).lower.empty());
+    CHECK(same_polygon(map.face(WallId{7}).opening, {
+                                                        {.x = 1.0F, .y = 4.0F, .z = 0.4F},
+                                                        {.x = 1.0F, .y = 4.0F, .z = 3.0F},
+                                                        {.x = 3.0F, .y = 4.0F, .z = 3.0F},
+                                                        {.x = 3.0F, .y = 4.0F, .z = 0.4F},
+                                                    }));
+}
+
 TEST_CASE("a solid wall's face is all whole wall, which follows the slope along its bottom",
           "[world]") {
     const auto map = make_map(hall_sloped_from_south(0.5F));
