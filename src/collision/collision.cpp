@@ -17,7 +17,9 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <iterator>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -35,6 +37,11 @@ constexpr Angle slope_tolerance = Angle::radians(1e-4F);
 
 /// How far a settled body may still overlap a surface, in metres, which only rounding leaves.
 constexpr float fit_tolerance = 1e-4F;
+
+/// How far rounding may move a height that a step's rules compare, in metres: a step exactly as
+/// high as a body's step height is one it walks up, and an opening exactly as tall as the body is
+/// one it fits in.
+constexpr float height_tolerance = 1e-4F;
 
 /// The smallest radius of a body, in metres. Points in a map 4 km from its origin are only about
 /// half a millimetre apart in float, so a smaller body couldn't be told from a point.
@@ -86,6 +93,23 @@ struct Axis {
 [[nodiscard]] Axis axis_of(const BodyShape& shape, const Pose& pose) {
     const auto half = (pose.tilt.up() * ((shape.height * 0.5F) - shape.radius));
     return {.bottom = pose.centre.point - half, .top = pose.centre.point + half};
+}
+
+/// How far a body reaches along its gravity up, as heights along it.
+struct Span {
+    float feet = 0.0F; ///< The height of its lowest point.
+    float top = 0.0F;  ///< The height of its highest point.
+};
+
+/// Returns how far a body reaches along its gravity up where its pose puts it.
+[[nodiscard]] Span span_of(const BodyShape& shape, const Pose& pose) {
+    const auto axis = axis_of(shape, pose);
+    const auto bottom = dot(axis.bottom, pose.gravity_up);
+    const auto top = dot(axis.top, pose.gravity_up);
+    return {
+        .feet = std::min(bottom, top) - shape.radius,
+        .top = std::max(bottom, top) + shape.radius,
+    };
 }
 
 /// Returns a point seen from above.
@@ -386,10 +410,45 @@ void add_contact(const Map& map, const Reach& reach, const std::optional<Contact
     }
 }
 
-/// Adds the contacts of the strips of a side of a portal in a sector the body reaches, and reaches
-/// the sector beyond if the body comes through its opening, unless it is reached already.
-void reach_through(const Map& map, const BodyShape& shape, const Reach& reach, WallId id,
-                   std::vector<Reach>& reached, std::vector<Contact>& contacts) {
+/// A strip of a side of a portal, from the sector's floor or ceiling to the opening's edge.
+struct Strip {
+    float bottom = 0.0F; ///< The height of its bottom.
+    float top = 0.0F;    ///< The height of its top.
+    float edge = 0.0F;   ///< The height of its edge along the opening: its top or its bottom.
+};
+
+/// Tells whether a body passes a strip beside an opening that it touches, by Build's rules on a
+/// capsule, with heights measured along its gravity up at the point of the strip it touches.
+///
+/// A strip below the opening is a step, which the body walks up if its edge is at most the body's
+/// step height above its feet and the body fits in the opening. The sector under its centre
+/// decides its height, so it is lifted once its centre crosses. A strip above the opening whose
+/// edge is no lower than the body's top can only graze it, as the body passes below.
+[[nodiscard]] bool passes(const BodyShape& shape, const Pose& pose, const Opening& opening,
+                          const Strip& strip, const Nearest& nearest) {
+    const auto height_at = [&nearest, &pose](float z) {
+        return dot(Vector3{.x = nearest.on_other.x, .y = nearest.on_other.y, .z = z},
+                   pose.gravity_up);
+    };
+    const auto edge = height_at(strip.edge);
+    const auto span = span_of(shape, pose);
+    if (height_at((strip.bottom + strip.top) * 0.5F) <
+        height_at((opening.bottom + opening.top) * 0.5F)) {
+        return edge - span.feet <= shape.step_height + height_tolerance &&
+               opening.top - opening.bottom >= shape.height - height_tolerance;
+    }
+    return edge >= span.top - height_tolerance;
+}
+
+/// Adds the contacts of the strips of a side of a portal in a sector the body reaches, unless the
+/// body passes them, and reaches the sector beyond if the body comes through its opening, unless
+/// it is reached already.
+///
+/// The edge of a strip along the opening is the edge on the portal's plane of the floor or the
+/// ceiling beyond, so a cap reaching past the plane meets that surface there, and is pushed along
+/// the line from the edge to the cap's centre.
+void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, const Reach& reach,
+                   WallId id, std::vector<Reach>& reached, std::vector<Contact>& contacts) {
     const auto& wall = map.wall(id);
     const auto& link = wall.link;
     const auto opening = map.opening(id);
@@ -398,16 +457,19 @@ void reach_through(const Map& map, const BodyShape& shape, const Reach& reach, W
         return;
     }
     const auto& sector = map.sector(wall.sector);
-    for (const auto& [bottom, top] : {
-             std::pair{sector.floor.height, opening->bottom},
-             std::pair{opening->top, sector.ceiling.height},
+    for (const auto& strip : {
+             Strip{.bottom = sector.floor.height, .top = opening->bottom, .edge = opening->bottom},
+             Strip{.bottom = opening->top, .top = sector.ceiling.height, .edge = opening->top},
          }) {
-        if (bottom < top) {
+        if (strip.bottom < strip.top) {
             Nearest nearest;
             const auto contact = panel_contact(
                 reach.share, shape.radius, id,
-                {.start = wall.start, .end = wall.end, .bottom = bottom, .top = top}, nearest);
-            add_contact(map, reach, contact, nearest, contacts);
+                {.start = wall.start, .end = wall.end, .bottom = strip.bottom, .top = strip.top},
+                nearest);
+            if (contact && !passes(shape, pose, *opening, strip, nearest)) {
+                add_contact(map, reach, contact, nearest, contacts);
+            }
         }
     }
 
@@ -448,7 +510,7 @@ void reach_through(const Map& map, const BodyShape& shape, const Reach& reach, W
             for (const auto id : loop) {
                 const auto& wall = map.wall(id);
                 if (wall.link) {
-                    reach_through(map, shape, reach, id, reached, contacts);
+                    reach_through(map, shape, pose, reach, id, reached, contacts);
                     continue;
                 }
                 Nearest nearest;
@@ -483,10 +545,18 @@ void move_centre(const Map& map, Pose& pose, const Vector3& motion) {
     pose.centre = map.trace(pose.centre, motion).end;
 }
 
-/// Pushes a body out of the surfaces it overlaps, as far as the overlaps allow.
-void push_out(const Map& map, const BodyShape& shape, Pose& pose) {
+/// Pushes a body out of the surfaces it overlaps, as far as the overlaps allow, returning the
+/// contacts it pushed the body out of.
+///
+/// The body may end a little clear of a contact it was pushed out of. A contact's plane stands in
+/// for a surface at the body as it was, and pushing the body off the edge of one turns the edge's
+/// normal as it goes, so the push runs past the point where it touches.
+[[nodiscard]] std::vector<Contact> push_out(const Map& map, const BodyShape& shape, Pose& pose) {
+    std::vector<Contact> pushed;
     for (std::size_t pass = 0; pass < push_out_passes; ++pass) {
         const auto contacts = contacts_of(map, shape, pose);
+        std::ranges::copy_if(contacts, std::back_inserter(pushed),
+                             [](const Contact& contact) { return contact.depth > 0.0F; });
         // Each overlap is a plane the centre must lie in front of. Sweeping over them, each
         // pushing the centre out of its own plane, settles on a point in front of them all.
         Vector3 push{};
@@ -499,10 +569,11 @@ void push_out(const Map& map, const BodyShape& shape, Pose& pose) {
             }
         }
         if (push == Vector3{}) {
-            return;
+            break;
         }
         move_centre(map, pose, push);
     }
+    return pushed;
 }
 
 /// Returns the ground among the contacts: the one least steep from the body's gravity up, if any is
@@ -519,6 +590,23 @@ void push_out(const Map& map, const BodyShape& shape, Pose& pose) {
         }
     }
     return ground;
+}
+
+/// Lowers a body that has walked off its ground onto ground up to its step height below, if there
+/// is any there, returning how far it lowered it along its gravity up, or nothing if there isn't.
+///
+/// A body whose centre a portal would carry into another sector on the way isn't lowered.
+[[nodiscard]] std::optional<float> snap_down(const Map& map, const BodyShape& shape, Pose& pose) {
+    auto lowered = pose;
+    move_centre(map, lowered, pose.gravity_up * -shape.step_height);
+    std::ignore = push_out(map, shape, lowered);
+    if (lowered.centre.sector != pose.centre.sector ||
+        !ground_among(contacts_of(map, shape, lowered), shape, lowered)) {
+        return std::nullopt;
+    }
+    const auto drop = dot(pose.centre.point - lowered.centre.point, pose.gravity_up);
+    pose = lowered;
+    return drop;
 }
 
 /// Returns a velocity with whatever would carry it into the planes of the contacts removed, so a
@@ -570,20 +658,50 @@ Movement move(const Map& map, const BodyShape& shape, const Pose& pose, const Ve
                  static_cast<std::size_t>(std::ceil(length(velocity) * seconds / substep_length)));
     const auto substep_seconds = seconds / static_cast<float>(substeps);
 
-    Movement movement{.pose = pose, .velocity = velocity};
+    Movement movement{
+        .pose = pose,
+        .velocity = velocity,
+        .ground = ground_among(contacts_of(map, shape, pose), shape, pose),
+    };
     for (std::size_t substep = 0; substep < substeps; ++substep) {
+        const auto grounded = movement.ground.has_value();
+        const auto from = movement.pose.centre.sector;
         move_centre(map, movement.pose, movement.velocity * substep_seconds);
-        push_out(map, shape, movement.pose);
-        movement.velocity = clip(movement.velocity, contacts_of(map, shape, movement.pose));
+        const auto crossed_to = movement.pose.centre;
+        const auto pushed = push_out(map, shape, movement.pose);
+        // The floor under the centre decides the body's height, so a grounded body whose centre
+        // crosses onto a higher floor is lifted onto it by the push-out, which is the step.
+        if (grounded && crossed_to.sector != from &&
+            movement.pose.centre.sector == crossed_to.sector) {
+            if (const auto lift =
+                    dot(movement.pose.centre.point - crossed_to.point, movement.pose.gravity_up);
+                lift > skin) {
+                movement.stepped += lift;
+            }
+        }
+
+        auto contacts = contacts_of(map, shape, movement.pose);
+        movement.ground = ground_among(contacts, shape, movement.pose);
+        // A grounded body that walks off its ground, rather than leaving it upward, snaps down.
+        if (grounded && !movement.ground &&
+            dot(movement.velocity, movement.pose.gravity_up) <= 0.0F) {
+            if (const auto drop = snap_down(map, shape, movement.pose)) {
+                movement.stepped -= *drop;
+                contacts = contacts_of(map, shape, movement.pose);
+                movement.ground = ground_among(contacts, shape, movement.pose);
+            }
+        }
+        // What the body was pushed out of clips its velocity too, though it may now be clear of it.
+        contacts.insert(contacts.end(), pushed.begin(), pushed.end());
+        movement.velocity = clip(movement.velocity, contacts);
     }
-    movement.ground = ground_among(contacts_of(map, shape, movement.pose), shape, movement.pose);
     return movement;
 }
 
 std::optional<Pose> settle(const Map& map, const BodyShape& shape, const Pose& pose) {
     check_body(shape, pose);
     auto settled = pose;
-    push_out(map, shape, settled);
+    std::ignore = push_out(map, shape, settled);
     const auto overlaps =
         std::ranges::any_of(contacts_of(map, shape, settled),
                             [](const Contact& contact) { return contact.depth > fit_tolerance; });

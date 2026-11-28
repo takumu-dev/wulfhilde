@@ -9,6 +9,7 @@
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector3.hpp>
+#include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/map_description.hpp>
 
@@ -19,6 +20,7 @@
 #include <cmath>
 #include <cstddef>
 #include <format>
+#include <initializer_list>
 #include <numbers>
 #include <utility>
 #include <vector>
@@ -57,6 +59,50 @@ wulfhilde::Map square_map(float ceiling, const Vector3& start) {
 // The square, 10 m high, where the player starts standing at its middle.
 wulfhilde::Map open_square() { return square_map(10.0F, {}); }
 
+// A straight run of sectors along +X, 2 m wide from y = -1 to 1, each 4 m high above its floor,
+// one per floor height in turn, joined by wall portals: the first 3 m long, the last 3 m, and those
+// between 0.5 m. The player starts 0.5 m into the first, facing along +X.
+wulfhilde::Map stair_map(std::initializer_list<float> floors) {
+    wulfhilde::MapDescription description;
+    auto start = -3.0F;
+    for (std::size_t index = 0; const auto floor : floors) {
+        const auto length = index == 0 || index + 1 == floors.size() ? 3.0F : 0.5F;
+        const auto end = start + length;
+        const auto id = std::format("step-{}", index);
+        const auto wall = [](float x, float y) {
+            return wulfhilde::WallDescription{
+                .start = {.x = x, .y = y},
+                .surface = {.material = "test/wall"},
+            };
+        };
+        std::vector walls{wall(start, -1.0F), wall(end, -1.0F), wall(end, 1.0F), wall(start, 1.0F)};
+        if (index + 1 < floors.size()) {
+            walls.at(1).id = id + "-ahead";
+            description.portals.push_back({
+                .a = {.id = id + "-ahead"},
+                .b = {.id = std::format("step-{}-behind", index + 1)},
+            });
+        }
+        if (index > 0) {
+            walls.at(3).id = id + "-behind";
+        }
+        description.sectors.push_back({
+            .id = id,
+            .floor = {.height = floor, .material = "test/floor"},
+            .ceiling = {.height = floor + 4.0F, .material = "test/ceiling"},
+            .loops = {std::move(walls)},
+        });
+        start = end;
+        ++index;
+    }
+    description.start = {.sector = "step-0", .point = {.x = -2.5F, .z = *floors.begin()}};
+    auto map = wulfhilde::Map::create(std::move(description));
+    if (!map) {
+        FAIL(std::format("the description has problems:\n{}", map.error()));
+    }
+    return *std::move(map);
+}
+
 // Ticks a controller for a time, holding the same actions.
 void hold(viewer::Controller& controller, const wulfhilde::Map& map, const viewer::Actions& actions,
           float seconds) {
@@ -80,10 +126,61 @@ Vector3 velocity_over_tick(viewer::Controller& controller, const wulfhilde::Map&
     return (center_of(controller) - before) / viewer::Controller::tick_seconds;
 }
 
+// Returns the sector the body's centre is in.
+wulfhilde::SectorId sector_of(const viewer::Controller& controller) {
+    const auto& body = controller.body();
+    REQUIRE(body.has_value());
+    return body ? body->centre.sector : wulfhilde::SectorId{0};
+}
+
+// Returns how far the eye is above the feet of the body.
+float eye_above_feet(const viewer::Controller& controller, const wulfhilde::Map& map) {
+    return controller.eye(map).location.point.z - (center_of(controller).z - 0.9F);
+}
+
 // Checks that a facing is the one a yaw, a pitch and a roll make, to within float rounding.
 void check_facing(const wulfhilde::Rotation& facing, Angle yaw, Angle pitch, Angle roll) {
     CHECK(wulfhilde::approx_equal(
         facing, wulfhilde::Rotation::from_yaw_pitch_roll(yaw, pitch, roll), Angle::degrees(0.01F)));
+}
+
+// Walks a controller forward until its body's centre crosses into a sector, returning where its
+// eye was the tick before.
+Vector3 walk_into(viewer::Controller& controller, const wulfhilde::Map& map,
+                  wulfhilde::SectorId sector) {
+    auto eye = controller.eye(map).location.point;
+    for (std::size_t tick = 0; tick < 240 && sector_of(controller) != sector; ++tick) {
+        eye = controller.eye(map).location.point;
+        controller.tick(map, {.forward = 1.0F});
+    }
+    REQUIRE(sector_of(controller) == sector);
+    return eye;
+}
+
+// Checks that the eye holds still the tick the body steps up a rise, negative for a step down,
+// then eases back to 1.65 m above the feet with a time constant of 0.1 s.
+void check_eye_eases_over(float rise) {
+    CAPTURE(rise);
+    const auto map = stair_map({0.0F, rise});
+    auto controller = viewer::Controller::at_start(map);
+    const auto beyond = map.find_sector("step-1");
+    REQUIRE(beyond.has_value());
+
+    const auto eye = walk_into(controller, map, beyond.value_or(wulfhilde::SectorId{0}));
+    // The tick the body steps, the eye only moves on.
+    CHECK(std::abs(center_of(controller).z - 0.9F - rise) < 1e-4F);
+    CHECK(std::abs(controller.eye(map).location.point.z - eye.z) < 1e-4F);
+
+    hold(controller, map, {.forward = 1.0F}, 0.1F);
+    CHECK(std::abs(eye_above_feet(controller, map) - (1.65F - (rise / std::numbers::e_v<float>))) <
+          1e-4F);
+    hold(controller, map, {.forward = 1.0F}, 0.2F);
+    CHECK(std::abs(eye_above_feet(controller, map) - (1.65F - (rise * std::exp(-3.0F)))) < 1e-4F);
+
+    // Back at the start, the eye is where it would be had the body never stepped.
+    hold(controller, map, {.forward = 1.0F}, 0.1F);
+    controller.return_to_start(map);
+    CHECK(std::abs(eye_above_feet(controller, map) - 1.65F) < 1e-4F);
 }
 
 } // namespace
@@ -220,6 +317,35 @@ TEST_CASE("a body jumps from the ground only, and again on landing while jump is
     CHECK(center_of(controller).z < start);
     hold(controller, map, {.jump = true}, 0.4F);
     CHECK(center_of(controller).z > 1.2F);
+}
+
+TEST_CASE("the eye holds still as the body steps up or down, then eases back to 1.65 m above its "
+          "feet with a time constant of 0.1 s",
+          "[viewer]") {
+    check_eye_eases_over(0.3F);
+    check_eye_eases_over(-0.3F);
+}
+
+TEST_CASE("running up or down a stair, the eye lags the body by at most 0.4 m", "[viewer]") {
+    for (const auto rise : {0.3F, -0.3F}) {
+        CAPTURE(rise);
+        const auto map =
+            stair_map({0.0F, rise, 2.0F * rise, 3.0F * rise, 4.0F * rise, 5.0F * rise});
+        auto controller = viewer::Controller::at_start(map);
+        const auto top = map.find_sector("step-5");
+        REQUIRE(top.has_value());
+
+        // How far the eye has fallen behind the body's step, most of all.
+        auto most = 0.0F;
+        for (std::size_t tick = 0; tick < 480 && sector_of(controller) != top; ++tick) {
+            controller.tick(map, {.forward = 1.0F, .run = true});
+            most = std::max(most,
+                            (1.65F - eye_above_feet(controller, map)) * std::copysign(1.0F, rise));
+        }
+
+        CHECK(sector_of(controller) == top);
+        CHECK(std::abs(most - 0.4F) < 1e-4F);
+    }
 }
 
 TEST_CASE("the eye looks up and down no further than 89 degrees", "[viewer]") {
