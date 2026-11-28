@@ -64,9 +64,22 @@ struct WallDescription {
     std::string properties{};
 };
 
+/// A floor or ceiling that shows an infinitely distant backdrop instead of a material.
+///
+/// The backdrop is fixed to the sector's coordinates: its image's centre column faces +X, and its
+/// top row is straight up.
+struct SkyDescription {
+    /// The asset path of the backdrop, as in `SurfaceDescription::material`.
+    std::string backdrop{};
+
+    /// The luminance of the backdrop's white, in nits, or nothing to take the backdrop's own.
+    std::optional<float> nits{};
+};
+
 /// A sector's floor or ceiling: the height it lies at, and what covers it.
 ///
-/// Its surface's fields sit beside its height, as the file writes them.
+/// Its surface's fields sit beside its height, as the file writes them, and a sky takes the place
+/// of all of them.
 struct FloorOrCeilingDescription {
     /// The height it lies at, in metres.
     float height = 0.0F;
@@ -83,6 +96,10 @@ struct FloorOrCeilingDescription {
     /// How far the material is turned in the surface's plane, from +X toward +Y, about the point
     /// `offset` moves its origin to. `scale` applies along the material's own turned axes.
     Angle rotation{};
+
+    /// The sky it shows instead of a material, or nothing for a surface. With a sky, the fields of
+    /// the material don't apply.
+    std::optional<SkyDescription> sky{};
 };
 
 /// A sector: a region bounded by a loop of walls, with a floor below and a ceiling above.

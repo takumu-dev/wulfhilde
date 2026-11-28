@@ -219,7 +219,11 @@ PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent ex
         }
     }
 
-    PortalTraversal traversal{.views = {{.view_projection = projection.view_projection}}};
+    PortalTraversal traversal;
+    traversal.views.push_back({
+        .view_projection = projection.view_projection,
+        .eye = camera.location.point,
+    });
     for (std::size_t index = 0; const auto& window : windows) {
         if (window) {
             traversal.sectors.push_back({

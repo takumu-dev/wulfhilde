@@ -1,4 +1,4 @@
-# Checks the schemas of maps and materials against the files of those kinds that the engine's tests
+# Checks the schemas of maps, materials and backdrops against the files of those kinds that the engine's tests
 # hold, with check-jsonschema, so that the schema an editor checks a file against and the engine's
 # loader agree.
 #
@@ -102,6 +102,13 @@ check_schema(
     EXTENSION .material.json
     VALID tests/content tests/assets/materials/valid
     INVALID tests/assets/materials/invalid
+)
+check_schema(
+    KIND backdrop
+    SCHEMA schema/backdrop.schema.json
+    EXTENSION .backdrop.json
+    VALID tests/content tests/assets/backdrops/valid
+    INVALID tests/assets/backdrops/invalid
 )
 
 if(failures)

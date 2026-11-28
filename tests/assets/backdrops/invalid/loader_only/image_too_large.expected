@@ -1,0 +1,1 @@
+materials/textures/too_large.png: the image is 4097 by 1 pixels, but an image may be at most 4096 pixels on a side, named first by backdrops/invalid/loader_only/image_too_large.backdrop.json at 4:12 (/image)

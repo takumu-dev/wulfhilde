@@ -37,8 +37,8 @@
     },
     {
       "id": "closet",
-      "floor": { "height": 0, "material": "stone/floor" },
-      "ceiling": { "height": 2.5, "material": "plaster" },
+      "floor": { "height": 0, "sky": { "backdrop": "sky/abyss" } },
+      "ceiling": { "height": 2.5, "sky": { "backdrop": "sky/dusk", "nits": 50 } },
       "loops": [
         [
           { "start": [4, 0], "surface": { "material": "brick" } },

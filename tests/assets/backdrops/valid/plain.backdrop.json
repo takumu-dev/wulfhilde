@@ -1,0 +1,7 @@
+{
+  "$schema": "../../../../schema/backdrop.schema.json",
+  "format": "wulfhilde-backdrop",
+  "version": 1,
+  "image": "materials/textures/rgb",
+  "nits": 1000
+}

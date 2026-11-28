@@ -5,7 +5,7 @@
 #   check-format  fails if any source differs from what clang-format would make of it
 #   format        reformats every source in place
 #   docs          runs Doxygen over the public headers, failing on any warning
-#   check-schema  checks the map and material schemas against the tests' files, as
+#   check-schema  checks the map, material and backdrop schemas against the tests' files, as
 #                 cmake/check_schemas.cmake describes
 
 include_guard(GLOBAL)
@@ -51,7 +51,7 @@ if(WULFHILDE_CHECK_JSONSCHEMA)
             "-DCHECK_JSONSCHEMA=${WULFHILDE_CHECK_JSONSCHEMA}"
             "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/check_schemas.cmake"
-        COMMENT "Checking the map and material schemas against the tests' files"
+        COMMENT "Checking the map, material and backdrop schemas against the tests' files"
         VERBATIM
     )
 endif()

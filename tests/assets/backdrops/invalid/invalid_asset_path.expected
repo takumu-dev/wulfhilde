@@ -1,0 +1,1 @@
+backdrops/invalid/invalid_asset_path.backdrop.json:4:12: "materials/textures/Sky.png" isn't an asset path, which is segments of a-z, 0-9, _ and - separated by / and without an extension (/image)

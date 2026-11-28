@@ -14,6 +14,7 @@
 #include <wulfhilde/world/portal.hpp>
 #include <wulfhilde/world/portal_link.hpp>
 #include <wulfhilde/world/sector.hpp>
+#include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/surface.hpp>
 #include <wulfhilde/world/surface_ref.hpp>
 #include <wulfhilde/world/trace.hpp>
@@ -34,11 +35,11 @@
 namespace wulfhilde {
 namespace {
 
-/// Gives each distinct material path an ID, in the order they are first seen.
-class MaterialInterner {
+/// Gives each distinct asset path an ID, in the order they are first seen.
+template <typename AssetId> class Interner {
   public:
     /// Returns a path's ID, giving it the next one if it has none yet.
-    MaterialId intern(std::string path) {
+    AssetId intern(std::string path) {
         const auto [found, inserted] =
             ids_.try_emplace(std::move(path), narrow<std::uint32_t>(ids_.size()));
         if (inserted) {
@@ -51,9 +52,12 @@ class MaterialInterner {
     [[nodiscard]] std::vector<std::string> take_paths() && { return std::move(paths_); }
 
   private:
-    std::unordered_map<std::string, MaterialId> ids_;
+    std::unordered_map<std::string, AssetId> ids_;
     std::vector<std::string> paths_;
 };
+
+using MaterialInterner = Interner<MaterialId>;
+using BackdropInterner = Interner<BackdropId>;
 
 /// Returns a surface as a map holds it.
 [[nodiscard]] Surface make_surface(MaterialInterner& materials, SurfaceDescription description) {
@@ -67,16 +71,27 @@ class MaterialInterner {
 
 /// Returns a floor or ceiling as a map holds it.
 [[nodiscard]] FloorOrCeiling make_floor_or_ceiling(MaterialInterner& materials,
+                                                   BackdropInterner& backdrops,
                                                    FloorOrCeilingDescription description) {
+    if (description.sky) {
+        return {
+            .height = description.height,
+            .cover =
+                Sky{
+                    .backdrop = backdrops.intern(std::move(description.sky->backdrop)),
+                    .nits = description.sky->nits,
+                },
+        };
+    }
     return {
         .height = description.height,
-        .surface = make_surface(materials,
-                                {
-                                    .material = std::move(description.material),
-                                    .offset = description.offset,
-                                    .scale = description.scale,
-                                    .rotation = description.rotation,
-                                }),
+        .cover = make_surface(materials,
+                              {
+                                  .material = std::move(description.material),
+                                  .offset = description.offset,
+                                  .scale = description.scale,
+                                  .rotation = description.rotation,
+                              }),
     };
 }
 
@@ -213,11 +228,12 @@ std::expected<Map, MapLoadError> Map::create(MapDescription description) {
     map.properties_ = std::move(description.properties);
     const auto ambient = description.ambient.value_or(AmbientLight{});
     MaterialInterner materials;
+    BackdropInterner backdrops;
     std::unordered_map<std::string, WallId> walls_by_name;
     for (auto& sector : description.sectors) {
         const SectorId id{narrow<std::uint32_t>(map.sectors_.size())};
-        const auto floor = make_floor_or_ceiling(materials, std::move(sector.floor));
-        const auto ceiling = make_floor_or_ceiling(materials, std::move(sector.ceiling));
+        const auto floor = make_floor_or_ceiling(materials, backdrops, std::move(sector.floor));
+        const auto ceiling = make_floor_or_ceiling(materials, backdrops, std::move(sector.ceiling));
 
         std::vector<std::vector<WallId>> loops;
         for (auto& walls : sector.loops) {
@@ -271,6 +287,7 @@ std::expected<Map, MapLoadError> Map::create(MapDescription description) {
         map.portals_.push_back({.a = a, .b = b, .properties = std::move(portal.properties)});
     }
     map.materials_ = std::move(materials).take_paths();
+    map.backdrops_ = std::move(backdrops).take_paths();
     std::ranges::sort(map.sectors_by_name_, {}, [&map](SectorId sector) -> std::string_view {
         return map.sector(sector).id;
     });

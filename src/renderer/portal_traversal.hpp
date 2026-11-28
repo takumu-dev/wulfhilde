@@ -5,6 +5,7 @@
 
 #include <wulfhilde/core/matrix4.hpp>
 #include <wulfhilde/core/vector2.hpp>
+#include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/extent.hpp>
 #include <wulfhilde/world/ids.hpp>
@@ -31,6 +32,9 @@ struct ViewRecord {
     /// From the coordinates of the view's sector into Vulkan's clip space: x to the right, y down,
     /// and depth from 1 at the near plane to 0 infinitely far away.
     Matrix4 view_projection;
+
+    /// Where the eye is, in the coordinates of the view's sector, which skies are seen from.
+    Vector3 eye;
 };
 
 /// A sector seen in a view, and the part of the screen it may be seen in, through the openings

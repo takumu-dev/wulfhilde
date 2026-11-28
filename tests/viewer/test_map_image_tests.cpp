@@ -73,6 +73,30 @@ const std::vector<TestMapCameras>& test_map_cameras() {
                     },
                 },
         },
+        {
+            .map = "outdoors",
+            .cameras =
+                {
+                    // From the yard's west side, east and up across the opening into the field,
+                    // under the yard's blue sky and the field's dimmer amber one.
+                    {
+                        .name = "skies",
+                        .sector = "yard",
+                        .point = {.x = 1.0F, .y = 4.0F, .z = 1.65F},
+                        .yaw = Angle::degrees(0.0F),
+                        .pitch = Angle::degrees(35.0F),
+                    },
+                    // From the yard's edge, down into the abyss beside the bridge, whose sky floor
+                    // shows the blue backdrop's lower half.
+                    {
+                        .name = "abyss",
+                        .sector = "yard",
+                        .point = {.x = 1.5F, .y = 0.25F, .z = 1.65F},
+                        .yaw = Angle::degrees(-65.0F),
+                        .pitch = Angle::degrees(-55.0F),
+                    },
+                },
+        },
     };
     return maps;
 }

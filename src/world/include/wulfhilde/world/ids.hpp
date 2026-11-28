@@ -23,4 +23,8 @@ using PortalId = Id<struct PortalTag>;
 /// order the map's description first names it.
 using MaterialId = Id<struct MaterialTag>;
 
+/// The ID of one of the backdrops a map's skies show. Each distinct asset path gets one, in the
+/// order the map's description first names it.
+using BackdropId = Id<struct BackdropTag>;
+
 } // namespace wulfhilde

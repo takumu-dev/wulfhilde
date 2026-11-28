@@ -20,6 +20,7 @@
 using wulfhilde::AmbientLight;
 using wulfhilde::MapDescription;
 using wulfhilde::MapProblemCode;
+using wulfhilde::SkyDescription;
 
 TEST_CASE("the hall the rules' tests break is a valid map", "[world]") {
     CHECK(problems_in(hall_map()).empty());
@@ -185,6 +186,53 @@ TEST_CASE("an asset path is segments of lowercase letters, digits, underscores a
         CAPTURE(path);
         CHECK(problems_in(description).empty());
     }
+}
+
+TEST_CASE("a sky's backdrop that isn't an asset path is a problem at it", "[world]") {
+    auto description = hall_map();
+    description.sectors.at(0).floor.sky = SkyDescription{.backdrop = "Test/Abyss.png"};
+    description.sectors.at(0).ceiling.sky = SkyDescription{.backdrop = "../day"};
+
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{
+              {MapProblemCode::invalid_asset_path, "/sectors/0/floor/sky/backdrop"},
+              {MapProblemCode::invalid_asset_path, "/sectors/0/ceiling/sky/backdrop"},
+          });
+}
+
+TEST_CASE("a sky needs no material, and whatever material its floor or ceiling names is ignored",
+          "[world]") {
+    auto description = hall_map();
+    description.sectors.at(0).floor = {.height = 0.0F, .sky = SkyDescription{.backdrop = "abyss"}};
+    description.sectors.at(0).ceiling.material = "Not An Asset Path";
+    description.sectors.at(0).ceiling.sky = SkyDescription{.backdrop = "day"};
+
+    CHECK(problems_in(description).empty());
+}
+
+TEST_CASE("a sky's nits are a problem below 0, or if they aren't a finite number", "[world]") {
+    for (const float nits :
+         {-0.5F, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+        CAPTURE(nits);
+        auto description = hall_map();
+        description.sectors.at(0).ceiling.sky = SkyDescription{.backdrop = "day", .nits = nits};
+
+        CHECK(problems_in(description) ==
+              std::vector<Problem>{
+                  {MapProblemCode::light_level_out_of_range, "/sectors/0/ceiling/sky/nits"},
+              });
+    }
+    auto description = hall_map();
+    description.sectors.at(0).floor.sky = SkyDescription{.backdrop = "abyss", .nits = -2.0F};
+    CHECK(only_problem_in(description).message ==
+          "-2 nits isn't a light level, which is 0 or more");
+}
+
+TEST_CASE("a sky may be of no nits at all", "[world]") {
+    auto description = hall_map();
+    description.sectors.at(0).ceiling.sky = SkyDescription{.backdrop = "night", .nits = 0.0F};
+
+    CHECK(problems_in(description).empty());
 }
 
 TEST_CASE("a sector without a loop is a problem at its loops", "[world]") {

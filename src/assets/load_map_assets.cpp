@@ -1,5 +1,6 @@
 #include <wulfhilde/assets/load_map_assets.hpp>
 
+#include "backdrop_decoding.hpp"
 #include "file_reading.hpp"
 #include "image_decoding.hpp"
 #include "json_file.hpp"
@@ -8,12 +9,18 @@
 #include "object_reader.hpp"
 #include <wulfhilde/assets/asset_error.hpp>
 #include <wulfhilde/assets/asset_problem.hpp>
+#include <wulfhilde/assets/backdrop.hpp>
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/map_assets.hpp>
 #include <wulfhilde/assets/material.hpp>
 #include <wulfhilde/assets/texture_image.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/sector.hpp>
+#include <wulfhilde/world/sky.hpp>
+#include <wulfhilde/world/surface.hpp>
+
+#include <pedantjson/pedantjson.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -27,35 +34,59 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace wulfhilde {
 namespace {
 
-/// Returns the JSON pointer of the first surface of a map that carries each of its materials, by
-/// the material's ID.
+/// The JSON pointer of the first place in a map that names each of its materials, and each of its
+/// backdrops, by ID.
+struct FirstReferences {
+    std::vector<std::string> materials;
+    std::vector<std::string> backdrops;
+};
+
+/// Returns the JSON pointer of the first surface of a map that carries each of its materials, and
+/// of the first sky that shows each of its backdrops.
 ///
-/// The map interns its materials in the order of its description, floor, ceiling and then walls of
-/// each sector, which is the order of its file; this walks its surfaces in the same order.
-std::vector<std::string> first_references(const Map& map) {
-    std::vector<std::string> references(map.materials().size());
-    const auto note = [&references](MaterialId material, auto pointer) {
-        auto& reference = references.at(material.index());
+/// The map interns its materials and its backdrops in the order of its description, floor, ceiling
+/// and then walls of each sector, which is the order of its file; this walks its surfaces and skies
+/// in the same order.
+FirstReferences first_references(const Map& map) {
+    FirstReferences references{
+        .materials = std::vector<std::string>(map.materials().size()),
+        .backdrops = std::vector<std::string>(map.backdrops().size()),
+    };
+    const auto note = [](std::vector<std::string>& table, std::size_t index, auto pointer) {
+        auto& reference = table.at(index);
         if (reference.empty()) {
             reference = pointer();
         }
     };
+    const auto note_cover = [&](const Cover& cover, std::size_t sector_index,
+                                std::string_view member) {
+        if (const auto* const sky = std::get_if<Sky>(&cover)) {
+            note(references.backdrops, sky->backdrop.index(), [sector_index, member] {
+                return std::format("/sectors/{}/{}/sky/backdrop", sector_index, member);
+            });
+        } else {
+            note(references.materials, std::get<Surface>(cover).material.index(),
+                 [sector_index, member] {
+                     return std::format("/sectors/{}/{}/material", sector_index, member);
+                 });
+        }
+    };
     for (std::size_t sector_index = 0; const auto& sector : map.sectors()) {
-        note(sector.floor.surface.material,
-             [sector_index] { return std::format("/sectors/{}/floor/material", sector_index); });
-        note(sector.ceiling.surface.material,
-             [sector_index] { return std::format("/sectors/{}/ceiling/material", sector_index); });
+        note_cover(sector.floor.cover, sector_index, "floor");
+        note_cover(sector.ceiling.cover, sector_index, "ceiling");
         for (std::size_t loop_index = 0; const auto& loop : sector.loops) {
             for (std::size_t wall_index = 0; const auto wall : loop) {
-                note(map.wall(wall).surface.material, [sector_index, loop_index, wall_index] {
-                    return std::format("/sectors/{}/loops/{}/{}/surface/material", sector_index,
-                                       loop_index, wall_index);
-                });
+                note(references.materials, map.wall(wall).surface.material.index(),
+                     [sector_index, loop_index, wall_index] {
+                         return std::format("/sectors/{}/loops/{}/{}/surface/material",
+                                            sector_index, loop_index, wall_index);
+                     });
                 ++wall_index;
             }
             ++loop_index;
@@ -93,10 +124,10 @@ class Textures {
     /// The first ask reports an image that is missing at the place that asks for it, and one that
     /// is broken in its own file, naming that place. Later asks report nothing.
     ///
-    /// \param reference The texture that asks for it first, which names its asset path.
-    /// \param file The material's file that names the texture.
+    /// \param reference The member that asks for it first, which names its asset path.
+    /// \param file The file of the material or the backdrop that names it.
     /// \return The image, or nothing if it is missing or broken.
-    const detail::DecodedImage* image(const detail::TextureReference& reference,
+    const detail::DecodedImage* image(const detail::ImageReference& reference,
                                       detail::JsonFile& file) {
         auto [found, inserted] = decoded_.try_emplace(reference.path);
         if (inserted) {
@@ -169,7 +200,7 @@ struct ChannelRead {
 /// A texture that a material's property reads, with where its image's index goes.
 struct TextureRead {
     /// The texture as the file names it.
-    std::reference_wrapper<const detail::TextureReference> reference;
+    std::reference_wrapper<const detail::ImageReference> reference;
 
     /// What the property takes its texels to hold.
     detail::TexelMeaning meaning{};
@@ -336,21 +367,34 @@ Material untextured_material(const detail::MaterialDescription& description) {
     return material;
 }
 
-/// Loads one material and the images it reads, adding every problem found to `problems`.
+/// A JSON asset's file, read and parsed.
+struct JsonAsset {
+    /// The file's asset path with its extension.
+    std::string name;
+
+    /// The file's text.
+    std::string text;
+
+    /// The document parsed from the text.
+    pedantjson::Document document;
+};
+
+/// Reads and parses a JSON asset's file, adding a problem to `problems` if it can't.
+///
+/// A missing file is reported at the first place in the map that names the asset, whose file the
+/// map doesn't know, so without a position, and an unreadable one in its own file, naming that
+/// place.
 ///
 /// \param root The content root.
-/// \param path The material's asset path.
-/// \param reference The JSON pointer of the first surface in the map that carries it.
-/// \param textures The images loaded so far.
-/// \param problems Where its problems go.
-/// \return The material, or nothing if it has any problem.
-std::optional<Material> load_material(const ContentRoot& root, const std::string& path,
-                                      const std::string& reference, Textures& textures,
-                                      std::vector<AssetProblem>& problems) {
-    auto name = std::format("{}{}", path, material_extension);
-    const auto text = detail::read_file(root.directory() / name);
+/// \param name The file's asset path with its extension.
+/// \param reference The JSON pointer of the first place in the map that names the asset.
+/// \param problems Where its problem goes.
+/// \return The file, or nothing if it can't be read or isn't JSON.
+std::optional<JsonAsset> read_json_asset(const ContentRoot& root, std::string name,
+                                         const std::string& reference,
+                                         std::vector<AssetProblem>& problems) {
+    auto text = detail::read_file(root.directory() / name);
     if (!text && text.error().code == AssetProblemCode::missing_file) {
-        // At the map's surface, whose file the map doesn't know, so without a position.
         problems.push_back({
             .code = AssetProblemCode::missing_file,
             .message = missing_message(name),
@@ -363,15 +407,38 @@ std::optional<Material> load_material(const ContentRoot& root, const std::string
             name_whole_file_problem(text.error(), name, std::format("the map at {}", reference)));
         return std::nullopt;
     }
-    const auto document = detail::parse_json(*text);
+    auto document = detail::parse_json(*text);
     if (!document) {
         auto problem = document.error();
         problem.file = std::move(name);
         problems.push_back(std::move(problem));
         return std::nullopt;
     }
+    return JsonAsset{
+        .name = std::move(name),
+        .text = std::move(*text),
+        .document = std::move(*document),
+    };
+}
 
-    detail::JsonFile file(std::move(name), *text, *document);
+/// Loads one material and the images it reads, adding every problem found to `problems`.
+///
+/// \param root The content root.
+/// \param path The material's asset path.
+/// \param reference The JSON pointer of the first surface in the map that carries it.
+/// \param textures The images loaded so far.
+/// \param problems Where its problems go.
+/// \return The material, or nothing if it has any problem.
+std::optional<Material> load_material(const ContentRoot& root, const std::string& path,
+                                      const std::string& reference, Textures& textures,
+                                      std::vector<AssetProblem>& problems) {
+    auto asset =
+        read_json_asset(root, std::format("{}{}", path, material_extension), reference, problems);
+    if (!asset) {
+        return std::nullopt;
+    }
+
+    detail::JsonFile file(std::move(asset->name), asset->text, asset->document);
     const auto description = detail::decode_material(file);
     if (!description || file.has_problems()) {
         std::ranges::move(std::move(file).take_problems(), std::back_inserter(problems));
@@ -401,6 +468,40 @@ std::optional<Material> load_material(const ContentRoot& root, const std::string
     return material;
 }
 
+/// Loads one backdrop and the image it reads, adding every problem found to `problems`.
+///
+/// \param root The content root.
+/// \param path The backdrop's asset path.
+/// \param reference The JSON pointer of the first sky in the map that shows it.
+/// \param textures The images loaded so far.
+/// \param problems Where its problems go.
+/// \return The backdrop, or nothing if it has any problem.
+std::optional<Backdrop> load_backdrop(const ContentRoot& root, const std::string& path,
+                                      const std::string& reference, Textures& textures,
+                                      std::vector<AssetProblem>& problems) {
+    auto asset =
+        read_json_asset(root, std::format("{}{}", path, backdrop_extension), reference, problems);
+    if (!asset) {
+        return std::nullopt;
+    }
+
+    detail::JsonFile file(std::move(asset->name), asset->text, asset->document);
+    std::optional<Backdrop> backdrop;
+    if (const auto description = detail::decode_backdrop(file)) {
+        const auto& image_reference = description->image;
+        if (const auto* const image = textures.image(image_reference, file)) {
+            backdrop = Backdrop{
+                .nits = description->nits,
+                .image =
+                    textures.texture(image_reference.path, *image, detail::TexelMeaning::color),
+            };
+        }
+    }
+    std::ranges::move(std::move(file).take_problems(), std::back_inserter(problems));
+    std::ranges::move(textures.take_problems(), std::back_inserter(problems));
+    return backdrop;
+}
+
 } // namespace
 
 std::expected<MapAssets, AssetError> load_map_assets(const ContentRoot& root, const Map& map) {
@@ -408,10 +509,16 @@ std::expected<MapAssets, AssetError> load_map_assets(const ContentRoot& root, co
     Textures textures(root);
     std::vector<AssetProblem> problems;
     std::vector<Material> materials;
-    for (const auto& [path, reference] : std::views::zip(map.materials(), references)) {
+    for (const auto& [path, reference] : std::views::zip(map.materials(), references.materials)) {
         auto material = load_material(root, path, reference, textures, problems);
         if (material) {
             materials.push_back(std::move(*material));
+        }
+    }
+    std::vector<Backdrop> backdrops;
+    for (const auto& [path, reference] : std::views::zip(map.backdrops(), references.backdrops)) {
+        if (const auto backdrop = load_backdrop(root, path, reference, textures, problems)) {
+            backdrops.push_back(*backdrop);
         }
     }
 
@@ -425,6 +532,7 @@ std::expected<MapAssets, AssetError> load_map_assets(const ContentRoot& root, co
     }
     return MapAssets{
         .materials = std::move(materials),
+        .backdrops = std::move(backdrops),
         .images = std::move(textures).take_images(),
     };
 }

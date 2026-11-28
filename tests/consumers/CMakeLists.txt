@@ -45,6 +45,17 @@ set_tests_properties("consumers: the material schema is installed, for the edito
         LABELS unit
 )
 
+add_test(NAME "consumers: the backdrop schema is installed, for the editors of those who write backdrops"
+    COMMAND "${CMAKE_COMMAND}" -E compare_files
+        "${PROJECT_SOURCE_DIR}/schema/backdrop.schema.json"
+        "${prefix}/${CMAKE_INSTALL_DATADIR}/wulfhilde/schema/backdrop.schema.json"
+)
+set_tests_properties("consumers: the backdrop schema is installed, for the editors of those who write backdrops"
+    PROPERTIES
+        FIXTURES_REQUIRED wulfhilde_installed
+        LABELS unit
+)
+
 # Adds a test that builds the consumer project in `source_dir` and runs the program it builds.
 # The consumer finds the third-party packages the engine links where this build found them.
 #

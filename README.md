@@ -19,10 +19,10 @@ problem in it and its assets, or measures what drawing it costs.
 | Module | Links | Holds |
 |---|---|---|
 | `core` | | checks of preconditions and their handler, the log sink, the checked `narrow`, typed IDs, and the math types: vectors, matrices, rotations, rigid transforms, angles, colours and planes |
-| `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, its sectors linked through wall portals, and asked whether a location is in its sector, the heights there, a portal's opening and where a trace stops, through openings too. It opens no files |
-| `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file and its materials, with their PNG textures decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
+| `world` | `core` | the map: made from a plain description that mirrors the map file, checked against the map's rules with every problem reported at its JSON pointer, its sectors linked through wall portals, any floor or ceiling a sky, and asked whether a location is in its sector, the heights there, a portal's opening and where a trace stops, through openings too. It opens no files |
+| `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file, its materials and its backdrops, with their PNG images decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
 | `platform` | `core` | the system's windows, keyboard and mouse, through SDL3, which no public header names: a window that can be resized or cover the display, with relative mouse mode, and events of the window, the keys by their USB HID codes, and the mouse |
-| `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, seen through the openings between them, with the strips above and below, drawing only the surfaces the camera sees through the openings from its sector, their materials' textures laid on them as the map says and filtered anisotropically, drawn in linear light with multisampling, exposed automatically within the map's range and tone-mapped with AgX, into a window frame after frame or into an image in memory, or measuring each pass of a frame on the GPU with timestamp queries |
+| `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, seen through the openings between them, with the strips above and below, drawing only the surfaces the camera sees through the openings from its sector, their materials' textures laid on them as the map says and filtered anisotropically, skies showing their backdrops infinitely far away, drawn in linear light with multisampling, exposed automatically within the map's range and tone-mapped with AgX, into a window frame after frame or into an image in memory, or measuring each pass of a frame on the GPU with timestamp queries |
 | `collision` | `world` | moving bodies through a map: a capsule, tilted or upright, stopped by walls and held between floor and ceiling, which straddles and crosses openings into the sectors beyond, steps up and down by Build's rule where it fits and is stopped by steps too high and openings too low for it, slides along what it meets and stands on what its own gravity pulls it onto, through two stateless functions, `move` and `settle`, that any of a game's bodies can use |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
@@ -42,6 +42,13 @@ root, with glTF's metallic-roughness properties, each a factor times an optional
 emission in nits, and the real-world size of one repeat of its textures. A texture is a PNG,
 named by its asset path without `.png`, whose colour space is the one the property reading it
 needs. `schema/material.schema.json` is the material's JSON Schema, installed beside the map's.
+
+A floor or a ceiling may be a sky instead, which shows a backdrop: a strict JSON file ending
+`.backdrop.json`, holding an equirectangular PNG of everything infinitely far away and its
+brightness in nits, which the sky may override. The backdrop is fixed to its sector's coordinates,
+with its image's centre column facing +X and its top row straight up. A sky is solid, and a body
+stands on it as on any floor. `schema/backdrop.schema.json` is the backdrop's JSON Schema, installed
+beside the others.
 
 The viewer opens a map's file, with the content root defaulting to the file's own directory, and
 lets you walk the map in first person from its start position: W, A, S and D walk, Shift runs,
@@ -175,7 +182,8 @@ until a game installs its own with `wulfhilde::set_log_sink`.
 
 - `CODING_STANDARDS.md` says how the code is written, tested and committed.
 - `cmake --workflow --preset lint` checks the formatting with `clang-format`, the documentation
-  with Doxygen, and the map and material schemas with `check-jsonschema` against the tests' files.
+  with Doxygen, and the map, material and backdrop schemas with `check-jsonschema` against the
+  tests' files.
   Building the `format` target reformats every source.
 - Every public declaration has a Doxygen comment. Doxygen writes the reference to `build/docs`.
 - Tests come first, through the public interfaces only, under `tests/`, which mirrors `src/` and

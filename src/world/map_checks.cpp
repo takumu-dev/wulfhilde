@@ -136,10 +136,22 @@ void check_exposure(Problems& problems, const Exposure& exposure) {
     }
 }
 
+/// Checks that a floor's or ceiling's height lies within the map's bounds, and that its material is
+/// an asset path, or its sky's backdrop, with nits that are a finite number, 0 or more.
 void check_floor_or_ceiling(Problems& problems, std::string_view pointer,
                             const FloorOrCeilingDescription& floor_or_ceiling) {
     check_coordinate(problems, child(pointer, "height"), floor_or_ceiling.height);
-    check_asset_path(problems, child(pointer, "material"), floor_or_ceiling.material);
+    if (!floor_or_ceiling.sky) {
+        check_asset_path(problems, child(pointer, "material"), floor_or_ceiling.material);
+        return;
+    }
+    const auto sky_pointer = child(pointer, "sky");
+    check_asset_path(problems, child(sky_pointer, "backdrop"), floor_or_ceiling.sky->backdrop);
+    if (const auto nits = floor_or_ceiling.sky->nits;
+        nits && (!std::isfinite(*nits) || *nits < 0.0F)) {
+        problems.add(MapProblemCode::light_level_out_of_range, child(sky_pointer, "nits"),
+                     std::format("{} nits isn't a light level, which is 0 or more", *nits));
+    }
 }
 
 /// Checks that a sector's loop of at least three walls is a shape it can be bounded by: its walls

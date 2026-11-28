@@ -13,6 +13,7 @@ wulfhilde_add_module(world
         include/wulfhilde/world/portal.hpp
         include/wulfhilde/world/portal_link.hpp
         include/wulfhilde/world/sector.hpp
+        include/wulfhilde/world/sky.hpp
         include/wulfhilde/world/start_position.hpp
         include/wulfhilde/world/surface.hpp
         include/wulfhilde/world/surface_ref.hpp
