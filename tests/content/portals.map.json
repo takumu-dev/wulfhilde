@@ -1,0 +1,133 @@
+{
+  "$schema": "../../schema/map.schema.json",
+  "format": "wulfhilde-map",
+  "version": 1,
+  "ambient": { "color": [1, 1, 1], "lux": 250 },
+  "sectors": [
+    {
+      "id": "start",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 3, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [0, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "start-mirror", "start": [2, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [6, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "start-east", "start": [6, 2], "surface": { "material": "materials/grid/portal_side" } },
+          { "start": [6, 4], "surface": { "material": "materials/grid/wall" } },
+          { "start": [6, 6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "start-north", "start": [4, 6], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2, 6], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, 6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "start-west", "start": [0, 4], "surface": { "material": "materials/grid/portal_side" } },
+          { "start": [0, 2], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "north-leg",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 3, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "id": "north-leg-start", "start": [2, 6], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4, 6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "north-leg-top", "start": [4, 12], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4, 14], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2, 14], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "top-leg",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 3, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [4, 12], "surface": { "material": "materials/grid/wall" } },
+          { "id": "top-leg-east-leg", "start": [10, 12], "surface": { "material": "materials/grid/wall" } },
+          { "start": [12, 12], "surface": { "material": "materials/grid/wall" } },
+          { "start": [12, 14], "surface": { "material": "materials/grid/wall" } },
+          { "id": "top-leg-north-leg", "start": [4, 14], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "east-leg",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 3, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "id": "east-leg-end", "start": [10, 0], "surface": { "material": "materials/grid/portal_side" } },
+          { "start": [12, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "east-leg-top-leg", "start": [12, 12], "surface": { "material": "materials/grid/wall" } },
+          { "start": [10, 12], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "mirror",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 3, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [-2, -2], "surface": { "material": "materials/grid/wall" } },
+          { "id": "mirror-east", "start": [8, -2], "surface": { "material": "materials/grid/portal_side" } },
+          { "start": [8, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "mirror-start", "start": [4, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "mirror-west", "start": [-2, 0], "surface": { "material": "materials/grid/portal_side" } }
+        ]
+      ]
+    },
+    {
+      "id": "annex",
+      "floor": { "height": 100, "material": "materials/grid/floor" },
+      "ceiling": { "height": 103, "material": "materials/grid/ceiling" },
+      "ambient": { "color": [1, 0.85, 0.7], "lux": 250 },
+      "loops": [
+        [
+          { "id": "annex-hub", "start": [2987, 3006], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2986, 3007], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2980, 3007], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2980, 3000], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2987, 3000], "surface": { "material": "materials/grid/wall" } },
+          { "id": "annex-start", "start": [2987, 3002], "surface": { "material": "materials/grid/portal_side" } },
+          { "start": [2987, 3004], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "hub",
+      "floor": { "height": 100, "material": "materials/grid/floor" },
+      "ceiling": { "height": 103, "material": "materials/grid/ceiling" },
+      "ambient": { "color": [0.7, 0.85, 1], "lux": 250 },
+      "loops": [
+        [
+          { "id": "hub-south", "start": [2987, 3006], "surface": { "material": "materials/grid/portal_side" } },
+          { "start": [2993, 3006], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hub-east", "start": [2994, 3007], "surface": { "material": "materials/grid/portal_side" } },
+          { "start": [2994, 3013], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hub-north", "start": [2993, 3014], "surface": { "material": "materials/grid/portal_side" } },
+          { "start": [2987, 3014], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hub-west", "start": [2986, 3013], "surface": { "material": "materials/grid/portal_side" } },
+          { "id": "hub-annex", "start": [2986, 3007], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    }
+  ],
+  "portals": [
+    { "a": { "wall": "start-north" }, "b": { "wall": "north-leg-start" } },
+    { "a": { "wall": "north-leg-top" }, "b": { "wall": "top-leg-north-leg" } },
+    { "a": { "wall": "top-leg-east-leg" }, "b": { "wall": "east-leg-top-leg" } },
+    { "a": { "wall": "east-leg-end" }, "b": { "wall": "start-east" }, "transform": { "translation": [6, 14, 0], "rotation": { "yaw": -90 } } },
+    { "a": { "wall": "start-west" }, "b": { "wall": "annex-start" }, "transform": { "translation": [2987, 3000, 100] } },
+    { "a": { "wall": "annex-hub" }, "b": { "wall": "hub-annex" } },
+    { "a": { "wall": "start-mirror" }, "b": { "wall": "mirror-start" } },
+    { "a": { "wall": "mirror-east" }, "b": { "wall": "mirror-west" }, "transform": { "translation": [-10, 0, 0] } },
+    { "a": { "wall": "hub-north" }, "b": { "wall": "hub-south" }, "transform": { "translation": [0, -8, 0] } },
+    { "a": { "wall": "hub-east" }, "b": { "wall": "hub-west" }, "transform": { "translation": [-8, 0, 0] } }
+  ],
+  "start": { "sector": "start", "point": [3, 3, 0], "yaw": 90 }
+}

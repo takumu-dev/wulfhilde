@@ -1,6 +1,7 @@
 // Each rule a map's description must keep, broken once in a valid description.
 #include "descriptions.hpp"
 #include "world_printing.hpp" // IWYU pragma: keep
+#include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/map.hpp>
@@ -18,8 +19,10 @@
 #include <vector>
 
 using wulfhilde::AmbientLight;
+using wulfhilde::Angle;
 using wulfhilde::MapDescription;
 using wulfhilde::MapProblemCode;
+using wulfhilde::PortalTransformDescription;
 using wulfhilde::SkyDescription;
 using wulfhilde::SurfaceDescription;
 
@@ -757,6 +760,147 @@ TEST_CASE("a wall portal whose walls don't run between the same corners in oppos
           "the portal's walls must run between the same corners in opposite directions, but "
           "/sectors/0/loops/0/3 runs from (3, 4) to (1, 4), and /sectors/1/loops/0/1 from (1, 4) "
           "to (2.5, 4)");
+}
+
+TEST_CASE("a transformed portal is accepted when its transform carries each corner to within "
+          "2 mm of its match",
+          "[world]") {
+    struct Case {
+        std::string name;
+        std::function<void(MapDescription&)> change;
+    };
+
+    const std::vector<Case> cases{
+        {.name = "exactly", .change = [](MapDescription&) {}},
+        {
+            .name = "a corner 1.9 mm out along the wall",
+            .change =
+                [](MapDescription& d) { d.sectors.at(1).loops.at(0).at(3).start.y = 3.0019F; },
+        },
+        {
+            .name = "both corners 1.9 mm out across the wall",
+            .change = [](MapDescription& d) { first_transform(d).translation.x += 0.0019F; },
+        },
+        {
+            .name = "moved up or down, which the sectors' heights meet in the opening",
+            .change = [](MapDescription& d) { first_transform(d).translation.z = 1.5F; },
+        },
+        {
+            // Rolled over about the way through the door, the hall's door lands end for end on
+            // the gallery's, from (20, 1) to (20, 3), its floor at the gallery's ceiling.
+            .name = "turned upside down, end for end",
+            .change =
+                [](MapDescription& d) {
+                    d.portals.at(0).transform = PortalTransformDescription{
+                        .translation = {.x = 24.0F, .y = 4.0F, .z = 3.0F},
+                        .rotation = {.yaw = Angle::degrees(-90.0F), .roll = Angle::degrees(180.0F)},
+                    };
+                },
+        },
+    };
+    for (const auto& [name, change] : cases) {
+        auto description = turned_doorway_map();
+        change(description);
+        CAPTURE(name);
+
+        CHECK(problems_in(description).empty());
+    }
+}
+
+TEST_CASE("a transformed portal's corners are carried in double, so an odd angle written to the "
+          "millimetre is accepted",
+          "[world]") {
+    // A door 1 m wide, turned 30 degrees, whose far corners are written to the millimetre: the
+    // hall's door from (3, 4) to (1, 4), turned and moved by (10, 0), lands at (10.5981, 4.9641)
+    // and (8.8660, 3.9641), to a tenth of a millimetre, a little way from what is written.
+    auto description = doorway_map();
+    description.sectors.at(1) = sector_through("gallery", {
+                                                              {.x = 8.866F, .y = 3.964F},
+                                                              {.x = 10.598F, .y = 4.964F},
+                                                              {.x = 9.598F, .y = 6.696F},
+                                                              {.x = 7.866F, .y = 5.696F},
+                                                          });
+    description.sectors.at(1).loops.at(0).at(0).id = "gallery-door";
+    description.portals.at(0).transform = PortalTransformDescription{
+        .translation = {.x = 10.0F},
+        .rotation = {.yaw = Angle::degrees(30.0F)},
+    };
+
+    CHECK(problems_in(description).empty());
+}
+
+TEST_CASE("a transformed portal whose transform carries a corner more than 2 mm from its match "
+          "is a problem at the portal",
+          "[world]") {
+    struct Case {
+        std::string name;
+        std::function<void(MapDescription&)> change;
+    };
+
+    const std::vector<Case> cases{
+        {
+            .name = "a corner 2.1 mm out along the wall",
+            .change =
+                [](MapDescription& d) { d.sectors.at(1).loops.at(0).at(3).start.y = 3.0021F; },
+        },
+        {
+            .name = "both corners 2.1 mm out across the wall",
+            .change = [](MapDescription& d) { first_transform(d).translation.x += 0.0021F; },
+        },
+        {
+            .name = "turned a degree too far",
+            .change =
+                [](MapDescription& d) { first_transform(d).rotation.yaw = Angle::degrees(91.0F); },
+        },
+        {
+            .name = "no transform, where the gallery lies far off",
+            .change = [](MapDescription& d) { d.portals.at(0).transform.reset(); },
+        },
+        {
+            .name = "tilted, so the corners' tops lean off their matches",
+            .change =
+                [](MapDescription& d) { first_transform(d).rotation.pitch = Angle::degrees(1.0F); },
+        },
+        {
+            // Rolled over about the door's own line, its ends land as before, but the hall lands
+            // on the gallery's side of its door, so the two face the same way.
+            .name = "turned upside down without turning end for end",
+            .change =
+                [](MapDescription& d) {
+                    d.portals.at(0).transform = PortalTransformDescription{
+                        .translation = {.x = 16.0F, .z = 3.0F},
+                        .rotation = {.yaw = Angle::degrees(90.0F), .roll = Angle::degrees(180.0F)},
+                    };
+                },
+        },
+    };
+    for (const auto& [name, change] : cases) {
+        auto description = turned_doorway_map();
+        change(description);
+        CAPTURE(name);
+
+        CHECK(problems_in(description) ==
+              std::vector<Problem>{{MapProblemCode::mismatched_portal_walls, "/portals/0"}});
+    }
+    auto description = turned_doorway_map();
+    first_transform(description).translation.x += 0.0035F;
+    CHECK(only_problem_in(description).message ==
+          "the portal's transform must carry each corner of /sectors/0/loops/0/3 to within 2 mm "
+          "of its match on /sectors/1/loops/0/2, but carries one 3.5 mm from it");
+}
+
+TEST_CASE("a side of a transformed portal that sets a surface for a strip is a problem at the "
+          "strip",
+          "[world]") {
+    auto description = turned_doorway_map();
+    description.sectors.at(0).loops.at(0).at(3).upper = SurfaceDescription{.material = "test/a"};
+    description.sectors.at(1).loops.at(0).at(2).lower = SurfaceDescription{.material = "test/b"};
+
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{
+              {MapProblemCode::strips_on_transformed_side, "/sectors/0/loops/0/3/upper"},
+              {MapProblemCode::strips_on_transformed_side, "/sectors/1/loops/0/2/lower"},
+          });
 }
 
 TEST_CASE("a wall portal isn't checked for its corners where a wall's corner is beyond the "

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "wulfhilde map",
-  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, portals that link them, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, inner loops outside the outer loop or inside each other, sector and wall ids that repeat, references to sectors and walls that don't exist, a portal's walls that don't run between the same corners in opposite directions, a wall that is a side of two portals, an exposure range whose minimum is above its maximum, and nits on a surface whose material doesn't emit.",
+  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, portals that link them, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, inner loops outside the outer loop or inside each other, sector and wall ids that repeat, references to sectors and walls that don't exist, a portal's walls that don't run between the same corners in opposite directions, or whose transform doesn't carry them within 2 mm of each other, a wall that is a side of two portals, an exposure range whose minimum is above its maximum, and nits on a surface whose material doesn't emit.",
   "type": "object",
   "required": ["format", "version", "sectors", "start"],
   "additionalProperties": false,
@@ -294,14 +294,52 @@
         }
       }
     },
+    "portalTransform": {
+      "description": "The portal transform, the rigid movement that carries side a onto side b, from side a's sector's coordinates into side b's: a turn about the origin, then a translation. It must carry each corner of side a's wall, the upright line through one of its ends from its sector's floor to its ceiling, to within 2 mm of its match on side b's: the other wall's other end, unless the transform turns the wall upside down, which turns it end for end too. Where the sectors' heights differ, the opening is where the two sides overlap once side b is carried back.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "translation": {
+          "description": "How far a point moves after it is turned, [x, y, z], in metres. Defaults to [0, 0, 0].",
+          "type": "array",
+          "prefixItems": [
+            { "$ref": "#/$defs/number" },
+            { "$ref": "#/$defs/number" },
+            { "$ref": "#/$defs/number" }
+          ],
+          "items": false,
+          "minItems": 3
+        },
+        "rotation": {
+          "description": "How a point is turned, by a yaw, a pitch and a roll, applied in that order. Each defaults to 0.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "yaw": {
+              "description": "How far to turn left, anticlockwise seen from above, about Z, in degrees.",
+              "$ref": "#/$defs/angle"
+            },
+            "pitch": {
+              "description": "How far then to tilt the facing up, about the new Y, in degrees.",
+              "$ref": "#/$defs/angle"
+            },
+            "roll": {
+              "description": "How far then to tilt the right side down, about the new X, in degrees.",
+              "$ref": "#/$defs/angle"
+            }
+          }
+        }
+      }
+    },
     "portal": {
-      "description": "A portal, which links side a to side b. Its walls lie in different sectors and run between the same corners in opposite directions, and the sector beyond each is seen and reached through its opening, from the higher floor to the lower ceiling. A wall is a side of one portal at most.",
+      "description": "A portal, which links side a to side b. An ordinary portal's walls lie in different sectors and run between the same corners in opposite directions, and the sector beyond each is seen and reached through its opening, from the higher floor to the lower ceiling. A transformed portal's transform carries side a onto side b. A wall is a side of one portal at most.",
       "type": "object",
       "required": ["a", "b"],
       "additionalProperties": false,
       "properties": {
         "a": { "$ref": "#/$defs/portalSide" },
         "b": { "$ref": "#/$defs/portalSide" },
+        "transform": { "$ref": "#/$defs/portalTransform" },
         "properties": { "$ref": "#/$defs/properties" }
       }
     },

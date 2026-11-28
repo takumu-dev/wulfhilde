@@ -1,5 +1,6 @@
 // Scripted walks through the test maps: each walks the player's body through the controller and
 // collision, and checks where it went.
+#include "controller.hpp"
 #include "math_printing.hpp" // IWYU pragma: keep
 #include "scripted_walk.hpp"
 #include <wulfhilde/core/angle.hpp>
@@ -415,4 +416,67 @@ TEST_CASE("slopes: walking at the steep slope, the body can't climb it, and ends
     CHECK(end.y > 0.0F);
     CHECK(end.y < 0.5F);
     CHECK(std::abs(end.z - 0.9F) < 1e-3F);
+}
+
+TEST_CASE("portals: walking round the loop of three corners, the body comes back into the start "
+          "room through the turned portal, turned with it",
+          "[viewer]") {
+    const auto map = load_test_map("portals");
+    const viewer::Actions forward{.forward = 1.0F};
+    const auto right = wulfhilde::Angle::degrees(-90.0F);
+
+    // North up the leg to its end, east along the top leg to its end, then south down the east
+    // leg, whose end leads west into the start room.
+    const auto walked = walk(map, {
+                                      {.actions = forward, .until = "north-leg", .timeout = 2.0F},
+                                      {.actions = forward, .timeout = 2.75F},
+                                      {
+                                          .actions = forward,
+                                          .turn = right,
+                                          .until = "top-leg",
+                                          .timeout = 1.0F,
+                                      },
+                                      {.actions = forward, .timeout = 2.5F},
+                                      {
+                                          .actions = forward,
+                                          .turn = right,
+                                          .until = "east-leg",
+                                          .timeout = 1.0F,
+                                      },
+                                      {.actions = forward, .until = "start", .timeout = 4.0F},
+                                      {.actions = forward, .timeout = 0.25F},
+                                  });
+
+    check_walk(walked, {
+                           .sectors = {"start", "north-leg", "top-leg", "east-leg", "start"},
+                           .turned = right,
+                       });
+    // Walking west through the start room from its east doorway.
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(end.x < 6.0F);
+    CHECK(end.y > 2.0F);
+    CHECK(end.y < 4.0F);
+}
+
+TEST_CASE("portals: from the start room, the body walks west through the translated portal into "
+          "the annex, 4 km away and 100 m up",
+          "[viewer]") {
+    const auto map = load_test_map("portals");
+
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(90.0F),
+                                          .until = "annex",
+                                          .timeout = 3.0F,
+                                      },
+                                      {.actions = {.forward = 1.0F}, .timeout = 0.25F},
+                                  });
+
+    check_walk(walked, {.sectors = {"start", "annex"}, .turned = wulfhilde::Angle{}});
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(std::abs(end.z - 100.9F) < 1e-3F);
+    CHECK(end.x < 2987.0F);
 }

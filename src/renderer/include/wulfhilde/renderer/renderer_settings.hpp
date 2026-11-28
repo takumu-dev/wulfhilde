@@ -61,6 +61,24 @@ struct RendererSettings {
     /// this is on is a device without them unfit: creating the renderer then fails, naming them
     /// among what each device lacks.
     bool measures_frames = false;
+
+    /// How deep views through portals nest at most, each within the opening of the one it is seen
+    /// from.
+    ///
+    /// A view starts at a transformed portal, or at an ordinary portal into space that another
+    /// sector shares. Ordinary portals within a view nest nothing. Two portals that see each other,
+    /// as facing mirrors do, nest views without end, and past this limit the opening that would
+    /// start a view is filled flat, with the ambient light of the sector beyond as a grey surface
+    /// reflecting 18% of it would give back, so that it keeps its brightness under automatic
+    /// exposure. 0 fills every such opening seen from the camera's own view.
+    std::size_t nested_view_limit = 4;
+
+    /// How many views a frame draws at most, the camera's own among them, 1 or more.
+    ///
+    /// Views are taken depth first, each followed by those nested in it, and past this limit the
+    /// opening that would start a view is filled flat, as past `nested_view_limit`. Any value below
+    /// 1 breaks a precondition of the renderer's creation.
+    std::size_t view_limit = 16;
 };
 
 } // namespace wulfhilde

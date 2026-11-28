@@ -3,7 +3,10 @@
 #include "descriptions.hpp"
 #include "world_printing.hpp" // IWYU pragma: keep
 #include <wulfhilde/core/angle.hpp>
+#include <wulfhilde/core/rigid_transform.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector2.hpp>
+#include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/ids.hpp>
@@ -36,6 +39,8 @@ using wulfhilde::Location;
 using wulfhilde::MaterialId;
 using wulfhilde::PortalId;
 using wulfhilde::PortalLink;
+using wulfhilde::RigidTransform;
+using wulfhilde::Rotation;
 using wulfhilde::SectorId;
 using wulfhilde::Sky;
 using wulfhilde::SkyDescription;
@@ -281,6 +286,47 @@ TEST_CASE("each side of a portal links through it to the other, and a solid wall
         CAPTURE(solid);
         CHECK(map.wall(solid).link == std::nullopt);
     }
+}
+
+namespace {
+
+// The link through a wall, which must be a side of a portal.
+PortalLink link_of(const wulfhilde::Map& map, WallId wall) {
+    const auto& link = map.wall(wall).link;
+    REQUIRE(link.has_value());
+    return link.value_or(PortalLink{.portal = PortalId{0}, .wall = WallId{0}});
+}
+
+} // namespace
+
+TEST_CASE("an ordinary portal has no transform, and its links hold the identity exactly",
+          "[world]") {
+    const auto map = make_map(doorway_map());
+
+    CHECK(map.portal(PortalId{0}).transform == std::nullopt);
+    CHECK(link_of(map, WallId{3}).transform == RigidTransform::identity());
+    CHECK(link_of(map, WallId{7}).transform == RigidTransform::identity());
+}
+
+TEST_CASE("a transformed portal keeps its transform, and its links hold it into the far sector "
+          "and its inverse back",
+          "[world]") {
+    const auto map = make_map(turned_doorway_map());
+    const RigidTransform onto_gallery{
+        .rotation = Rotation::from_yaw_pitch_roll(Angle::degrees(90.0F), {}, {}),
+        .translation = {.x = 24.0F},
+    };
+
+    CHECK(map.portal(PortalId{0}).transform == std::optional(onto_gallery));
+    const auto into_gallery = link_of(map, WallId{3});
+    const auto into_hall = link_of(map, WallId{8});
+    CHECK(into_gallery.wall == WallId{8});
+    CHECK(into_gallery.transform == onto_gallery);
+    CHECK(into_hall.wall == WallId{3});
+    CHECK(into_hall.transform == inverse(onto_gallery));
+    // The hall's door lands on the gallery's, end to end.
+    CHECK(approx_equal(transform_point(into_gallery.transform, {.x = 3.0F, .y = 4.0F}),
+                       {.x = 20.0F, .y = 3.0F}, 1e-5F));
 }
 
 TEST_CASE("a map without portals has none", "[world]") {

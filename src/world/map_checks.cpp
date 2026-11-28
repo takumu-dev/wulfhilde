@@ -1,6 +1,7 @@
 #include "map_checks.hpp"
 
 #include "plan_geometry.hpp"
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
@@ -242,16 +243,36 @@ struct NamedWall {
 
     /// Whether both its ends lie within the map's bounds, so that they are numbers.
     bool in_bounds = false;
+
+    /// The sector whose loop the wall is in.
+    const SectorDescription* sector = nullptr;
+
+    /// The member that sets a surface for one of the wall's strips, `upper` or `lower`, or empty if
+    /// it sets none.
+    std::string_view strip{};
 };
 
 /// The walls that have ids, by their ids. Of walls with the same id, the first is kept.
 using NamedWalls = std::unordered_map<std::string_view, NamedWall>;
+
+/// Returns the member of a wall that sets a surface for one of its strips, `upper` or `lower`, or
+/// empty if it sets none.
+[[nodiscard]] std::string_view strip_member(const WallDescription& wall) {
+    if (wall.upper) {
+        return "upper";
+    }
+    if (wall.lower) {
+        return "lower";
+    }
+    return {};
+}
 
 /// Checks a sector's loop: its walls' ids, points and surfaces, and its shape.
 ///
 /// \param outer Whether it is the sector's outer loop, rather than an inner loop.
 /// \return The loop's walls, if its shape means something.
 std::optional<std::vector<PlanSegment>> check_loop(Problems& problems, std::string_view pointer,
+                                                   const SectorDescription& sector,
                                                    const std::vector<WallDescription>& walls,
                                                    bool outer, NamedWalls& named_walls) {
     auto in_bounds = true;
@@ -264,7 +285,11 @@ std::optional<std::vector<PlanSegment>> check_loop(Problems& problems, std::stri
         named.push_back(nullptr);
         if (wall.id) {
             const auto [first, inserted] =
-                named_walls.try_emplace(*wall.id, NamedWall{.pointer = wall_pointer});
+                named_walls.try_emplace(*wall.id, NamedWall{
+                                                      .pointer = wall_pointer,
+                                                      .sector = &sector,
+                                                      .strip = strip_member(wall),
+                                                  });
             if (inserted) {
                 named.back() = &first->second;
             } else {
@@ -501,7 +526,8 @@ void check_sector(Problems& problems, std::string_view pointer, const MapDescrip
     }
     LoopWalls loops;
     for (std::size_t i = 0; const auto& loop : sector.loops) {
-        loops.push_back(check_loop(problems, child(loops_pointer, i), loop, i == 0, named_walls));
+        loops.push_back(
+            check_loop(problems, child(loops_pointer, i), sector, loop, i == 0, named_walls));
         ++i;
     }
     check_loops_apart(problems, loops_pointer, loops);
@@ -522,9 +548,120 @@ void check_sector(Problems& problems, std::string_view pointer, const MapDescrip
     return "wall";
 }
 
+/// How far a transformed wall portal's transform may carry a corner of side a's wall from its
+/// match on side b's, in metres: enough for an author's rounding, as an odd-angled portal's ends
+/// written to the millimetre are up to 1.7 mm out.
+constexpr double transform_tolerance = 0.002;
+
+/// A rotation as a matrix of doubles, by its columns, for the check of a portal's transform.
+struct PreciseRotation {
+    std::array<std::array<double, 3>, 3> columns{};
+
+    /// Returns the rotation that turns by a yaw, a pitch and a roll, in that order, as everywhere
+    /// in the engine.
+    static PreciseRotation from(const YawPitchRoll& turn) {
+        const auto yaw = static_cast<double>(turn.yaw.in_radians());
+        const auto pitch = static_cast<double>(turn.pitch.in_radians());
+        const auto roll = static_cast<double>(turn.roll.in_radians());
+        const auto [cy, sy] = std::pair{std::cos(yaw), std::sin(yaw)};
+        const auto [cp, sp] = std::pair{std::cos(pitch), std::sin(pitch)};
+        const auto [cr, sr] = std::pair{std::cos(roll), std::sin(roll)};
+        // The yaw about Z, times the pitch about -Y, times the roll about X.
+        PreciseRotation rotation;
+        rotation.columns.at(0) = {cy * cp, sy * cp, sp};
+        rotation.columns.at(1) = {(-sy * cr) - (cy * sp * sr), (cy * cr) - (sy * sp * sr), cp * sr};
+        rotation.columns.at(2) = {(sy * sr) - (cy * sp * cr), (-cy * sr) - (sy * sp * cr), cp * cr};
+        return rotation;
+    }
+
+    /// Returns a point turned by the rotation.
+    [[nodiscard]] std::array<double, 3> turn(const std::array<double, 3>& p) const {
+        std::array<double, 3> turned{};
+        for (std::size_t row = 0; row < 3; ++row) {
+            for (std::size_t column = 0; column < 3; ++column) {
+                turned.at(row) += columns.at(column).at(row) * p.at(column);
+            }
+        }
+        return turned;
+    }
+};
+
+/// Returns how far, at most, a portal's transform carries a corner of side a's wall from its match
+/// on side b's, seen from above, in metres, in double, so that only the author's rounding counts.
+///
+/// A corner is the upright line through an end of the wall, from its sector's floor to its ceiling,
+/// so it is measured at both. An end's match is the other wall's other end, unless the transform
+/// turns the wall upside down, which turns it end for end too.
+[[nodiscard]] double transform_mismatch(const PortalTransformDescription& transform,
+                                        const NamedWall& a, const NamedWall& b) {
+    const auto rotation = PreciseRotation::from(transform.rotation);
+    const auto upside_down = rotation.columns.at(2).at(2) < 0.0;
+    const auto to_double = [](float value) { return static_cast<double>(value); };
+    auto farthest = 0.0;
+    for (const auto& [end, match] : {
+             std::pair{a.start, upside_down ? b.start : b.end},
+             std::pair{a.end, upside_down ? b.end : b.start},
+         }) {
+        for (const auto height : {a.sector->floor.height, a.sector->ceiling.height}) {
+            const auto turned =
+                rotation.turn({to_double(end.x), to_double(end.y), to_double(height)});
+            const auto apart =
+                std::hypot(turned.at(0) + to_double(transform.translation.x) - to_double(match.x),
+                           turned.at(1) + to_double(transform.translation.y) - to_double(match.y));
+            // A transform that isn't made of numbers carries no corner anywhere near its match.
+            if (std::isnan(apart)) {
+                return apart;
+            }
+            farthest = std::max(farthest, apart);
+        }
+    }
+    return farthest;
+}
+
+/// Checks that a wall portal's walls meet: an ordinary portal's run between the same corners in
+/// opposite directions, and a transformed portal's transform carries each corner of side a's wall
+/// to within 2 mm of its match on side b's, neither setting surfaces for strips.
+///
+/// \param walls Side a's wall and side b's, each null where the side names no wall.
+void check_portal_walls(Problems& problems, const std::string& pointer,
+                        const PortalDescription& portal,
+                        const std::array<const NamedWall*, 2>& walls) {
+    const auto [a, b] = walls;
+    for (const auto* const wall : walls) {
+        if (portal.transform && wall != nullptr && !wall->strip.empty()) {
+            problems.add(MapProblemCode::strips_on_transformed_side,
+                         child(wall->pointer, wall->strip),
+                         "the wall is a side of a transformed portal, which has no strips, so its "
+                         "surface covers all of it but the opening");
+        }
+    }
+    // Corners beyond the bounds may not be numbers, so comparing them would mean nothing.
+    if (a == nullptr || b == nullptr || !a->in_bounds || !b->in_bounds) {
+        return;
+    }
+    if (portal.transform) {
+        if (const auto mismatch = transform_mismatch(*portal.transform, *a, *b);
+            !(mismatch <= transform_tolerance)) {
+            problems.add(MapProblemCode::mismatched_portal_walls, pointer,
+                         std::format("the portal's transform must carry each corner of {} to "
+                                     "within 2 mm of its match on {}, but carries one {:.1f} mm "
+                                     "from it",
+                                     a->pointer, b->pointer, mismatch * 1000.0));
+        }
+    } else if (a->start != b->end || a->end != b->start) {
+        problems.add(MapProblemCode::mismatched_portal_walls, pointer,
+                     std::format("the portal's walls must run between the same corners in "
+                                 "opposite directions, but {} runs from {} to {}, and {} from {} "
+                                 "to {}",
+                                 a->pointer, point_text(a->start), point_text(a->end), b->pointer,
+                                 point_text(b->start), point_text(b->end)));
+    }
+}
+
 /// Checks that each portal's sides name walls or sectors that exist, that it links like with like,
-/// that no wall is a side of two portals, and that a wall portal's walls run between the same
-/// corners in opposite directions.
+/// that no wall is a side of two portals, and that a wall portal's walls meet: an ordinary portal's
+/// run between the same corners in opposite directions, and a transformed portal's transform
+/// carries each corner of side a's wall to within 2 mm of its match on side b's.
 void check_portals(Problems& problems, const std::vector<PortalDescription>& portals,
                    const NamedWalls& named_walls,
                    const std::unordered_map<std::string_view, std::size_t>& sectors_by_id) {
@@ -571,17 +708,7 @@ void check_portals(Problems& problems, const std::vector<PortalDescription>& por
                                      kind_name(portal.a.kind), kind_name(portal.b.kind)));
         }
 
-        const auto [a, b] = walls;
-        // Corners beyond the bounds may not be numbers, so comparing them would mean nothing.
-        if (a != nullptr && b != nullptr && a->in_bounds && b->in_bounds &&
-            (a->start != b->end || a->end != b->start)) {
-            problems.add(MapProblemCode::mismatched_portal_walls, pointer,
-                         std::format("the portal's walls must run between the same corners in "
-                                     "opposite directions, but {} runs from {} to {}, and {} "
-                                     "from {} to {}",
-                                     a->pointer, point_text(a->start), point_text(a->end),
-                                     b->pointer, point_text(b->start), point_text(b->end)));
-        }
+        check_portal_walls(problems, pointer, portal, walls);
         ++i;
     }
 }

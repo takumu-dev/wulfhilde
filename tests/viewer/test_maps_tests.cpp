@@ -5,10 +5,16 @@
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/assets/load_map_assets.hpp>
 #include <wulfhilde/assets/material.hpp>
+#include <wulfhilde/core/angle.hpp>
+#include <wulfhilde/core/rigid_transform.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector2.hpp>
+#include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/portal.hpp>
+#include <wulfhilde/world/portal_link.hpp>
 #include <wulfhilde/world/sector.hpp>
 #include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/wall.hpp>
@@ -300,4 +306,74 @@ TEST_CASE("the slopes map has slopes of 30 and 60 degrees side by side", "[viewe
                    (std::numbers::pi_v<float> / 6.0F)) < 1e-6F);
     CHECK(std::abs(std::atan(gradient_of(sector_named(map, "steep").floor)) -
                    (std::numbers::pi_v<float> / 3.0F)) < 1e-6F);
+}
+
+namespace {
+
+// The transform through the portal one of whose sides is a wall with an id, from that wall's
+// sector into the sector beyond, and the id of the sector beyond.
+std::pair<wulfhilde::RigidTransform, std::string> through_wall(const wulfhilde::Map& map,
+                                                               std::string_view id) {
+    for (const auto& portal : map.portals()) {
+        for (const auto& side : {portal.a, portal.b}) {
+            const auto* const wall_id = std::get_if<wulfhilde::WallId>(&side);
+            if (wall_id == nullptr || map.wall(*wall_id).id != id) {
+                continue;
+            }
+            const auto& link = map.wall(*wall_id).link;
+            REQUIRE(link.has_value());
+            if (link) {
+                return {link->transform, map.sector(map.wall(link->wall).sector).id};
+            }
+        }
+    }
+    FAIL(std::format("no portal has the wall {} as a side", id));
+    return {};
+}
+
+// The portals map, whose assets must load too.
+wulfhilde::Map load_portals() {
+    const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
+    REQUIRE(root.has_value());
+    auto map = wulfhilde::load_map(*root, "portals");
+    REQUIRE(map.has_value());
+    REQUIRE(wulfhilde::load_map_assets(*root, *map).has_value());
+    return *std::move(map);
+}
+
+} // namespace
+
+TEST_CASE("the portals map closes a loop of three corners with a portal turned 90 degrees, and "
+          "reaches a distant annex through a translated portal",
+          "[viewer]") {
+    const auto map = load_portals();
+
+    const auto [turn, beyond_turn] = through_wall(map, "east-leg-end");
+    CHECK(beyond_turn == "start");
+    CHECK(wulfhilde::approx_equal(
+        turn.rotation,
+        wulfhilde::Rotation::from_yaw_pitch_roll(wulfhilde::Angle::degrees(-90.0F), {}, {}),
+        wulfhilde::Angle::degrees(1e-3F)));
+
+    const auto [translation, beyond_translation] = through_wall(map, "start-west");
+    CHECK(beyond_translation == "annex");
+    CHECK(translation.rotation == wulfhilde::Rotation::identity());
+    CHECK(translation.translation == wulfhilde::Vector3{.x = 2987.0F, .y = 3000.0F, .z = 100.0F});
+}
+
+TEST_CASE("the portals map has a corridor whose facing ends lead into each other", "[viewer]") {
+    const auto map = load_portals();
+    CHECK(through_wall(map, "mirror-east").second == "mirror");
+    CHECK(through_wall(map, "mirror-west").second == "mirror");
+}
+
+TEST_CASE("the portals map has a hub whose four portals all lead back into it", "[viewer]") {
+    const auto map = load_portals();
+    for (const auto* const side : {"hub-north", "hub-east", "hub-south", "hub-west"}) {
+        CAPTURE(side);
+        const auto [transform, beyond] = through_wall(map, side);
+        CHECK(beyond == "hub");
+        CHECK(transform.rotation == wulfhilde::Rotation::identity());
+        CHECK(wulfhilde::length(transform.translation) == 8.0F);
+    }
 }

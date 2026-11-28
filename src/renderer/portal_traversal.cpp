@@ -193,11 +193,13 @@ std::optional<ScreenWindow> take_in(std::optional<ScreenWindow>& window, const S
     return grown;
 }
 
-// Where a view starts: the sector it starts in, seen within a window.
+// Where a view starts: the sector it starts in, seen within a window, from a camera in that
+// sector's coordinates.
 // NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init): it has no default, as its sector has none
 struct ViewStart {
     SectorId sector;
     ScreenWindow window;
+    Camera camera;
 
     // The wall of the sector that the view entered it through, which leads back into the view it is
     // seen from, or nothing for the main view.
@@ -213,12 +215,13 @@ struct ViewStart {
 };
 
 // An opening seen in a view that starts a view nested in it: the wall it is in, the wall on the
-// portal's other side and the sector beyond, and the window it is seen in.
+// portal's other side and the sector beyond, the transform into it, and the window it is seen in.
 // NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init): it has no default, as its IDs have none
 struct NestedStart {
     WallId wall;
     WallId entrance;
     SectorId sector;
+    RigidTransform transform;
     std::vector<Vector3> opening;
     ScreenWindow window;
 };
@@ -279,10 +282,11 @@ void note_start(std::vector<NestedStart>& starts, const NestedStart& start) {
 }
 
 // Goes on through the openings of a sector seen in a view within a window: into the sector beyond
-// each, or to the view nested there if the sector beyond shares space with another.
-void walk_through(const Map& map, const Camera& camera, const Projection& projection,
-                  const ViewStart& start, SectorId sector, const ScreenWindow& window,
-                  ViewWalk& walk) {
+// each, or to the view nested there if the portal is transformed or the sector beyond shares space
+// with another.
+void walk_through(const Map& map, const Projection& projection, const ViewStart& start,
+                  SectorId sector, const ScreenWindow& window, ViewWalk& walk) {
+    const auto& camera = start.camera;
     for (const auto& loop : map.sector(sector).loops) {
         for (const auto wall_id : loop) {
             const auto& wall = map.wall(wall_id);
@@ -295,11 +299,13 @@ void walk_through(const Map& map, const Camera& camera, const Projection& projec
                 continue;
             }
             const auto beyond = map.wall(wall.link->wall).sector;
-            if (!map.overlapping(beyond).empty()) {
+            if (wall.link->transform != RigidTransform::identity() ||
+                !map.overlapping(beyond).empty()) {
                 note_start(walk.starts, {
                                             .wall = wall_id,
                                             .entrance = wall.link->wall,
                                             .sector = beyond,
+                                            .transform = wall.link->transform,
                                             .opening = opening,
                                             .window = *seen,
                                         });
@@ -311,8 +317,7 @@ void walk_through(const Map& map, const Camera& camera, const Projection& projec
 }
 
 // Walks through one view from where it starts.
-ViewWalk walk_view(const Map& map, const Camera& camera, const Projection& projection,
-                   const ViewStart& start) {
+ViewWalk walk_view(const Map& map, const Projection& projection, const ViewStart& start) {
     ViewWalk walk{
         .windows = std::vector<std::optional<ScreenWindow>>(map.sectors().size()),
         .grown = {{start.sector, start.window}},
@@ -324,34 +329,60 @@ ViewWalk walk_view(const Map& map, const Camera& camera, const Projection& proje
         walk.grown.pop_back();
         // A window that has grown again since is taken up from its later place on the list.
         if (walk.windows.at(sector.index()) == window) {
-            walk_through(map, camera, projection, start, sector, window, walk);
+            walk_through(map, projection, start, sector, window, walk);
         }
     }
     return walk;
 }
 
+// A camera carried through a portal into the sector beyond it.
+Camera carried(const Camera& camera, SectorId beyond, const RigidTransform& transform) {
+    return {
+        .location = {.sector = beyond, .point = transform_point(transform, camera.location.point)},
+        .orientation = transform.rotation * camera.orientation,
+        .vertical_field_of_view = camera.vertical_field_of_view,
+    };
+}
+
 } // namespace
 
-PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent extent) {
-    const auto projection = projection_of(camera, extent);
+PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent extent,
+                                 const ViewLimits& limits) {
+    WULFHILDE_DEBUG_ASSERT(limits.views >= 1, "a frame has its main view");
     PortalTraversal traversal;
+    // An opening that would start a view past the limits is filled flat in the view it is seen in.
+    const auto fill = [&traversal](const ViewStart& start) {
+        traversal.fills.push_back({
+            .view = start.parent.value_or(0),
+            .sector = start.sector,
+            .opening = start.opening,
+            .opening_at_eye = start.opening_at_eye,
+        });
+    };
     // The views still to walk through, the next last, so that each view's nested views follow it,
     // each with the views nested in it, before the next view nested where it is.
-    std::vector<ViewStart> starts{{.sector = camera.location.sector, .window = ScreenWindow{}}};
-    while (!starts.empty() && traversal.views.size() < view_limit) {
+    constexpr ScreenWindow whole_screen{};
+    const ViewStart main_view{
+        .sector = camera.location.sector,
+        .window = whole_screen,
+        .camera = camera,
+    };
+    std::vector<ViewStart> starts{main_view};
+    while (!starts.empty() && traversal.views.size() < limits.views) {
         const auto start = starts.back();
         starts.pop_back();
+        const auto projection = projection_of(start.camera, extent);
         const auto view = traversal.views.size();
         traversal.views.push_back({
             .view_projection = projection.view_projection,
-            .eye = camera.location.point,
+            .eye = start.camera.location.point,
             .parent = start.parent,
             .depth = start.depth,
             .clip = start.clip,
             .opening = start.opening,
             .opening_at_eye = start.opening_at_eye,
         });
-        const auto walk = walk_view(map, camera, projection, start);
+        const auto walk = walk_view(map, projection, start);
         for (std::size_t index = 0; const auto& window : walk.windows) {
             if (window) {
                 traversal.sectors.push_back({
@@ -362,23 +393,29 @@ PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent ex
             }
             ++index;
         }
-        if (start.depth == nested_view_limit) {
-            continue;
-        }
         for (const auto& nested : walk.starts | std::views::reverse) {
             const auto& wall = map.wall(nested.wall);
-            starts.push_back({
+            const ViewStart nested_start{
                 .sector = nested.sector,
                 .window = nested.window,
+                .camera = carried(start.camera, nested.sector, nested.transform),
                 .entrance = nested.entrance,
                 .parent = view,
                 .depth = start.depth + 1,
-                .clip = plane_beyond(wall),
+                .clip = transform(nested.transform, plane_beyond(wall)),
                 .opening = corners_of(nested.opening),
-                .opening_at_eye = at_eye(wall, camera, projection),
-            });
+                .opening_at_eye = at_eye(wall, start.camera, projection),
+            };
+            if (start.depth == limits.nested) {
+                fill(nested_start);
+            } else {
+                starts.push_back(nested_start);
+            }
         }
     }
+    std::ranges::for_each(starts, fill);
+    // Each view's fills are drawn once the view is, so they are kept in the order of the views.
+    std::ranges::stable_sort(traversal.fills, {}, &FillRecord::view);
     return traversal;
 }
 

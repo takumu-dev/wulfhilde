@@ -156,6 +156,59 @@ inline wulfhilde::Map corridor_beyond_map(float floor = 0.0F, float ceiling = 3.
     return doorway_map(floor, ceiling, {{.x = 3.0F, .y = 8.0F}, {.x = 1.0F, .y = 8.0F}});
 }
 
+// The hall with a doorway in its north wall, from (1, 4) to (3, 4), through a transformed portal
+// into the turned gallery far off: a sector running back west from the door's far side, from
+// x = 20 - depth to 20 and y = 0 to 4, with the hall's span from floor to ceiling raised by a lift.
+// The portal turns 90 degrees left and moves 24 m along X and the lift up, so the hall's door,
+// from (3, 4) to (1, 4), lands back along the gallery's, from (20, 1) to (20, 3), and walking north
+// out of the hall walks west into the gallery.
+//
+// The hall's walls run anticlockwise from the corner at the origin, its door the fourth; the
+// gallery's from its south-west corner, its door the third.
+inline wulfhilde::Map turned_gallery_map(float depth = 4.0F, float lift = 0.0F) {
+    auto hall = sector_through("hall", 0.0F, 3.0F,
+                               {
+                                   {.x = 0.0F, .y = 0.0F},
+                                   {.x = 4.0F, .y = 0.0F},
+                                   {.x = 4.0F, .y = 4.0F},
+                                   {.x = 3.0F, .y = 4.0F},
+                                   {.x = 1.0F, .y = 4.0F},
+                                   {.x = 0.0F, .y = 4.0F},
+                               });
+    hall.loops.front().at(3).id = "hall-door";
+    const auto west = 20.0F - depth;
+    auto gallery = sector_through("gallery", lift, lift + 3.0F,
+                                  {
+                                      {.x = west, .y = 0.0F},
+                                      {.x = 20.0F, .y = 0.0F},
+                                      {.x = 20.0F, .y = 1.0F},
+                                      {.x = 20.0F, .y = 3.0F},
+                                      {.x = 20.0F, .y = 4.0F},
+                                      {.x = west, .y = 4.0F},
+                                  });
+    gallery.loops.front().at(2).id = "gallery-door";
+
+    const wulfhilde::PortalDescription door{
+        .a = {.id = "hall-door"},
+        .b = {.id = "gallery-door"},
+        .transform =
+            wulfhilde::PortalTransformDescription{
+                .translation = {.x = 24.0F, .z = lift},
+                .rotation = {.yaw = wulfhilde::Angle::degrees(90.0F)},
+            },
+    };
+    wulfhilde::MapDescription description{
+        .sectors = {std::move(hall), std::move(gallery)},
+        .portals = {door},
+        .start = {.sector = "hall", .point = {.x = 2.0F, .y = 2.0F}},
+    };
+    auto map = wulfhilde::Map::create(std::move(description));
+    if (!map) {
+        FAIL(std::format("the description has problems:\n{}", map.error()));
+    }
+    return *std::move(map);
+}
+
 // The great hall: a square sector 8 m on a side from (0, 0) to (8, 8), with its floor at 0 m and
 // its ceiling at 3 m, around a hole whose inner loop runs clockwise through the points. Its outer
 // loop's walls are #0 to #3, and its inner loop's run on from #4.

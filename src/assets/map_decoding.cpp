@@ -6,6 +6,7 @@
 #include <wulfhilde/assets/asset_problem.hpp>
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/color.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
@@ -242,6 +243,36 @@ std::optional<PortalSideDescription> read_portal_side(const Field& field, JsonFi
     return description.value_or(PortalSideDescription{});
 }
 
+/// Reads how a portal turns a point, by a yaw, a pitch and a roll, each 0 when left out.
+std::optional<YawPitchRoll> read_portal_rotation(const Field& field, JsonFile& file) {
+    auto rotation = ReadObject{.noun = "portal rotation"}(field, file);
+    if (!rotation) {
+        return std::nullopt;
+    }
+    YawPitchRoll description{
+        .yaw = rotation->optional("yaw", read_angle).value_or(Angle{}),
+        .pitch = rotation->optional("pitch", read_angle).value_or(Angle{}),
+        .roll = rotation->optional("roll", read_angle).value_or(Angle{}),
+    };
+    rotation->finish();
+    return description;
+}
+
+/// Reads a portal's transform, whose translation and rotation are each nothing when left out.
+std::optional<PortalTransformDescription> read_portal_transform(const Field& field,
+                                                                JsonFile& file) {
+    auto transform = ReadObject{.noun = "portal transform"}(field, file);
+    if (!transform) {
+        return std::nullopt;
+    }
+    PortalTransformDescription description{
+        .translation = transform->optional("translation", read_vector3).value_or(Vector3{}),
+        .rotation = transform->optional("rotation", read_portal_rotation).value_or(YawPitchRoll{}),
+    };
+    transform->finish();
+    return description;
+}
+
 std::optional<PortalDescription> read_portal(const Field& field, JsonFile& file) {
     auto portal = ReadObject{.noun = "portal"}(field, file);
     if (!portal) {
@@ -250,6 +281,7 @@ std::optional<PortalDescription> read_portal(const Field& field, JsonFile& file)
     PortalDescription description{
         .a = portal->required("a", read_portal_side).value_or(PortalSideDescription{}),
         .b = portal->required("b", read_portal_side).value_or(PortalSideDescription{}),
+        .transform = portal->optional("transform", read_portal_transform),
         .properties = portal->optional("properties", read_properties).value_or(""),
     };
     portal->finish();

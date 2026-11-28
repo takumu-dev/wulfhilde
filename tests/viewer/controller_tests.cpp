@@ -444,3 +444,22 @@ TEST_CASE("a camera looking straight up or down keeps its pitch until the eye ti
     controller.look(Angle{}, Angle::degrees(-5.0F));
     check_facing(controller.eye(map).facing, Angle::degrees(30.0F), Angle::degrees(85.0F), {});
 }
+
+TEST_CASE("the body turns with a transformed portal, and the eye's look stays relative to the body",
+          "[viewer]") {
+    const auto map = load_test_map("portals");
+    auto controller = viewer::Controller::at_start(map);
+    const auto east_leg = map.find_sector("east-leg");
+    REQUIRE(east_leg.has_value());
+
+    // East out of the start room, through the doorway that leads north up the east leg.
+    controller.look(Angle::degrees(-90.0F), {});
+    walk_into(controller, map, east_leg.value_or(wulfhilde::SectorId{0}));
+
+    const auto& body = controller.body();
+    REQUIRE(body.has_value());
+    check_facing(body ? body->tilt : wulfhilde::Rotation{}, Angle::degrees(90.0F), {}, {});
+    check_facing(controller.eye(map).facing, Angle::degrees(90.0F), {}, {});
+    controller.look(Angle::degrees(30.0F), Angle::degrees(-10.0F));
+    check_facing(controller.eye(map).facing, Angle::degrees(120.0F), Angle::degrees(-10.0F), {});
+}

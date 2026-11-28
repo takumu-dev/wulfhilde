@@ -28,6 +28,10 @@ struct RigidTransform {
 
     /// Returns the identity transform, which leaves every point where it is.
     [[nodiscard]] static constexpr RigidTransform identity() noexcept { return {}; }
+
+    /// Compares two transforms exactly, as their rotations' quaternions and their translations.
+    /// `approx_equal` compares them within tolerances.
+    constexpr bool operator==(const RigidTransform&) const noexcept = default;
 };
 
 /// Composes two transforms into one that applies `b` first and then `a`, as in mathematics.

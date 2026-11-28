@@ -1,17 +1,22 @@
 // What a map answers about a location: whether it is in its sector, and the heights there.
 #include "descriptions.hpp"
 #include "world_printing.hpp" // IWYU pragma: keep
+#include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/opening.hpp>
 
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <optional>
+#include <ranges>
 
 using wulfhilde::Location;
 using wulfhilde::Opening;
@@ -143,6 +148,51 @@ TEST_CASE("an opening between sectors whose spans don't overlap is empty, at the
 
     CHECK(map.opening(WallId{3}, door_middle) == Opening{.bottom = 3.0F, .top = 3.0F});
     CHECK(map.opening(WallId{7}, door_middle) == Opening{.bottom = 3.5F, .top = 3.5F});
+}
+
+TEST_CASE("a transformed portal's opening is where its side overlaps the far side, carried back "
+          "by the transform",
+          "[world]") {
+    // Moved up by 1 m, the gallery's span lands from 1 m to 4 m in the hall's coordinates, and the
+    // hall's from -1 m to 2 m in the gallery's.
+    auto description = turned_doorway_map();
+    first_transform(description).translation.z = 1.0F;
+    const auto map = make_map(description);
+
+    CHECK(map.opening(WallId{3}, door_middle) == Opening{.bottom = 0.0F, .top = 2.0F});
+    CHECK(map.opening(WallId{8}, {.x = 20.0F, .y = 2.0F}) == Opening{.bottom = 1.0F, .top = 3.0F});
+
+    // The solid part above the opening is drawn and met as an upper strip is.
+    const auto face = map.face(WallId{3});
+    CHECK(face.lower.empty());
+    const auto [opening_bottom, opening_top] =
+        std::ranges::minmax(face.opening | std::views::transform(&Vector3::z));
+    CHECK(opening_bottom == 0.0F);
+    CHECK(opening_top == 2.0F);
+    const auto [solid_bottom, solid_top] =
+        std::ranges::minmax(face.upper | std::views::transform(&Vector3::z));
+    CHECK(solid_bottom == 2.0F);
+    CHECK(solid_top == 3.0F);
+}
+
+TEST_CASE("a transformed portal that turns the wall upside down turns the far side's span over",
+          "[world]") {
+    // Rolled over, the gallery's floor lands 2.5 m up and its ceiling 0.5 m down.
+    auto description = turned_doorway_map();
+    description.portals.at(0).transform = wulfhilde::PortalTransformDescription{
+        .translation = {.x = 24.0F, .y = 4.0F, .z = 2.5F},
+        .rotation =
+            {
+                .yaw = wulfhilde::Angle::degrees(-90.0F),
+                .roll = wulfhilde::Angle::degrees(180.0F),
+            },
+    };
+    const auto map = make_map(description);
+
+    const auto opening = map.opening(WallId{3}, door_middle);
+    REQUIRE(opening.has_value());
+    CHECK(std::abs(opening.value_or(Opening{}).bottom) < 1e-5F);
+    CHECK(std::abs(opening.value_or(Opening{}).top - 2.5F) < 1e-5F);
 }
 
 TEST_CASE("a solid wall has no opening", "[world]") {

@@ -17,9 +17,9 @@ namespace wulfhilde {
 
 /// A facing given as a yaw, a pitch and a roll, which apply in that order.
 struct YawPitchRoll {
-    Angle yaw;   ///< How far to turn left, anticlockwise seen from above, about Z.
-    Angle pitch; ///< How far then to tilt the facing up, about the new Y.
-    Angle roll;  ///< How far then to tilt the right side down, about the new X.
+    Angle yaw{};   ///< How far to turn left, anticlockwise seen from above, about Z.
+    Angle pitch{}; ///< How far then to tilt the facing up, about the new Y.
+    Angle roll{};  ///< How far then to tilt the right side down, about the new X.
 };
 
 /// A rotation in three dimensions, such as a facing, the tilt of a body or the turn of a portal
@@ -89,6 +89,10 @@ class Rotation {
                         (a.scalar_ * b.scalar_) - dot(a.vector_, b.vector_))
             .renormalized();
     }
+
+    /// Compares two rotations exactly, as their quaternions, so a quaternion and its negation,
+    /// which are the same rotation, are unequal. `approx_equal` compares them as rotations.
+    constexpr bool operator==(const Rotation&) const noexcept = default;
 
   private:
     friend constexpr Rotation inverse(const Rotation& r) noexcept;

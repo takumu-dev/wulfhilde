@@ -112,6 +112,20 @@ TEST_CASE("transforms are approximately equal within an angle and a distance", "
     CHECK_FALSE(approx_equal(t, moved, close_angle, 0.009F));
 }
 
+TEST_CASE("transforms compare exactly, rotation and translation alike", "[core]") {
+    auto t = quarter_turn_left();
+    t.translation = {.x = 1.0F, .y = 2.0F, .z = 3.0F};
+    auto moved = t;
+    moved.translation.z += 0.001F;
+    auto turned = t;
+    turned.rotation = Rotation::about_axis(z_axis, Angle::degrees(90.001F));
+
+    CHECK(t == RigidTransform{.rotation = t.rotation, .translation = t.translation});
+    CHECK(RigidTransform{} == RigidTransform::identity());
+    CHECK_FALSE(t == moved);
+    CHECK_FALSE(t == turned);
+}
+
 TEST_CASE("a transform's matrix applies it to points and directions in homogeneous coordinates",
           "[core]") {
     RandomInputs random;

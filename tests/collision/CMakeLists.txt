@@ -8,6 +8,7 @@ wulfhilde_add_tests(collision
         sky_tests.cpp
         slope_tests.cpp
         step_tests.cpp
+        transformed_portal_tests.cpp
     LIBRARIES
         wulfhilde::collision
 )

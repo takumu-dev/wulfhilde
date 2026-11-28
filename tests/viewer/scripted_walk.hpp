@@ -48,6 +48,10 @@ struct WalkExpectation {
 
     // The body's gravity up at the end, if the walk checks it.
     std::optional<wulfhilde::Vector3> gravity_up{};
+
+    // How far the portals the body crossed turned it left about its up, if the walk checks it: its
+    // tilt at the end, when it ends upright.
+    std::optional<wulfhilde::Angle> turned{};
 };
 
 // Returns how many of the controller's ticks last a time, in seconds, to the nearest tick.
@@ -61,5 +65,6 @@ struct WalkExpectation {
 [[nodiscard]] Walked walk(const wulfhilde::Map& map, const std::vector<WalkStep>& steps);
 
 // Checks that a walk crossed the sectors expected in order, ended in the last of them, and ended
-// upright by its gravity, and with the gravity up expected if there is one, within 1 degree.
+// upright by its gravity, with the gravity up expected if there is one, and turned as expected if
+// the walk checks that, within 1 degree.
 void check_walk(const Walked& walked, const WalkExpectation& expected);

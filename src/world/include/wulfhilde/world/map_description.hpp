@@ -4,6 +4,7 @@
 #pragma once
 
 #include <wulfhilde/core/angle.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
@@ -57,11 +58,12 @@ struct WallDescription {
     SurfaceDescription surface{};
 
     /// The surface of the wall's upper strip, above its opening where the sector beyond has a lower
-    /// ceiling, or nothing to take `surface`. It applies only to a side of a portal.
+    /// ceiling, or nothing to take `surface`. It applies only to a side of an ordinary portal.
     std::optional<SurfaceDescription> upper{};
 
     /// The surface of the wall's lower strip, below its opening where the sector beyond has a
-    /// higher floor, or nothing to take `surface`. It applies only to a side of a portal.
+    /// higher floor, or nothing to take `surface`. It applies only to a side of an ordinary
+    /// portal.
     std::optional<SurfaceDescription> lower{};
 
     /// Game-defined data that the engine keeps and ignores: the JSON text of an object, or empty
@@ -177,18 +179,40 @@ struct PortalSideDescription {
     std::string id{};
 };
 
+/// The rigid movement that carries a portal's side a onto its side b: from side a's sector's
+/// coordinates into side b's.
+///
+/// It turns a point by `rotation`'s yaw, pitch and roll, as everywhere in the engine, about the
+/// origin, and then moves it by `translation`.
+struct PortalTransformDescription {
+    /// How far a point moves after it is turned, in metres.
+    Vector3 translation{};
+
+    /// How a point is turned: left by the yaw, then up by the pitch, then its right side down by
+    /// the roll.
+    YawPitchRoll rotation{};
+};
+
 /// A portal, which links one side to the other, so that each side's sector is seen and reached
 /// through it from the other's.
 ///
 /// Walls link only to walls. An ordinary wall portal links two walls of different sectors that
-/// run between the same corners in opposite directions, and a wall is a side of one portal at
-/// most. This version of the engine makes wall portals only.
+/// run between the same corners in opposite directions. A transformed one carries each corner of
+/// side a's wall to within 2 mm of its match on side b's, a corner being the upright line through
+/// an end of the wall from its sector's floor to its ceiling. An end's match is the other wall's
+/// other end, as at an ordinary portal, unless the transform turns the wall upside down, which
+/// turns it end for end too. A wall is a side of one portal at most. This version of the engine
+/// makes wall portals only.
 struct PortalDescription {
     /// One side of the portal.
     PortalSideDescription a{};
 
     /// The other side of the portal.
     PortalSideDescription b{};
+
+    /// The portal transform, which carries side a onto side b, or nothing for an ordinary portal,
+    /// whose sides are in the same place in the same coordinates.
+    std::optional<PortalTransformDescription> transform{};
 
     /// Game-defined data that the engine keeps and ignores: the JSON text of an object, or empty
     /// for none.
