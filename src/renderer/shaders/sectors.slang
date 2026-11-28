@@ -1,10 +1,12 @@
 // Draws the surfaces of the sectors a view sees into the scene, beyond the plane of the portal it
-// starts at, in linear light: each in its material's base colour, its colour texture times its
-// factor, under its sector's ambient light, a Lambertian surface lit equally from every direction.
-// A sky shows its backdrop instead, infinitely far away, in the direction it is seen in its
-// sector's coordinates.
+// starts at, in linear light: each in its material, read from its factors and textures, reflecting
+// its sector's ambient light, a uniform environment of light from every direction, as glTF's
+// metallic-roughness BRDF does, darkened by its ambient occlusion, and glowing with its emission,
+// which lights nothing else. A sky shows its backdrop instead, infinitely far away, in the
+// direction it is seen in its sector's coordinates.
 #language slang 2026
 import bindless;
+import brdf;
 import views;
 
 // One corner of a triangle of a sector's surface or sky, in the sector's coordinates, with what
@@ -13,9 +15,23 @@ struct SectorVertex {
     float3 position;
     // Where the material's textures are sampled, in repeats from an image's top-left corner.
     float2 texture_coordinates;
+    // Out of the surface, into the sector.
+    float3 normal;
+    // The way u runs on the surface, and in w, 1 where v runs the way of the normal's cross product
+    // with it and -1 where it runs the other way.
+    float4 tangent;
     // What shades it, by its index among the materials: the surface's material, or the sky.
     uint material;
     uint sector;
+};
+
+// A property of one value: a factor times one channel of a texture.
+struct ValueShading {
+    float factor;
+    // By its index among the bindless set's sampled images: white for a material without one.
+    uint2 texture;
+    // Which of the texel's red, green, blue and alpha it reads, from 0 to 3.
+    uint channel;
 };
 
 // A material, or a sky.
@@ -23,9 +39,23 @@ struct MaterialShading {
     // What the colour texture is multiplied by, in linear Rec.709: for a sky, its luminance of
     // white in nits.
     float3 base_color;
-    // The colour texture, by its index among the bindless set's sampled images: one of white for a
-    // material without one, and the backdrop's image for a sky.
+    // The colour texture, by its index among the bindless set's sampled images: white for a
+    // material without one, and the backdrop's image for a sky. Each texture below is white when
+    // the material lacks it.
     uint2 color_texture;
+    ValueShading roughness;
+    ValueShading metallic;
+    ValueShading occlusion;
+    // How strongly the occlusion applies: 0 for a material without one.
+    float occlusion_strength;
+    uint2 normal_texture;
+    // What the normal texture's u and v components are multiplied by: 0 for a material without
+    // one, which flattens white into the surface's own normal.
+    float normal_scale;
+    // What the emission texture is multiplied by, in nits in each channel: 0 for a material that
+    // doesn't emit.
+    float3 emission;
+    uint2 emission_texture;
     // Whether it shades a sky, whose texture is sampled by the direction it is seen in.
     uint sky;
 };
@@ -36,7 +66,7 @@ struct SectorShading {
 };
 
 struct SceneConstants {
-    // The view the surfaces are seen in, whose eye skies are seen from.
+    // The view the surfaces are seen in, whose eye they reflect toward and skies are seen from.
     ViewShading* view;
     SectorVertex* vertices;
     MaterialShading* materials;
@@ -59,6 +89,8 @@ struct Placed {
     // Where the fragment is, in the sector's coordinates.
     float3 point : POINT;
     float2 texture_coordinates : TEXCOORD;
+    float3 normal : NORMAL;
+    float4 tangent : TANGENT;
     nointerpolation uint material : MATERIAL;
     nointerpolation uint sector : SECTOR;
 };
@@ -71,6 +103,8 @@ Placed place(uint vertex : SV_VulkanVertexID) {
     placed.clip = beyond_clip(*scene.view, corner.position);
     placed.point = corner.position;
     placed.texture_coordinates = corner.texture_coordinates;
+    placed.normal = corner.normal;
+    placed.tangent = corner.tangent;
     placed.material = corner.material;
     placed.sector = corner.sector;
     return placed;
@@ -93,24 +127,57 @@ float3 backdrop_texel(Texture2D<float4> image, SamplerState image_sampler, float
         .rgb;
 }
 
+// Reads a material's colour, normal and emission textures, and its single values. Neighbouring
+// pixels may show different materials, so a texture's index may differ across the pixels that
+// shade together.
+float4 texel_of(uint2 texture, SamplerState texture_sampler, float2 coordinates) {
+    let image = DescriptorHandle<Texture2D<float4>>(texture);
+    return nonuniform(image).Sample(texture_sampler, coordinates);
+}
+
+float value_of(ValueShading value, SamplerState texture_sampler, float2 coordinates) {
+    return value.factor * texel_of(value.texture, texture_sampler, coordinates)[value.channel];
+}
+
 // The luminance leaving the surface or the sky toward the eye, in nits in each channel.
 [shader("fragment")]
 float4 shade(Placed placed) : SV_Target {
     let material = scene.materials[placed.material];
-    // Neighbouring pixels may show different materials, so the texture's index may differ across
-    // the pixels that shade together.
-    let texture = DescriptorHandle<Texture2D<float4>>(material.color_texture);
     // A material is the same across a triangle, and the pixels that shade together are of one
     // triangle, so they take the same branch and their derivatives hold.
     if (material.sky != 0) {
+        let texture = DescriptorHandle<Texture2D<float4>>(material.color_texture);
         let backdrop_sampler = DescriptorHandle<SamplerState>(scene.backdrop_sampler);
         let texel =
             backdrop_texel(nonuniform(texture), backdrop_sampler, placed.point - scene.view.eye);
         return float4(material.base_color * texel, 1.0);
     }
     let texture_sampler = DescriptorHandle<SamplerState>(scene.texture_sampler);
-    let texel = nonuniform(texture).Sample(texture_sampler, placed.texture_coordinates).rgb;
-    let albedo = material.base_color * texel;
-    let illuminance = scene.sectors[placed.sector].ambient;
-    return float4(albedo * illuminance / pi, 1.0);
+    let at = placed.texture_coordinates;
+
+    // The normal texture tilts the surface's normal in the frame of its material's u and v, as
+    // glTF has it, with +v green.
+    let surface_normal = normalize(placed.normal);
+    let along_u = placed.tangent.xyz;
+    let tangent = normalize(along_u - (surface_normal * dot(surface_normal, along_u)));
+    let bitangent = placed.tangent.w * cross(surface_normal, tangent);
+    var tilt = (texel_of(material.normal_texture, texture_sampler, at).xyz * 2.0) - 1.0;
+    tilt.xy *= material.normal_scale;
+    let normal = normalize((tangent * tilt.x) + (bitangent * tilt.y) + (surface_normal * tilt.z));
+
+    let roughness = saturate(value_of(material.roughness, texture_sampler, at));
+    let response = Response(
+        material.base_color * texel_of(material.color_texture, texture_sampler, at).rgb,
+        saturate(value_of(material.metallic, texture_sampler, at)),
+        widened_roughness(roughness, ddx(normal), ddy(normal)));
+    let toward_eye = normalize(scene.view.eye - placed.point);
+    let occlusion = 1.0 + (material.occlusion_strength
+                           * (saturate(value_of(material.occlusion, texture_sampler, at)) - 1.0));
+    // A uniform environment that gives an illuminance to a surface facing any way has a radiance of
+    // that illuminance over pi.
+    let ambient = scene.sectors[placed.sector].ambient / pi;
+    let reflected = ambient_response(response, dot(normal, toward_eye)) * ambient * occlusion;
+    let emitted =
+        material.emission * texel_of(material.emission_texture, texture_sampler, at).rgb;
+    return float4(reflected + emitted, 1.0);
 }

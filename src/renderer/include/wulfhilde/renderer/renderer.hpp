@@ -107,13 +107,18 @@ class Renderer {
     /// Uploads a map to the device, in place of any map set before, to draw from then on.
     ///
     /// Each sector is triangulated into a range of vertices of its own: its walls, and its floor
-    /// and ceiling, concave or not. Every surface is drawn opaque, from the front only, in its
-    /// material's base colour, its colour texture times its factor, under its sector's ambient
-    /// light. Each of the map's images is uploaded with its mip chain, and repeats across the
-    /// surfaces whose materials read it, laid on them as the map says: on a wall, u runs from the
-    /// wall's start to the right, as the wall is seen from its sector, and v is height; on a floor
-    /// or a ceiling, u and v are X and Y; and each surface's offset, rotation and scale move the
-    /// material from there. A floor or a ceiling that is a sky shows its backdrop instead,
+    /// and ceiling, concave or not. Every surface is drawn opaque, from the front only, with its
+    /// material's glTF metallic-roughness properties, each its factor times its texture: its
+    /// sector's ambient light, a uniform environment of light from every direction, is reflected as
+    /// glTF's BRDF reflects it, darkened by the material's ambient occlusion, and its normal
+    /// texture tilts the surface's normal along the material's u and v. Roughness is widened where
+    /// the normal changes faster than the pixels can show, so that highlights don't sparkle. The
+    /// material's emission glows on top, at the surface's nits or else the material's, and lights
+    /// nothing else. Each of the map's images is uploaded with its mip chain, and repeats across
+    /// the surfaces whose materials read it, laid on them as the map says: on a wall, u runs from
+    /// the wall's start to the right, as the wall is seen from its sector, and v is height; on a
+    /// floor or a ceiling, u and v are X and Y; and each surface's offset, rotation and scale move
+    /// the material from there. A floor or a ceiling that is a sky shows its backdrop instead,
     /// infinitely far away: each pixel shows the backdrop's image in the direction it is seen, in
     /// the sector's coordinates, at the sky's nits or else the backdrop's.
     ///

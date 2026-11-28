@@ -65,6 +65,7 @@ MapProblemCode map_problem_code(AssetProblemCode code) {
     case AssetProblemCode::grey_normal_texture:
     case AssetProblemCode::missing_channel:
     case AssetProblemCode::no_such_channel:
+    case AssetProblemCode::nits_without_emission:
         break;
     }
     // Only the problems of materials and images are left, which the map's decoder never reports.

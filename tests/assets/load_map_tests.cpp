@@ -91,6 +91,7 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
                                   .offset = {.x = 0.25F, .y = 0.5F},
                                   .scale = {.x = 2.0F, .y = 3.0F},
                                   .rotation = Angle::degrees(90.0F),
+                                  .nits = 12.5F,
                               }});
     CHECK(hall.ceiling.height == 3.0F);
     CHECK(hall.ceiling.cover == Cover{Surface{.material = MaterialId{1}}});
@@ -116,7 +117,11 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
                           });
     CHECK(wall.properties == R"({ "switch": "lights" })");
     CHECK(wall.id == "hall-east");
-    CHECK(wall.upper == Surface{.material = MaterialId{1}, .offset = {.x = 0.0F, .y = 0.5F}});
+    CHECK(wall.upper == Surface{
+                            .material = MaterialId{1},
+                            .offset = {.x = 0.0F, .y = 0.5F},
+                            .nits = 30.0F,
+                        });
     CHECK(wall.lower == wall.surface);
     CHECK(wall.link == PortalLink{.portal = PortalId{0}, .wall = WallId{10}});
     CHECK(map.wall(WallId{0}).surface == Surface{.material = MaterialId{2}});

@@ -4,6 +4,7 @@
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/assets/load_map_assets.hpp>
+#include <wulfhilde/assets/material.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
@@ -153,6 +154,61 @@ TEST_CASE("the outdoors map has two neighbouring skies of different backdrops, o
     REQUIRE(assets->backdrops.size() == 2);
     CHECK(assets->backdrops.at(0).nits == 2'000.0F);
     CHECK(assets->backdrops.at(1).nits == 2'000.0F);
+}
+
+namespace {
+
+// The nits that each wall of a sector carrying a material sets, in the order of its loop.
+std::vector<std::optional<float>> nits_of_walls_carrying(const wulfhilde::Map& map,
+                                                         const wulfhilde::Sector& sector,
+                                                         std::string_view material) {
+    std::vector<std::optional<float>> nits;
+    for (const auto wall : sector.loops.front()) {
+        const auto& surface = map.wall(wall).surface;
+        if (map.materials().subspan(surface.material.index(), 1).front() == material) {
+            nits.push_back(surface.nits);
+        }
+    }
+    return nits;
+}
+
+} // namespace
+
+TEST_CASE("the lights map has one lamp material at its own nits and at a surface's, and an annex "
+          "under ambient light of its own beyond a doorway",
+          "[viewer]") {
+    const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
+    REQUIRE(root.has_value());
+
+    const auto map = wulfhilde::load_map(*root, "lights");
+
+    REQUIRE(map.has_value());
+    const auto& hall = map->sector(map->start().location.sector);
+    CHECK(hall.id == "hall");
+    CHECK(map->portals().size() == 1);
+    CHECK(nits_of_walls_carrying(*map, hall, "materials/lamp") ==
+          std::vector<std::optional<float>>{std::nullopt, 80.0F});
+    CHECK(hall.ambient ==
+          wulfhilde::AmbientLight{.color = {.r = 1.0F, .g = 1.0F, .b = 1.0F}, .lux = 300.0F});
+    CHECK(sector_named(*map, "annex").ambient ==
+          wulfhilde::AmbientLight{.color = {.r = 1.0F, .g = 0.85F, .b = 0.7F}, .lux = 75.0F});
+}
+
+TEST_CASE("the lights map's lamp material glows at 400 nits of its own", "[viewer]") {
+    const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
+    REQUIRE(root.has_value());
+    const auto map = wulfhilde::load_map(*root, "lights");
+    REQUIRE(map.has_value());
+    const auto materials = map->materials();
+    const auto lamp = static_cast<std::size_t>(std::ranges::find(materials, "materials/lamp") -
+                                               materials.begin());
+    REQUIRE(lamp < materials.size());
+
+    const auto assets = wulfhilde::load_map_assets(*root, *map);
+
+    REQUIRE(assets.has_value());
+    const auto emission = assets->materials.at(lamp).emission.value_or(wulfhilde::Emission{});
+    CHECK(emission.nits == 400.0F);
 }
 
 TEST_CASE(

@@ -136,22 +136,27 @@ void check_exposure(Problems& problems, const Exposure& exposure) {
     }
 }
 
+/// Checks that nits, if there are any, are a light level: a finite number, 0 or more.
+void check_nits(Problems& problems, std::string pointer, std::optional<float> nits) {
+    if (nits && (!std::isfinite(*nits) || *nits < 0.0F)) {
+        problems.add(MapProblemCode::light_level_out_of_range, std::move(pointer),
+                     std::format("{} nits isn't a light level, which is 0 or more", *nits));
+    }
+}
+
 /// Checks that a floor's or ceiling's height lies within the map's bounds, and that its material is
-/// an asset path, or its sky's backdrop, with nits that are a finite number, 0 or more.
+/// an asset path, with nits that are a light level, or its sky's backdrop, with the same.
 void check_floor_or_ceiling(Problems& problems, std::string_view pointer,
                             const FloorOrCeilingDescription& floor_or_ceiling) {
     check_coordinate(problems, child(pointer, "height"), floor_or_ceiling.height);
     if (!floor_or_ceiling.sky) {
         check_asset_path(problems, child(pointer, "material"), floor_or_ceiling.material);
+        check_nits(problems, child(pointer, "nits"), floor_or_ceiling.nits);
         return;
     }
     const auto sky_pointer = child(pointer, "sky");
     check_asset_path(problems, child(sky_pointer, "backdrop"), floor_or_ceiling.sky->backdrop);
-    if (const auto nits = floor_or_ceiling.sky->nits;
-        nits && (!std::isfinite(*nits) || *nits < 0.0F)) {
-        problems.add(MapProblemCode::light_level_out_of_range, child(sky_pointer, "nits"),
-                     std::format("{} nits isn't a light level, which is 0 or more", *nits));
-    }
+    check_nits(problems, child(sky_pointer, "nits"), floor_or_ceiling.sky->nits);
 }
 
 /// Checks that a sector's loop of at least three walls is a shape it can be bounded by: its walls
@@ -272,8 +277,9 @@ std::optional<std::vector<PlanSegment>> check_loop(Problems& problems, std::stri
                  std::pair{"lower", wall.lower},
              }) {
             if (surface) {
-                check_asset_path(problems, child(child(wall_pointer, name), "material"),
-                                 surface->material);
+                const auto surface_pointer = child(wall_pointer, name);
+                check_asset_path(problems, child(surface_pointer, "material"), surface->material);
+                check_nits(problems, child(surface_pointer, "nits"), surface->nits);
             }
         }
         starts.push_back(wall.start);

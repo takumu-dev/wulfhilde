@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../schema/material.schema.json",
+  "format": "wulfhilde-material",
+  "version": 1,
+  "color": { "texture": "materials/corrugated_steel/color" },
+  "roughness": { "texture": "materials/corrugated_steel/roughness" },
+  "metallic": { "texture": "materials/corrugated_steel/metallic" },
+  "normal": { "texture": "materials/corrugated_steel/normal" },
+  "occlusion": { "texture": "materials/corrugated_steel/occlusion" },
+  "size": [2, 1]
+}
