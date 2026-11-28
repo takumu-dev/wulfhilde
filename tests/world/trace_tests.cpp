@@ -5,6 +5,7 @@
 #include "world_printing.hpp" // IWYU pragma: keep
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/rigid_transform.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
@@ -315,4 +316,82 @@ TEST_CASE("a trace through an inner loop's opening carries on into the sector in
     const auto rim = trace_in_hall(map, {.x = 0.5F, .y = 1.5F, .z = 0.25F}, {.x = 1.0F});
     CHECK(rim.end.point == Vector3{.x = 1.0F, .y = 1.5F, .z = 0.25F});
     CHECK(rim.surface == SurfaceRef{WallId{4}});
+}
+
+namespace {
+
+// The walls of the turned doorway map that traces through its doorway meet: the hall's door, and
+// the gallery's door and west wall.
+constexpr WallId gallery_door{8};
+constexpr WallId gallery_west{11};
+
+// The turned doorway map's portal transform, from the hall's coordinates into the gallery's.
+RigidTransform onto_gallery() {
+    return {
+        .rotation = wulfhilde::Rotation::from_yaw_pitch_roll(Angle::degrees(90.0F), {}, {}),
+        .translation = {.x = 24.0F},
+    };
+}
+
+} // namespace
+
+TEST_CASE("a trace through a transformed portal carries on in the far sector's coordinates, and "
+          "returns the portal's transform",
+          "[world]") {
+    const auto map = make_map(turned_doorway_map());
+    const auto trace =
+        map.trace({.sector = hall, .point = {.x = 2.0F, .y = 3.0F, .z = 1.5F}}, {.y = 2.0F});
+
+    // It crosses the door at (2, 4), which lands at (20, 2), and walks on west.
+    CHECK(trace.end.sector == gallery);
+    CHECK(approx_equal(trace.end.point, {.x = 19.0F, .y = 2.0F, .z = 1.5F}, 1e-5F));
+    CHECK(trace.surface == std::nullopt);
+    CHECK(trace.transform == onto_gallery());
+}
+
+TEST_CASE("a trace through a transformed portal stops at what it meets beyond", "[world]") {
+    const auto map = make_map(turned_doorway_map());
+    const auto trace =
+        map.trace({.sector = hall, .point = {.x = 2.5F, .y = 3.0F, .z = 1.5F}}, {.y = 10.0F});
+
+    CHECK(trace.end.sector == gallery);
+    CHECK(approx_equal(trace.end.point, {.x = 16.0F, .y = 2.5F, .z = 1.5F}, 1e-5F));
+    CHECK(trace.surface == SurfaceRef{gallery_west});
+    CHECK(trace.transform == onto_gallery());
+}
+
+TEST_CASE("a trace back through a transformed portal returns by its inverse", "[world]") {
+    const auto map = make_map(turned_doorway_map());
+    const auto back =
+        map.trace({.sector = gallery, .point = {.x = 19.0F, .y = 2.0F, .z = 1.5F}}, {.x = 2.0F});
+
+    CHECK(back.end.sector == hall);
+    CHECK(approx_equal(back.end.point, {.x = 2.0F, .y = 3.0F, .z = 1.5F}, 1e-5F));
+    CHECK(back.surface == std::nullopt);
+    CHECK(back.transform == inverse(onto_gallery()));
+}
+
+TEST_CASE("a trace reaching a transformed portal where the far side doesn't overlap it meets the "
+          "solid part of its wall",
+          "[world]") {
+    // Moved up by 1 m, the gallery's span from its floor to its ceiling lands from 1 m to 4 m in
+    // the gallery, so the hall's door is open from its floor up to 2 m, and solid above.
+    auto description = turned_doorway_map();
+    first_transform(description).translation.z = 1.0F;
+    const auto map = make_map(description);
+
+    const auto solid = trace_in_hall(map, {.x = 2.0F, .y = 3.0F, .z = 2.5F}, {.y = 2.0F});
+    CHECK(solid.end.point == Vector3{.x = 2.0F, .y = 4.0F, .z = 2.5F});
+    CHECK(solid.surface == SurfaceRef{hall_door});
+
+    const auto open =
+        map.trace({.sector = hall, .point = {.x = 2.0F, .y = 3.0F, .z = 1.5F}}, {.y = 2.0F});
+    CHECK(open.end.sector == gallery);
+    CHECK(approx_equal(open.end.point, {.x = 19.0F, .y = 2.0F, .z = 2.5F}, 1e-5F));
+
+    // From the gallery, the hall lands from 1 m to 4 m, so its door is open from 1 m up.
+    const auto below =
+        map.trace({.sector = gallery, .point = {.x = 19.0F, .y = 2.0F, .z = 0.5F}}, {.x = 2.0F});
+    CHECK(below.end.sector == gallery);
+    CHECK(below.surface == SurfaceRef{gallery_door});
 }

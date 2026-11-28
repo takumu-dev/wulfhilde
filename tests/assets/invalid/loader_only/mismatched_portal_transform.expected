@@ -1,0 +1,1 @@
+loader_only/mismatched_portal_transform.map.json:37:5: the portal's transform must carry each corner of /sectors/0/loops/0/3 to within 2 mm of its match on /sectors/1/loops/0/2, but carries one 3.5 mm from it (/portals/0)

@@ -183,6 +183,14 @@ TEST_CASE("rotations are approximately equal when one is within an angle of the 
                              Angle::degrees(45.0F)));
 }
 
+TEST_CASE("rotations compare exactly as their quaternions, a whole turn more unequal", "[core]") {
+    const auto r = Rotation::about_axis(z_axis, Angle::degrees(90.0F));
+    CHECK(r == Rotation::about_axis(z_axis, Angle::degrees(90.0F)));
+    CHECK(Rotation{} == Rotation::identity());
+    CHECK_FALSE(r == Rotation::about_axis(z_axis, Angle::degrees(90.001F)));
+    CHECK_FALSE(r == Rotation::about_axis(z_axis, Angle::degrees(450.0F)));
+}
+
 TEST_CASE("a rotation by a whole turn more is the same rotation", "[core]") {
     // Their quaternions have opposite signs.
     const auto r = Rotation::about_axis(z_axis, Angle::degrees(90.0F));

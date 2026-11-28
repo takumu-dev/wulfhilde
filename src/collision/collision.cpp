@@ -6,6 +6,8 @@
 #include <wulfhilde/collision/pose.hpp>
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/assertion.hpp>
+#include <wulfhilde/core/rigid_transform.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ids.hpp>
@@ -53,6 +55,15 @@ constexpr float least_radius = 1e-3F;
 /// The longest move, in metres: twice the width of the largest map, whose coordinates lie within
 /// 4,096 m of its origin. It also bounds a move's number of substeps.
 constexpr float longest_move = 16384.0F;
+
+/// How near two transforms into a sector a body reaches must be to put the sector in the same
+/// place: far nearer than any two places a portal links, and far looser than rounding.
+constexpr Angle same_place_angle = Angle::degrees(0.01F);
+constexpr float same_place_distance = 1e-3F;
+
+/// How many sectors, or places in the same sector, a body reaches at most from its centre's,
+/// which no body short of a whole room's size comes near.
+constexpr std::size_t most_reaches = 64;
 
 /// How many times a push-out finds the body's contacts afresh and moves it out of them.
 constexpr std::size_t push_out_passes = 8;
@@ -365,25 +376,54 @@ part_contact(const Axis& axis, float radius, const SurfaceRef& surface, const Ve
     };
 }
 
+/// A wall whose opening a body comes through, and the transform from the coordinates of the
+/// sector its centre is in into those of the wall's sector.
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init): it has no default, as its wall has none
+struct Passage {
+    WallId wall;                                           ///< The wall.
+    RigidTransform transform = RigidTransform::identity(); ///< Into the wall's sector.
+};
+
 /// A sector that a body reaches through openings from the sector its centre is in.
 struct Reach {
     /// The sector.
     SectorId sector;
 
-    /// The walls whose openings the body comes through, in order from its centre's sector.
-    std::vector<WallId> through{};
+    /// The transform from the coordinates of the sector the body's centre is in into this
+    /// sector's, which combines those of the portals on the way.
+    RigidTransform transform = RigidTransform::identity();
 
-    /// The part of the body's axis that lies within every one of those openings.
+    /// The walls whose openings the body comes through, in order from its centre's sector.
+    std::vector<Passage> through{};
+
+    /// The part of the body's axis that lies within every one of those openings, in this sector's
+    /// coordinates.
     Axis share{};
 };
 
-/// Tells whether a straight path from one point to another comes through the openings of walls in
-/// order, crossing each wall's plane from its sector's side within its opening. Its edges are in
-/// it, with a skin's room for rounding.
-[[nodiscard]] bool comes_through(const Map& map, const std::vector<WallId>& walls,
-                                 const Vector3& from, const Vector3& to) {
-    return std::ranges::all_of(walls, [&](WallId id) {
-        const auto& wall = map.wall(id);
+/// Returns a body's pose carried into the coordinates of a sector it reaches.
+[[nodiscard]] Pose carried(const Pose& pose, const RigidTransform& transform) {
+    return {
+        .centre =
+            {
+                .sector = pose.centre.sector,
+                .point = transform_point(transform, pose.centre.point),
+            },
+        .tilt = transform.rotation * pose.tilt,
+        .gravity_up = transform_direction(transform, pose.gravity_up),
+    };
+}
+
+/// Tells whether a straight path from one point to another, in the coordinates of the sector the
+/// body's centre is in, comes through the openings of walls in order, crossing each wall's plane
+/// from its sector's side within its opening. Its edges are in it, with a skin's room for
+/// rounding.
+[[nodiscard]] bool comes_through(const Map& map, const std::vector<Passage>& passages,
+                                 const Vector3& from_centre, const Vector3& to_centre) {
+    return std::ranges::all_of(passages, [&](const Passage& passage) {
+        const auto& wall = map.wall(passage.wall);
+        const auto from = transform_point(passage.transform, from_centre);
+        const auto to = transform_point(passage.transform, to_centre);
         const auto inward = inward_of(wall.start, wall.end);
         const auto from_side = dot(plan(from) - wall.start, inward);
         const auto to_side = dot(plan(to) - wall.start, inward);
@@ -394,19 +434,27 @@ struct Reach {
         const auto run = wall.end - wall.start;
         const auto slack = skin / length(run);
         const auto along = dot(plan(crossing) - wall.start, run) / length_squared(run);
-        const auto opening = map.opening(id, plan(crossing)).value_or(Opening{});
+        const auto opening = map.opening(passage.wall, plan(crossing)).value_or(Opening{});
         return -slack <= along && along <= 1.0F + slack && opening.bottom - skin <= crossing.z &&
                crossing.z <= opening.top + skin;
     });
 }
 
-/// Adds a contact of a surface of a sector the body reaches, if the body touches it there.
+/// Adds a contact of a surface of a sector the body reaches, found in that sector's coordinates,
+/// if the body touches it there, turned back into the coordinates of the sector its centre is in.
 ///
 /// A far sector's surface touches the body only where the body comes through the openings to it.
 void add_contact(const Map& map, const Reach& reach, const std::optional<Contact>& contact,
                  const Nearest& nearest, std::vector<Contact>& contacts) {
-    if (contact && comes_through(map, reach.through, nearest.on_axis, nearest.on_other)) {
-        contacts.push_back(*contact);
+    if (!contact) {
+        return;
+    }
+    const auto back = inverse(reach.transform);
+    if (comes_through(map, reach.through, transform_point(back, nearest.on_axis),
+                      transform_point(back, nearest.on_other))) {
+        auto turned = *contact;
+        turned.normal = transform_direction(back, contact->normal);
+        contacts.push_back(turned);
     }
 }
 
@@ -462,15 +510,29 @@ struct Strip {
     return edge >= span.top - height_tolerance;
 }
 
+/// Tells whether a sector has been reached already where its coordinates lie, through whichever
+/// openings: through a transformed portal, a sector may be reached again elsewhere, as a corridor
+/// linked to itself is, and it is tested there too.
+[[nodiscard]] bool reached_already(const std::vector<Reach>& reached, SectorId sector,
+                                   const RigidTransform& transform) {
+    return std::ranges::any_of(reached, [&](const Reach& reach) {
+        return reach.sector == sector &&
+               approx_equal(reach.transform, transform, same_place_angle, same_place_distance);
+    });
+}
+
 /// Adds the contacts of the strips of a side of a portal in a sector the body reaches, unless the
 /// body passes them, and reaches the sector beyond if the body comes through its opening, unless
 /// it is reached already. A sector reached through one opening may lie beyond another beside it,
 /// as a raised sector does beyond each wall of the inner loop around it, so each opening's strips
-/// are tested all the same.
+/// are tested all the same. A transformed portal's side has no strips, but its wall's solid parts
+/// below and above its opening are met as strips are.
 ///
 /// The edge of a strip along the opening is the edge on the portal's plane of the floor or the
 /// ceiling beyond, so a cap reaching past the plane meets that surface there, and is pushed along
 /// the line from the edge to the cap's centre.
+///
+/// \param pose The body's pose, in the coordinates of the sector the reach is to.
 void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, const Reach& reach,
                    WallId id, std::vector<Reach>& reached, std::vector<Contact>& contacts) {
     const auto& wall = map.wall(id);
@@ -500,21 +562,29 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
         return;
     }
     const auto beyond = map.wall(link->wall).sector;
+    const auto transform = link->transform * reach.transform;
     const auto [lowest, highest] =
         std::ranges::minmax(face.opening | std::views::transform(&Vector3::z));
     const auto share = clip_axis(reach.share, lowest, highest);
-    if (!share || std::ranges::contains(reached, beyond, &Reach::sector)) {
+    if (!share || reached.size() == most_reaches || reached_already(reached, beyond, transform)) {
         return;
     }
     Nearest nearest;
+    const auto back = inverse(reach.transform);
     if (part_contact(*share, shape.radius, id, wall.start, wall.end, face.opening, nearest) &&
-        comes_through(map, reach.through, nearest.on_axis, nearest.on_other)) {
+        comes_through(map, reach.through, transform_point(back, nearest.on_axis),
+                      transform_point(back, nearest.on_other))) {
         auto through = reach.through;
-        through.push_back(id);
+        through.push_back({.wall = id, .transform = reach.transform});
         reached.push_back({
             .sector = beyond,
+            .transform = transform,
             .through = std::move(through),
-            .share = *share,
+            .share =
+                {
+                    .bottom = transform_point(link->transform, share->bottom),
+                    .top = transform_point(link->transform, share->top),
+                },
         });
     }
 }
@@ -556,6 +626,7 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
     // Each sector is tested once, through the first openings it is reached through.
     for (std::size_t next = 0; next < reached.size(); ++next) {
         const auto reach = reached.at(next);
+        const auto pose_here = carried(pose, reach.transform);
         // A floor or ceiling beyond an opening touches the body only where the body comes through
         // to it, which a flat one's point nearest the body, straight above or below it, never is.
         // The point a slope rising away from the opening comes nearest the body may be.
@@ -571,7 +642,7 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
             for (const auto id : loop) {
                 const auto& wall = map.wall(id);
                 if (wall.link) {
-                    reach_through(map, shape, pose, reach, id, reached, contacts);
+                    reach_through(map, shape, pose_here, reach, id, reached, contacts);
                     continue;
                 }
                 Nearest nearest;
@@ -592,9 +663,19 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
     return contacts;
 }
 
-/// Moves a body's centre, carrying it into the sector beyond any opening it crosses.
-void move_centre(const Map& map, Pose& pose, const Vector3& motion) {
-    pose.centre = map.trace(pose.centre, motion).end;
+/// Moves a body's centre, carrying it into the sector beyond any opening it crosses, and turning
+/// its tilt with the portals it crosses. A transformed portal hands over the far sector's gravity,
+/// while an ordinary one leaves the body's as it is.
+///
+/// \return The combined transform of the portals the centre crossed.
+RigidTransform move_centre(const Map& map, Pose& pose, const Vector3& motion) {
+    const auto trace = map.trace(pose.centre, motion);
+    pose.centre = trace.end;
+    if (trace.transform != RigidTransform::identity()) {
+        pose.tilt = trace.transform.rotation * pose.tilt;
+        pose.gravity_up = {.z = 1.0F};
+    }
+    return trace.transform;
 }
 
 /// Turns the contacts of a grounded body with surfaces too steep to be its ground, which face up
@@ -623,10 +704,16 @@ void as_walls(std::vector<Contact>& contacts, const BodyShape& shape, const Pose
 ///
 /// The body may end a little clear of a contact it was pushed out of. A contact's plane stands in
 /// for a surface at the body as it was, and pushing the body off the edge of one turns the edge's
-/// normal as it goes, so the push runs past the point where it touches.
+/// normal as it goes, so the push runs past the point where it touches. The contacts are in the
+/// coordinates of the sector the body ends in, turned there by any portal the push carried its
+/// centre through.
+///
+/// \param crossed Set to the combined transform of the portals the push carried the centre
+///                through, from the coordinates of the sector it started in.
 [[nodiscard]] std::vector<Contact> push_out(const Map& map, const BodyShape& shape, Pose& pose,
-                                            bool grounded) {
+                                            bool grounded, RigidTransform& crossed) {
     std::vector<Contact> pushed;
+    crossed = RigidTransform::identity();
     for (std::size_t pass = 0; pass < push_out_passes; ++pass) {
         auto contacts = contacts_of(map, shape, pose);
         if (grounded) {
@@ -648,7 +735,13 @@ void as_walls(std::vector<Contact>& contacts, const BodyShape& shape, const Pose
         if (push == Vector3{}) {
             break;
         }
-        move_centre(map, pose, push);
+        if (const auto transform = move_centre(map, pose, push);
+            transform != RigidTransform::identity()) {
+            for (auto& contact : pushed) {
+                contact.normal = transform_direction(transform, contact.normal);
+            }
+            crossed = transform * crossed;
+        }
     }
     return pushed;
 }
@@ -672,12 +765,15 @@ void as_walls(std::vector<Contact>& contacts, const BodyShape& shape, const Pose
 /// Lowers a body that has walked off its ground onto ground up to its step height below, if there
 /// is any there, returning how far it lowered it along its gravity up, or nothing if there isn't.
 ///
-/// A body whose centre a portal would carry into another sector on the way isn't lowered.
+/// A body whose centre a portal would carry into another sector on the way, or elsewhere in its
+/// own through a transformed portal, isn't lowered.
 [[nodiscard]] std::optional<float> snap_down(const Map& map, const BodyShape& shape, Pose& pose) {
     auto lowered = pose;
-    move_centre(map, lowered, pose.gravity_up * -shape.step_height);
-    std::ignore = push_out(map, shape, lowered, true);
-    if (lowered.centre.sector != pose.centre.sector ||
+    const auto moved = move_centre(map, lowered, pose.gravity_up * -shape.step_height);
+    RigidTransform pushed;
+    std::ignore = push_out(map, shape, lowered, true, pushed);
+    if (lowered.centre.sector != pose.centre.sector || moved != RigidTransform::identity() ||
+        pushed != RigidTransform::identity() ||
         !ground_among(contacts_of(map, shape, lowered), shape, lowered)) {
         return std::nullopt;
     }
@@ -743,12 +839,21 @@ Movement move(const Map& map, const BodyShape& shape, const Pose& pose, const Ve
     for (std::size_t substep = 0; substep < substeps; ++substep) {
         const auto grounded = movement.ground.has_value();
         const auto from = movement.pose.centre.sector;
-        move_centre(map, movement.pose, movement.velocity * substep_seconds);
+        // The velocity, and the transform of the move so far, turn with each portal crossed.
+        const auto turn = [&movement](const RigidTransform& transform) {
+            if (transform != RigidTransform::identity()) {
+                movement.velocity = transform_direction(transform, movement.velocity);
+                movement.transform = transform * movement.transform;
+            }
+        };
+        turn(move_centre(map, movement.pose, movement.velocity * substep_seconds));
         const auto crossed_to = movement.pose.centre;
-        const auto pushed = push_out(map, shape, movement.pose, grounded);
+        RigidTransform pushed_through;
+        const auto pushed = push_out(map, shape, movement.pose, grounded, pushed_through);
+        turn(pushed_through);
         // The floor under the centre decides the body's height, so a grounded body whose centre
         // crosses onto a higher floor is lifted onto it by the push-out, which is the step.
-        if (grounded && crossed_to.sector != from &&
+        if (grounded && crossed_to.sector != from && pushed_through == RigidTransform::identity() &&
             movement.pose.centre.sector == crossed_to.sector) {
             if (const auto lift =
                     dot(movement.pose.centre.point - crossed_to.point, movement.pose.gravity_up);
@@ -781,11 +886,12 @@ Movement move(const Map& map, const BodyShape& shape, const Pose& pose, const Ve
 std::optional<Pose> settle(const Map& map, const BodyShape& shape, const Pose& pose) {
     check_body(shape, pose);
     auto settled = pose;
-    std::ignore = push_out(map, shape, settled, false);
+    RigidTransform crossed;
+    std::ignore = push_out(map, shape, settled, false, crossed);
     const auto overlaps =
         std::ranges::any_of(contacts_of(map, shape, settled),
                             [](const Contact& contact) { return contact.depth > fit_tolerance; });
-    const auto pushed = distance(pose.centre.point, settled.centre.point);
+    const auto pushed = distance(transform_point(crossed, pose.centre.point), settled.centre.point);
     if (overlaps || pushed > (shape.radius / 3.0F) + fit_tolerance ||
         !map.contains(settled.centre)) {
         return std::nullopt;

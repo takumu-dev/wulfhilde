@@ -5,7 +5,10 @@
 #include "overlap.hpp"
 #include "plan_geometry.hpp"
 #include <wulfhilde/core/assertion.hpp>
+#include <wulfhilde/core/matrix4.hpp>
 #include <wulfhilde/core/narrow.hpp>
+#include <wulfhilde/core/rigid_transform.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
@@ -41,6 +44,10 @@
 
 namespace wulfhilde {
 namespace {
+
+/// How many transformed portals a trace crosses at most, beyond one crossing of each side of each
+/// portal: enough for any trace a map's bounds allow through portals a metre apart.
+constexpr std::size_t most_transformed_crossings = 16384;
 
 /// Gives each distinct asset path an ID, in the order they are first seen.
 template <typename AssetId> class Interner {
@@ -218,15 +225,94 @@ struct FaceLine {
     return corners;
 }
 
-/// The straight line a trace runs along, in double. Ordinary portals keep every sector in the same
-/// coordinates, so it is one line through them all, measured from 0 at its start to 1 at its
-/// finish, and each wall's line is met at the same point of it from whichever sector.
+/// A point in three dimensions, in double.
+struct PrecisePoint {
+    double x = 0.0; ///< Its X.
+    double y = 0.0; ///< Its Y.
+    double z = 0.0; ///< Its height.
+};
+
+/// A portal transform as a matrix applied in double, to carry points through the portal.
+struct PreciseTransform {
+    /// The transform's matrix.
+    Matrix4 matrix;
+
+    /// Returns where the transform takes a point.
+    [[nodiscard]] PrecisePoint apply(const PrecisePoint& p) const noexcept {
+        const auto& [x_axis, y_axis, z_axis, moved] = matrix.columns;
+        const auto row = [&p](float x, float y, float z, float w) {
+            return (static_cast<double>(x) * p.x) + (static_cast<double>(y) * p.y) +
+                   (static_cast<double>(z) * p.z) + static_cast<double>(w);
+        };
+        return {
+            .x = row(x_axis.x, y_axis.x, z_axis.x, moved.x),
+            .y = row(x_axis.y, y_axis.y, z_axis.y, moved.y),
+            .z = row(x_axis.z, y_axis.z, z_axis.z, moved.z),
+        };
+    }
+};
+
+/// The span from the floor to the ceiling of the sector beyond a side of a portal, carried back
+/// into the side's own sector's coordinates, at a point of the side's wall: from its bottom to its
+/// top there.
+struct FarSpan {
+    double bottom = 0.0; ///< The height of its bottom.
+    double top = 0.0;    ///< The height of its top.
+};
+
+/// Returns the span of the sector beyond a side of a portal at a point of the side's wall, given
+/// the side's link.
+///
+/// The checks have made sure that a portal's transform keeps the wall's corners upright, so each
+/// point of the wall lands on one upright line beyond, and the far floor and ceiling there come
+/// back as heights over the point, turned over if the transform turns the wall upside down. An
+/// ordinary portal's transform is the identity, which carries every height back as it is.
+[[nodiscard]] FarSpan far_span_at(const Map& map, const PortalLink& link,
+                                  const detail::PlanPoint& on_wall) {
+    const auto& far = map.sector(map.wall(link.wall).sector);
+    const auto beyond =
+        PreciseTransform{to_matrix(link.transform)}.apply({.x = on_wall.x, .y = on_wall.y});
+    const detail::PlanPoint far_point{.x = beyond.x, .y = beyond.y};
+    const PreciseTransform back{to_matrix(inverse(link.transform))};
+    const auto height_back = [&](const FloorOrCeiling& floor_or_ceiling) {
+        return back
+            .apply({
+                .x = far_point.x,
+                .y = far_point.y,
+                .z = plane_of(map, floor_or_ceiling).at(far_point),
+            })
+            .z;
+    };
+    const auto floor = height_back(far.floor);
+    const auto ceiling = height_back(far.ceiling);
+    return {.bottom = std::min(floor, ceiling), .top = std::max(floor, ceiling)};
+}
+
+/// The straight line a trace runs along, in double, measured from 0 at its start to 1 at its
+/// finish, in the coordinates of the sector it is in. Ordinary portals keep every sector in the
+/// same coordinates, so it is one line through them, and each wall's line is met at the same point
+/// of it from whichever sector. A transformed portal carries it into the coordinates beyond,
+/// keeping how far along it each point is.
 struct TraceLine {
     detail::PlanPoint start{};  ///< Where it starts, seen from above.
     detail::PlanPoint finish{}; ///< Where it finishes, seen from above.
     double z = 0.0;             ///< The height it starts at.
     double rise = 0.0;          ///< How far it rises from its start to its finish.
 };
+
+/// Returns a trace's line carried through a portal transform.
+[[nodiscard]] TraceLine carried(const TraceLine& line, const RigidTransform& transform) {
+    const PreciseTransform onto{to_matrix(transform)};
+    const auto start = onto.apply({.x = line.start.x, .y = line.start.y, .z = line.z});
+    const auto finish =
+        onto.apply({.x = line.finish.x, .y = line.finish.y, .z = line.z + line.rise});
+    return {
+        .start = {.x = start.x, .y = start.y},
+        .finish = {.x = finish.x, .y = finish.y},
+        .z = start.z,
+        .rise = finish.z - start.z,
+    };
+}
 
 /// How far along a trace's line it reaches a wall's line from the wall's sector, between the
 /// wall's ends, having entered the sector at a point of the line.
@@ -252,10 +338,10 @@ struct TraceLine {
     return start_side / (start_side - finish_side);
 }
 
-/// Returns the sector beyond a wall that a trace reaching it at a point of its line crosses into:
-/// the far sector of a side of a portal, if the point is within its opening, its edges included.
-[[nodiscard]] std::optional<SectorId> beyond_opening(const Map& map, WallId id,
-                                                     const TraceLine& line, double at) {
+/// Returns the way through a wall that a trace reaching it at a point of its line takes: the link
+/// of a side of a portal, if the point is within its opening, its edges included.
+[[nodiscard]] std::optional<PortalLink> beyond_opening(const Map& map, WallId id,
+                                                       const TraceLine& line, double at) {
     const auto& link = map.wall(id).link;
     if (!link) {
         return std::nullopt;
@@ -270,7 +356,7 @@ struct TraceLine {
         height > static_cast<double>(opening->top)) {
         return std::nullopt;
     }
-    return map.wall(link->wall).sector;
+    return link;
 }
 
 /// Where a trace leaves one sector: at the surface that stops it, through an opening, or at the
@@ -282,8 +368,8 @@ struct SectorTrace {
     /// The surface that stops the trace there, if one does.
     std::optional<SurfaceRef> surface{};
 
-    /// The sector beyond the opening the trace crosses there, if it crosses one.
-    std::optional<SectorId> beyond{};
+    /// The way through the opening the trace crosses there, if it crosses one.
+    std::optional<PortalLink> beyond{};
 };
 
 /// Follows a trace's line through one sector, from where it entered the sector.
@@ -421,9 +507,23 @@ std::expected<Map, MapLoadError> Map::create(MapDescription description) {
         const PortalId id{narrow<std::uint32_t>(map.portals_.size())};
         const auto a = walls_by_name.at(portal.a.id);
         const auto b = walls_by_name.at(portal.b.id);
-        map.wall_at(a).link = PortalLink{.portal = id, .wall = b};
-        map.wall_at(b).link = PortalLink{.portal = id, .wall = a};
-        map.portals_.push_back({.a = a, .b = b, .properties = std::move(portal.properties)});
+        const auto transform =
+            portal.transform.transform([](const PortalTransformDescription& written) {
+                const auto& [yaw, pitch, roll] = written.rotation;
+                return RigidTransform{
+                    .rotation = Rotation::from_yaw_pitch_roll(yaw, pitch, roll),
+                    .translation = written.translation,
+                };
+            });
+        const auto onto_b = transform.value_or(RigidTransform::identity());
+        map.wall_at(a).link = PortalLink{.portal = id, .wall = b, .transform = onto_b};
+        map.wall_at(b).link = PortalLink{.portal = id, .wall = a, .transform = inverse(onto_b)};
+        map.portals_.push_back({
+            .a = a,
+            .b = b,
+            .transform = transform,
+            .properties = std::move(portal.properties),
+        });
     }
     map.overlapping_ = detail::find_overlaps(map.sectors_, map.walls_);
     map.materials_ = std::move(materials).take_paths();
@@ -470,7 +570,6 @@ std::optional<Opening> Map::opening(WallId wall, const Vector2& point) const {
         return std::nullopt;
     }
     const auto& near = sector(near_wall.sector);
-    const auto& far = sector(this->wall(near_wall.link->wall).sector);
     const auto start = detail::to_plan(near_wall.start);
     const auto end = detail::to_plan(near_wall.end);
     const auto p = detail::to_plan(point);
@@ -482,12 +581,11 @@ std::optional<Opening> Map::opening(WallId wall, const Vector2& point) const {
     const detail::PlanPoint on_wall{.x = start.x + (run_x * along), .y = start.y + (run_y * along)};
     const auto near_floor = plane_of(*this, near.floor).at(on_wall);
     const auto near_ceiling = plane_of(*this, near.ceiling).at(on_wall);
-    const auto far_floor = plane_of(*this, far.floor).at(on_wall);
-    const auto far_ceiling = plane_of(*this, far.ceiling).at(on_wall);
+    const auto far = far_span_at(*this, *near_wall.link, on_wall);
     // Written with min and max rather than clamp, a sector whose floor is above its ceiling gives
     // an opening that means nothing rather than breaking clamp's precondition.
-    const auto bottom = std::min(std::max(near_floor, far_floor), near_ceiling);
-    const auto top = std::max(std::min(near_ceiling, far_ceiling), bottom);
+    const auto bottom = std::min(std::max(near_floor, far.bottom), near_ceiling);
+    const auto top = std::max(std::min(near_ceiling, far.top), bottom);
     return Opening{.bottom = static_cast<float>(bottom), .top = static_cast<float>(top)};
 }
 
@@ -519,9 +617,10 @@ WallFace Map::face(WallId wall) const {
     if (!near_wall.link) {
         return face;
     }
-    const auto& far = sector(this->wall(near_wall.link->wall).sector);
-    const auto far_floor = line_of(far.floor);
-    const auto far_ceiling = line_of(far.ceiling);
+    const auto far_at_start = far_span_at(*this, *near_wall.link, start);
+    const auto far_at_end = far_span_at(*this, *near_wall.link, end);
+    const FaceLine far_floor{.start = far_at_start.bottom, .end = far_at_end.bottom};
+    const FaceLine far_ceiling{.start = far_at_start.top, .end = far_at_end.top};
     const auto above_far_floor = clip_face(whole, far_floor, true);
     face.lower = face_corners(clip_face(whole, far_floor, false), start, end);
     face.opening = face_corners(clip_face(above_far_floor, far_ceiling, false), start, end);
@@ -580,7 +679,7 @@ Vector3 Map::ceiling_normal(SectorId sector) const {
 
 Trace Map::trace(const Location& from, const Vector3& motion) const {
     const auto start = detail::to_plan({.x = from.point.x, .y = from.point.y});
-    const TraceLine line{
+    TraceLine line{
         .start = start,
         .finish =
             {
@@ -591,20 +690,27 @@ Trace Map::trace(const Location& from, const Vector3& motion) const {
         .rise = static_cast<double>(motion.z),
     };
     auto sector_id = from.sector;
+    auto transform = RigidTransform::identity();
     SectorTrace step;
-    // A straight line crosses each wall's line once at most, so it crosses each side of each
-    // portal once at most.
-    for (std::size_t crossings = 0; crossings <= 2 * portals_.size(); ++crossings) {
+    // Through ordinary portals, a straight line crosses each wall's line once at most, so it
+    // crosses each side of each portal once at most. Transformed portals may bring it back to
+    // the same portal, as two facing each other do, so it crosses as many as its length takes it
+    // through, up to a bound that keeps a trace along the edge of such a portal from looping.
+    for (std::size_t crossings = 0; crossings <= (2 * portals_.size()) + most_transformed_crossings;
+         ++crossings) {
         step = trace_sector(*this, sector_id, line, step.beyond ? step.at : 0.0);
         if (!step.beyond) {
             break;
         }
-        sector_id = *step.beyond;
+        sector_id = wall(step.beyond->wall).sector;
+        if (step.beyond->transform != RigidTransform::identity()) {
+            line = carried(line, step.beyond->transform);
+            transform = step.beyond->transform * transform;
+        }
     }
 
-    const auto along = [reached = step.at](float origin, float distance) {
-        return static_cast<float>(static_cast<double>(origin) +
-                                  (static_cast<double>(distance) * reached));
+    const auto along = [reached = step.at](double origin, double distance) {
+        return static_cast<float>(origin + (distance * reached));
     };
     return {
         .end =
@@ -612,11 +718,12 @@ Trace Map::trace(const Location& from, const Vector3& motion) const {
                 .sector = sector_id,
                 .point =
                     {
-                        .x = along(from.point.x, motion.x),
-                        .y = along(from.point.y, motion.y),
-                        .z = along(from.point.z, motion.z),
+                        .x = along(line.start.x, line.finish.x - line.start.x),
+                        .y = along(line.start.y, line.finish.y - line.start.y),
+                        .z = along(line.z, line.rise),
                     },
             },
+        .transform = transform,
         .surface = step.surface,
     };
 }

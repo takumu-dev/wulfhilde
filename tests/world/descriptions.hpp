@@ -2,6 +2,7 @@
 // thing in one of them, so the problem it expects is the only one there is.
 #pragma once
 
+#include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/map.hpp>
@@ -117,6 +118,38 @@ inline wulfhilde::MapDescription doorway_map() {
         .b = {.id = "gallery-door"},
     });
     return description;
+}
+
+// The doorway map with the gallery moved far off and turned, so that the portal turns 90 degrees
+// left and moves 24 m along X: the gallery is the square from (16, 0) to (20, 4), whose door is
+// its east wall's middle third, from (20, 1) to (20, 3).
+//
+// The hall's door from (3, 4) to (1, 4) turns to run from (-4, 3) to (-4, 1), and moves to run from
+// (20, 3) to (20, 1), back along the gallery's door. Walking north through it, out of the hall,
+// walks west into the gallery. The gallery's walls are still #6 to #11, its door #8.
+inline wulfhilde::MapDescription turned_doorway_map() {
+    auto description = doorway_map();
+    description.sectors.at(1) = sector_through("gallery", {
+                                                              {.x = 16.0F, .y = 0.0F},
+                                                              {.x = 20.0F, .y = 0.0F},
+                                                              {.x = 20.0F, .y = 1.0F},
+                                                              {.x = 20.0F, .y = 3.0F},
+                                                              {.x = 20.0F, .y = 4.0F},
+                                                              {.x = 16.0F, .y = 4.0F},
+                                                          });
+    description.sectors.at(1).loops.at(0).at(2).id = "gallery-door";
+    description.portals.at(0).transform = wulfhilde::PortalTransformDescription{
+        .translation = {.x = 24.0F},
+        .rotation = {.yaw = wulfhilde::Angle::degrees(90.0F)},
+    };
+    return description;
+}
+
+// The transform of a map's first portal, to change, which it gives an ordinary portal.
+inline wulfhilde::PortalTransformDescription&
+first_transform(wulfhilde::MapDescription& description) {
+    auto& transform = description.portals.at(0).transform;
+    return transform.emplace(transform.value_or(wulfhilde::PortalTransformDescription{}));
 }
 
 // The hall with a pillar: an inner loop round a square hole 1 m on a side from (1, 1) to (2, 2),

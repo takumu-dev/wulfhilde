@@ -4,6 +4,8 @@
 #include "world_printing.hpp" // IWYU pragma: keep
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/core/angle.hpp>
+#include <wulfhilde/core/rigid_transform.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/exposure.hpp>
@@ -42,6 +44,8 @@ using wulfhilde::MapProblemCode;
 using wulfhilde::MaterialId;
 using wulfhilde::PortalId;
 using wulfhilde::PortalLink;
+using wulfhilde::RigidTransform;
+using wulfhilde::Rotation;
 using wulfhilde::SectorId;
 using wulfhilde::Sky;
 using wulfhilde::Slope;
@@ -83,7 +87,7 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     CHECK(std::vector<std::string>(materials.begin(), materials.end()) ==
           std::vector<std::string>{"stone/floor", "plaster", "brick", "brick/dark"});
 
-    REQUIRE(map.sectors().size() == 2);
+    REQUIRE(map.sectors().size() == 3);
     const auto& hall = map.sector(SectorId{0});
     CHECK(hall.id == "hall");
     CHECK(hall.floor.height == -0.5F);
@@ -138,10 +142,19 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
           Surface{.material = MaterialId{2}, .rotation = Angle::degrees(90.0F)});
     CHECK(closet_west.link == PortalLink{.portal = PortalId{0}, .wall = WallId{1}});
 
-    REQUIRE(map.portals().size() == 1);
+    REQUIRE(map.portals().size() == 2);
     CHECK(map.portal(PortalId{0}).a == wulfhilde::SurfaceRef{WallId{1}});
     CHECK(map.portal(PortalId{0}).b == wulfhilde::SurfaceRef{WallId{10}});
+    CHECK(map.portal(PortalId{0}).transform == std::nullopt);
     CHECK(map.portal(PortalId{0}).properties == R"({ "sound": "creak" })");
+    CHECK(map.portal(PortalId{1}).a == wulfhilde::SurfaceRef{WallId{8}});
+    CHECK(map.portal(PortalId{1}).b == wulfhilde::SurfaceRef{WallId{11}});
+    CHECK(map.portal(PortalId{1}).transform ==
+          RigidTransform{
+              .rotation = Rotation::from_yaw_pitch_roll(Angle::degrees(90.0F), {}, {}),
+              .translation = {.x = 20.0F, .y = 0.0F, .z = 1.0F},
+          });
+    CHECK(map.portal(PortalId{1}).properties.empty());
 
     const auto backdrops = map.backdrops();
     CHECK(std::vector<std::string>(backdrops.begin(), backdrops.end()) ==
