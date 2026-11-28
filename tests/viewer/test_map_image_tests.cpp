@@ -199,6 +199,49 @@ const std::vector<TestMapCameras>& test_map_cameras() {
                     },
                 },
         },
+        {
+            .map = "portals",
+            .cameras =
+                {
+                    // From the start room, east through the turned portal, which shows the east
+                    // leg running away north to the corner into the top leg.
+                    {
+                        .name = "turn",
+                        .sector = "start",
+                        .point = {.x = 3.0F, .y = 3.0F, .z = 1.65F},
+                        .yaw = Angle::degrees(0.0F),
+                        .pitch = Angle::degrees(0.0F),
+                    },
+                    // From the east leg, south to its end, through which the start room shows from
+                    // its east doorway, turned, with the annex through its west doorway beyond.
+                    {
+                        .name = "loop",
+                        .sector = "east-leg",
+                        .point = {.x = 11.0F, .y = 7.0F, .z = 1.65F},
+                        .yaw = Angle::degrees(-90.0F),
+                        .pitch = Angle::degrees(-5.0F),
+                    },
+                    // From the corridor, east along it into itself, again and again, four views
+                    // deep, and the opening beyond filled flat.
+                    {
+                        .name = "recursion",
+                        .sector = "mirror",
+                        .point = {.x = 6.0F, .y = -1.0F, .z = 1.65F},
+                        .yaw = Angle::degrees(0.0F),
+                        .pitch = Angle::degrees(0.0F),
+                    },
+                    // From the middle of the hub, toward its north-east corner, through its north
+                    // and east portals into itself, past the frame's 16 views, where the openings
+                    // left are filled flat.
+                    {
+                        .name = "budget",
+                        .sector = "hub",
+                        .point = {.x = 2990.0F, .y = 3010.0F, .z = 101.65F},
+                        .yaw = Angle::degrees(45.0F),
+                        .pitch = Angle::degrees(0.0F),
+                    },
+                },
+        },
     };
     return maps;
 }

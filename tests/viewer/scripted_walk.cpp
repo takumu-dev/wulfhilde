@@ -4,8 +4,10 @@
 #include "controller.hpp"
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
+#include <wulfhilde/collision/pose.hpp>
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/narrow.hpp>
+#include <wulfhilde/core/rotation.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/map.hpp>
 
@@ -15,6 +17,7 @@
 #include <cmath>
 #include <cstddef>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -56,6 +59,20 @@ Walked walk(const wulfhilde::Map& map, const std::vector<WalkStep>& steps) {
     return {.sectors = std::move(sectors), .end = body()};
 }
 
+namespace {
+
+// Checks that a body ended turned left about its up by an angle, within 1 degree, if a walk
+// checks that.
+void check_turned(const wulfhilde::Pose& end, const std::optional<wulfhilde::Angle>& turned) {
+    if (turned) {
+        CHECK(wulfhilde::approx_equal(end.tilt,
+                                      wulfhilde::Rotation::from_yaw_pitch_roll(*turned, {}, {}),
+                                      wulfhilde::Angle::degrees(1.0F)));
+    }
+}
+
+} // namespace
+
 void check_walk(const Walked& walked, const WalkExpectation& expected) {
     CAPTURE(walked.end);
     CHECK(walked.sectors == expected.sectors);
@@ -69,4 +86,5 @@ void check_walk(const Walked& walked, const WalkExpectation& expected) {
         CHECK(wulfhilde::angle_between(end.gravity_up, *expected.gravity_up) <=
               wulfhilde::Angle::degrees(1.0F));
     }
+    check_turned(end, expected.turned);
 }

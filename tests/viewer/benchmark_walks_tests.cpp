@@ -172,3 +172,18 @@ TEST_CASE("the slopes tour walks up the ramp onto the landing and back down, the
     CHECK(sectors_seen_from(map, frames) ==
           std::vector<std::string>{"hall", "ramp", "landing", "ramp", "hall", "opposed"});
 }
+
+TEST_CASE("the portals tour walks round the loop through the turned portal, then west through the "
+          "translated portal into the annex",
+          "[viewer]") {
+    const auto map = load_test_map("portals");
+    const auto walk = viewer::find_benchmark_walk("portals", "tour");
+    REQUIRE(walk.has_value());
+
+    const auto frames = viewer::walk_benchmark(map, *walk);
+
+    // The tour lasts 13 s.
+    CHECK(frames.size() == 780);
+    CHECK(sectors_seen_from(map, frames) ==
+          std::vector<std::string>{"start", "north-leg", "top-leg", "east-leg", "start", "annex"});
+}

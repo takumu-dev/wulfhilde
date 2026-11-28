@@ -132,11 +132,13 @@ class Map {
     /// \param point A point seen from above, which stands for the point of the wall nearest it,
     ///              the wall's ends included.
     /// \return The opening there, from the higher of the two sectors' floors to the lower of their
-    ///         ceilings, or nothing for a solid wall.
+    ///         ceilings, those beyond a transformed portal carried back by its transform, or
+    ///         nothing for a solid wall.
     [[nodiscard]] std::optional<Opening> opening(WallId wall, const Vector2& point) const;
 
     /// Returns the face of a wall: the whole wall, from its sector's floor to its ceiling, and for
-    /// a side of a portal, its strips and its opening.
+    /// a side of a portal, its strips and its opening. A transformed portal's side has no strips,
+    /// but the solid parts of its wall below and above its opening take their places.
     ///
     /// \param wall The wall's ID, which this map issued.
     /// \return The wall's face.

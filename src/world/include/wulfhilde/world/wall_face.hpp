@@ -16,6 +16,9 @@ namespace wulfhilde {
 /// sector's coordinates, which run anticlockwise as the wall is seen from its sector. A part that
 /// has no area has no corners. A floor or ceiling that slopes makes the edges along it slope, and
 /// where two floors or two ceilings cross along a side of a portal, a strip ends in a point there.
+/// Beyond a transformed portal, the floor and the ceiling are those of the sector beyond carried
+/// back by the portal's transform, and the parts below and above the opening are the solid parts
+/// of a side that has no strips.
 struct WallFace {
     /// The whole wall, from the floor to the ceiling, where the ceiling is above the floor.
     std::vector<Vector3> whole{};

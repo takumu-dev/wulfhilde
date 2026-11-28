@@ -205,3 +205,35 @@ at 60°, either side of the player's steepest walkable slope, 45°, with clear m
   The player walks up the ramp and the gentle slope without a hitch, the eye rising smoothly rather
   than stepping, walks back down them without leaving the slope, and is stopped at the foot of the
   steep slope without hopping up it.
+
+### `portals`
+
+Transformed portals, which carry one side onto the other. The start room, 6 m square under a ceiling
+3 m up, lies in the map's white ambient light of 250 lux, with a doorway 2 m wide in each side. The
+player starts in its middle, facing north. Its walls, floors and ceilings are dressed in the
+debug-grid materials of their roles, and a transformed portal's sides in `portal_side`.
+
+North, a leg 2 m wide runs 8 m to a corner, where the top leg turns east for 8 m to a second corner,
+where the east leg turns south for 12 m. Its end is a portal turned 90 degrees right, standing in
+for the fourth corner, which leads west into the start room through its east doorway: a loop of
+three corners. West, a portal translated 2,987 m along X, 3,000 m along Y and 100 m up leads into
+the annex, lit warmer, and through a doorway on the annex's diagonal into the hub, an octagon 8 m
+across lit cooler, whose four long sides are portals that lead back into it, north to south and east
+to west, so that it is seen through them beside itself in every direction. South, the mirror
+corridor, 10 m long, opens off the start room, and its two ends are a portal that leads each into
+the other, so that it is seen in itself without end.
+
+- **Cases**: a loop closed by a portal turned about the vertical, which turns the player with it; a
+  portal translated between distant sectors at different heights; two facing portals that nest views
+  past the nested view limit of 4, where the opening left is filled flat; and a hub that needs more
+  than the 16 views a frame draws, where the openings left are filled flat too.
+- **Cameras**: `turn`, from the start room east through the turned portal up the east leg; `loop`,
+  from the east leg south at its end and the start room beyond, turned; `recursion`, east along the
+  mirror corridor into itself; `budget`, from the middle of the hub toward its north-east corner.
+- **Benchmark walk**: `tour`, 13 s: round the loop through the turned portal back into the start
+  room, then west through the translated portal into the annex, turning to look back.
+- **Needs eyes**: the east leg and the start room show through the turned portal as if they met at a
+  corner, with no seam at its edges, and the player walking through it turns with it without a jump
+  in the view; the annex shows through the translated portal 100 m up as if next door; the mirror
+  corridor's openings shrink into the distance and end in a flat grey; the hub repeats in every
+  direction, and where its views run out the openings are flat, of the hub's cool tint.

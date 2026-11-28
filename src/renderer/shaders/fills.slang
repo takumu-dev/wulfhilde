@@ -1,5 +1,6 @@
-// Fills an opening past the view limits flat, as the view it is seen in sees it: with the light that
-// a grey surface reflecting 18% of it would give back of the ambient light of the sector beyond.
+// Fills an opening past the view limits flat, as the view it is seen in sees it: with the light
+// that a grey surface reflecting 18% of it would give back of the ambient light of the sector
+// beyond.
 #language slang 2026
 import views;
 
