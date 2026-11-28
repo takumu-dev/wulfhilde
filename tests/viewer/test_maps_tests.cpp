@@ -12,6 +12,8 @@
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <format>
@@ -65,7 +67,8 @@ TEST_CASE("every test map loads without a problem, and so do its assets", "[view
     CHECK(maps > 0);
 }
 
-TEST_CASE("the sectors map is a concave hall, with a doorway into a gallery and a bay beyond",
+TEST_CASE("the sectors map is a concave hall, with a doorway into a gallery and a bay beyond, a "
+          "stair onto a ledge, a low doorway into a nook, a step too high and a passage too low",
           "[viewer]") {
     const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
     REQUIRE(root.has_value());
@@ -73,23 +76,28 @@ TEST_CASE("the sectors map is a concave hall, with a doorway into a gallery and 
     const auto map = wulfhilde::load_map(*root, "sectors");
 
     REQUIRE(map.has_value());
-    REQUIRE(map->sectors().size() == 3);
+    REQUIRE(map->sectors().size() == 10);
     const auto& hall = map->sector(map->start().location.sector);
     CHECK(hall.id == "hall");
-    // Six corners, with the long sides of the arm along X split into walls that lie differently,
-    // and the end of the arm along Y split about its doorway.
-    CHECK(hall.loops.front().size() == 11);
+    // Six corners, with the long sides of the arm along X split into walls that lie differently
+    // and about the openings in them, the end of the arm along Y split about its doorway, and the
+    // west side about the step too high.
+    CHECK(hall.loops.front().size() == 18);
     CHECK(map->contains(map->start().location));
-    CHECK(map->portals().size() == 2);
-    CHECK(map->find_sector("gallery").has_value());
-    CHECK(map->find_sector("bay").has_value());
+    CHECK(map->portals().size() == 9);
+    constexpr std::array beyond{
+        "gallery", "bay",  "stair-1",   "stair-2",     "ledge",
+        "doorway", "nook", "high-step", "low-passage",
+    };
+    CHECK(std::ranges::all_of(beyond,
+                              [&map](const char* id) { return map->find_sector(id).has_value(); }));
 
     const auto assets = wulfhilde::load_map_assets(*root, *map);
     REQUIRE(assets.has_value());
-    CHECK(assets->materials.size() == 4);
-    // The floor's, the ceiling's, the walls' and the upper strip's debug grids, each read once, as
-    // a colour.
-    CHECK(assets->images.size() == 4);
+    CHECK(assets->materials.size() == 5);
+    // The floor's, the ceiling's, the walls' and the strips' debug grids, each read once, as a
+    // colour.
+    CHECK(assets->images.size() == 5);
 }
 
 TEST_CASE("the outdoors map has two neighbouring skies of different backdrops, one at nits of its "
