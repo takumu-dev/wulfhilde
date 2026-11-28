@@ -19,6 +19,7 @@
 #include <cmath>
 #include <numbers>
 #include <optional>
+#include <utility>
 
 using wulfhilde::Angle;
 using wulfhilde::Ground;
@@ -37,9 +38,17 @@ constexpr SectorId beyond{1};
 // How near a body ends to where the geometry puts it.
 constexpr float tolerance = 1e-3F;
 
-// The gradients of slopes 30 and 60 degrees steep.
-const float gentle = std::tan(std::numbers::pi_v<float> / 6.0F);
-const float steep = std::tan(std::numbers::pi_v<float> / 3.0F);
+// The gradients of slopes 30 and 60 degrees steep: their tangents.
+constexpr float gentle = std::numbers::inv_sqrt3_v<float>;
+constexpr float steep = std::numbers::sqrt3_v<float>;
+
+// The velocity of a body that stays where it is.
+constexpr Vector3 still{};
+
+// A body's ground, or for a body that has none, a ceiling, which no check here expects.
+Ground ground_of(const std::optional<Ground>& ground) {
+    return ground.value_or(Ground{.surface = wulfhilde::SectorCeiling{hall}, .normal = {}});
+}
 
 // The hall, a square 4 m on a side from (0, 0) to (4, 4) under a ceiling 10 m up, its floor sloped
 // up northward from its south wall at a gradient.
@@ -85,12 +94,13 @@ TEST_CASE("a body stands on a sloped floor a radius from it, with the slope as i
     const auto map = sloped_hall_map(gentle);
     const auto pose = standing_on_slope(hall, gentle, 2.0F, 2.0F);
 
-    const auto movement = wulfhilde::move(map, person, pose, {}, 0.5F);
+    const auto movement = wulfhilde::move(map, person, pose, still, 0.5F);
 
     CHECK(approx_equal(movement.pose.centre.point, pose.centre.point, tolerance));
     REQUIRE(movement.ground.has_value());
-    CHECK(movement.ground->surface == wulfhilde::SurfaceRef{SectorFloor{hall}});
-    CHECK(approx_equal(movement.ground->normal, slope_normal(gentle), 1e-5F));
+    const auto ground = ground_of(movement.ground);
+    CHECK(ground.surface == wulfhilde::SurfaceRef{SectorFloor{hall}});
+    CHECK(approx_equal(ground.normal, slope_normal(gentle), 1e-5F));
 }
 
 TEST_CASE("a slope exactly as steep as a body's steepest slope is its ground, and one any steeper "
@@ -101,16 +111,16 @@ TEST_CASE("a slope exactly as steep as a body's steepest slope is its ground, an
         CAPTURE(gradient);
         const auto map = sloped_hall_map(gradient);
         const auto ground =
-            wulfhilde::move(map, person, standing_on_slope(hall, gradient, 2.0F, 2.0F), {}, 0.0F)
+            wulfhilde::move(map, person, standing_on_slope(hall, gradient, 2.0F, 2.0F), still, 0.0F)
                 .ground;
-        REQUIRE(ground.has_value());
-        CHECK(ground->surface == wulfhilde::SurfaceRef{SectorFloor{hall}});
+        CHECK(ground.has_value());
+        CHECK(ground_of(ground).surface == wulfhilde::SurfaceRef{SectorFloor{hall}});
     }
 
     // Steeper by 0.1 degrees.
     const auto steeper = std::tan(Angle::degrees(45.1F).in_radians());
     const auto map = sloped_hall_map(steeper);
-    CHECK(wulfhilde::move(map, person, standing_on_slope(hall, steeper, 2.0F, 2.0F), {}, 0.0F)
+    CHECK(wulfhilde::move(map, person, standing_on_slope(hall, steeper, 2.0F, 2.0F), still, 0.0F)
               .ground == std::nullopt);
 }
 
@@ -149,7 +159,7 @@ TEST_CASE("a grounded body walking into a slope too steep beyond an opening stop
     CHECK(end.y > 3.7F);
     CHECK(end.y < 4.0F);
     CHECK(std::abs(end.z - 0.9F) < tolerance);
-    CHECK(approx_equal(movement.velocity, Vector3{}, tolerance));
+    CHECK(approx_equal(movement.velocity, still, tolerance));
     CHECK(movement.ground == Ground{.surface = SectorFloor{hall}, .normal = {.z = 1.0F}});
 }
 
@@ -170,8 +180,9 @@ TEST_CASE("a body walks up a walkable slope beyond an opening, standing on it", 
                            Vector3{.y = 4.0F},
                        tolerance));
     REQUIRE(movement.ground.has_value());
-    CHECK(movement.ground->surface == wulfhilde::SurfaceRef{SectorFloor{beyond}});
-    CHECK(approx_equal(movement.ground->normal, slope_normal(gentle), 1e-5F));
+    const auto ground = ground_of(movement.ground);
+    CHECK(ground.surface == wulfhilde::SurfaceRef{SectorFloor{beyond}});
+    CHECK(approx_equal(ground.normal, slope_normal(gentle), 1e-5F));
 }
 
 TEST_CASE("a body at the foot of a walkable slope beyond an opening already stands on it",
@@ -180,11 +191,11 @@ TEST_CASE("a body at the foot of a walkable slope beyond an opening already stan
 
     // Its centre is short of the door, but its lower cap reaches over the slope.
     const auto movement = wulfhilde::move(
-        map, person, {.centre = {.sector = hall, .point = {.x = 2.0F, .y = 3.95F, .z = 0.9F}}}, {},
-        0.1F);
+        map, person, {.centre = {.sector = hall, .point = {.x = 2.0F, .y = 3.95F, .z = 0.9F}}},
+        still, 0.1F);
 
     CHECK(movement.pose.centre.sector == hall);
     CHECK(movement.pose.centre.point.z > 0.9F + tolerance);
-    REQUIRE(movement.ground.has_value());
-    CHECK(movement.ground->surface == wulfhilde::SurfaceRef{SectorFloor{beyond}});
+    CHECK(movement.ground.has_value());
+    CHECK(ground_of(movement.ground).surface == wulfhilde::SurfaceRef{SectorFloor{beyond}});
 }

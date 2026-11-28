@@ -426,7 +426,10 @@ struct Strip {
     if (lower) {
         return {
             Strip{
-                .bottom = map.floor_height(on_wall), .top = opening.bottom, .edge = opening.bottom},
+                .bottom = map.floor_height(on_wall),
+                .top = opening.bottom,
+                .edge = opening.bottom,
+            },
             opening,
         };
     }

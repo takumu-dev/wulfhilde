@@ -150,18 +150,23 @@ void add_wall_part(SectorGeometry& geometry, const Wall& wall, const Surface& su
     }
     const auto along = normalize(wall.end - wall.start);
     const auto u_v = [&](const Vector3& corner) {
-        return Vector2{.x = -dot(Vector2{.x = corner.x, .y = corner.y} - wall.start, along),
-                       .y = corner.z};
+        return Vector2{
+            .x = -dot(Vector2{.x = corner.x, .y = corner.y} - wall.start, along),
+            .y = corner.z,
+        };
     };
     const MaterialPlacement placement(surface, materials, u_v(corners.front()));
 
     const auto first = geometry.vertices.size();
     for (std::size_t next = 1; next + 1 < corners.size(); ++next) {
         const std::array triangle{corners.front(), corners.at(next), corners.at(next + 1)};
-        add_triangle(
-            geometry.vertices, triangle,
-            {placement(u_v(triangle[0])), placement(u_v(triangle[1])), placement(u_v(triangle[2]))},
-            surface.material.index(), wall.sector);
+        add_triangle(geometry.vertices, triangle,
+                     {
+                         placement(u_v(triangle.at(0))),
+                         placement(u_v(triangle.at(1))),
+                         placement(u_v(triangle.at(2))),
+                     },
+                     surface.material.index(), wall.sector);
     }
     end_surface(geometry, first);
 }

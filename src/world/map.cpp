@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <iterator>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -229,6 +230,7 @@ struct FaceLine {
         return {};
     }
     std::vector<Vector3> corners;
+    corners.reserve(polygon.size());
     for (const auto& point : polygon) {
         corners.push_back({
             .x = static_cast<float>(start.x + ((end.x - start.x) * point.along)),

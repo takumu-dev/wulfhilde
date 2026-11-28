@@ -198,11 +198,8 @@ PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent ex
         for (const auto& loop : map.sector(sector_id).loops) {
             for (const auto wall_id : loop) {
                 const auto& wall = map.wall(wall_id);
-                if (!wall.link) {
-                    continue;
-                }
                 const auto opening = map.face(wall_id).opening;
-                if (opening.empty()) {
+                if (!wall.link || opening.empty()) {
                     continue;
                 }
                 const auto seen = window_through(wall, opening, window, camera, projection);

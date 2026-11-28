@@ -33,7 +33,6 @@ using wulfhilde::SectorFloor;
 using wulfhilde::SectorId;
 using wulfhilde::Slope;
 using wulfhilde::SlopeDescription;
-using wulfhilde::Vector2;
 using wulfhilde::Vector3;
 using wulfhilde::WallId;
 
@@ -332,7 +331,8 @@ TEST_CASE("a solid wall's face is all whole wall, which follows the slope along 
 
 TEST_CASE("a slope whose hinge names no wall is a problem at the hinge", "[world]") {
     auto description = hall_sloped_from_south(0.5F);
-    description.sectors.at(0).floor.slope->hinge = "hall-north";
+    description.sectors.at(0).floor.slope =
+        SlopeDescription{.hinge = "hall-north", .gradient = 0.5F};
     const auto problem = only_problem_in(description);
     CHECK(problem.code == MapProblemCode::unknown_wall);
     CHECK(problem.pointer == "/sectors/0/floor/slope/hinge");
@@ -353,11 +353,14 @@ TEST_CASE("a slope hinged on a wall of another sector is a problem at the hinge"
 TEST_CASE("a slope that takes its floor or ceiling beyond the map's bounds at a corner of its "
           "sector, or a gradient that isn't a number, is a problem at the gradient",
           "[world]") {
-    for (const auto gradient : {1100.0F, -1100.0F, std::numeric_limits<float>::quiet_NaN(),
-                                std::numeric_limits<float>::infinity()}) {
+    for (const auto gradient : {
+             1100.0F,
+             -1100.0F,
+             std::numeric_limits<float>::quiet_NaN(),
+             std::numeric_limits<float>::infinity(),
+         }) {
         CAPTURE(gradient);
-        auto description = hall_sloped_from_south(gradient);
-        CHECK(problems_in(description) ==
+        CHECK(problems_in(hall_sloped_from_south(gradient)) ==
               std::vector<Problem>{
                   {MapProblemCode::coordinate_out_of_range, "/sectors/0/floor/slope/gradient"},
               });

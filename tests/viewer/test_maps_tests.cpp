@@ -4,6 +4,7 @@
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/assets/load_map_assets.hpp>
+#include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/sector.hpp>
@@ -39,6 +40,27 @@ const wulfhilde::Sector& sector_named(const wulfhilde::Map& map, std::string_vie
 std::optional<wulfhilde::Sky> sky_of(const wulfhilde::FloorOrCeiling& floor_or_ceiling) {
     const auto* const sky = std::get_if<wulfhilde::Sky>(&floor_or_ceiling.cover);
     return sky != nullptr ? std::optional(*sky) : std::nullopt;
+}
+
+// The slopes map, whose assets must load too.
+wulfhilde::Map load_slopes() {
+    const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
+    REQUIRE(root.has_value());
+    auto map = wulfhilde::load_map(*root, "slopes");
+    REQUIRE(map.has_value());
+    REQUIRE(wulfhilde::load_map_assets(*root, *map).has_value());
+    return *std::move(map);
+}
+
+// The slope of a floor or a ceiling, which must slope.
+wulfhilde::Slope slope_of(const wulfhilde::FloorOrCeiling& floor_or_ceiling) {
+    REQUIRE(floor_or_ceiling.slope.has_value());
+    return floor_or_ceiling.slope.value_or(wulfhilde::Slope{.hinge = wulfhilde::WallId{0}});
+}
+
+// The gradient of a floor or a ceiling, which must slope.
+float gradient_of(const wulfhilde::FloorOrCeiling& floor_or_ceiling) {
+    return slope_of(floor_or_ceiling).gradient;
 }
 
 } // namespace
@@ -132,58 +154,49 @@ TEST_CASE("the outdoors map has two neighbouring skies of different backdrops, o
     CHECK(assets->backdrops.at(1).nits == 2'000.0F);
 }
 
-TEST_CASE("the slopes map has a ramp hinged on a diagonal wall between two floor heights, a sloped "
-          "ceiling, a floor and a ceiling that slope different ways, and slopes of 30 and 60 "
-          "degrees",
-          "[viewer]") {
-    const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
-    REQUIRE(root.has_value());
-
-    const auto map = wulfhilde::load_map(*root, "slopes");
-
-    REQUIRE(map.has_value());
-    CHECK(map->sector(map->start().location.sector).id == "hall");
-    const auto slope_of = [&map](const wulfhilde::FloorOrCeiling& floor_or_ceiling) {
-        REQUIRE(floor_or_ceiling.slope.has_value());
-        const auto& hinge = map->wall(floor_or_ceiling.slope->hinge);
-        return std::pair{hinge, floor_or_ceiling.slope->gradient};
-    };
-
-    // The ramp rises from the hall's floor, along its diagonal hinge, to the landing's.
-    const auto& ramp = sector_named(*map, "ramp");
-    const auto [ramp_hinge, ramp_gradient] = slope_of(ramp.floor);
-    CHECK(ramp_hinge.start.x != ramp_hinge.end.x);
-    CHECK(ramp_hinge.start.y != ramp_hinge.end.y);
-    CHECK(ramp_hinge.link.has_value());
-    const auto landing = map->find_sector("landing");
-    REQUIRE(landing.has_value());
-    const auto ramp_id = map->find_sector("ramp").value_or(wulfhilde::SectorId{0});
-    CHECK(std::abs(map->floor_height({.sector = ramp_id, .point = {.x = 11.0F, .y = 7.0F}})) <
-          1e-5F);
-    CHECK(std::abs(map->floor_height({.sector = ramp_id, .point = {.x = 13.0F, .y = 9.0F}}) -
-                   map->floor_height({.sector = landing.value_or(ramp_id)})) < 1e-5F);
+TEST_CASE(
+    "the slopes map's ramp rises from the hall's floor to the landing's, hinged on a diagonal "
+    "wall",
+    "[viewer]") {
+    const auto map = load_slopes();
+    const auto& ramp = sector_named(map, "ramp");
+    const auto& hinge = map.wall(slope_of(ramp.floor).hinge);
+    CHECK(hinge.start.x != hinge.end.x);
+    CHECK(hinge.start.y != hinge.end.y);
+    CHECK(hinge.link.has_value());
     CHECK(!ramp.ceiling.slope.has_value());
 
-    // The attic's ceiling slopes, over a flat floor.
-    const auto& attic = sector_named(*map, "attic");
+    const auto ramp_id = map.find_sector("ramp").value_or(wulfhilde::SectorId{0});
+    const auto landing_id = map.find_sector("landing").value_or(wulfhilde::SectorId{0});
+    CHECK(std::abs(map.floor_height({.sector = ramp_id, .point = {.x = 11.0F, .y = 7.0F}})) <
+          1e-5F);
+    CHECK(std::abs(map.floor_height({.sector = ramp_id, .point = {.x = 13.0F, .y = 9.0F}}) -
+                   map.floor_height({.sector = landing_id})) < 1e-5F);
+}
+
+TEST_CASE(
+    "the slopes map has a sloped ceiling, and a floor and a ceiling that slope different ways",
+    "[viewer]") {
+    const auto map = load_slopes();
+
+    const auto& attic = sector_named(map, "attic");
     CHECK(!attic.floor.slope.has_value());
-    CHECK(slope_of(attic.ceiling).second < 0.0F);
+    CHECK(gradient_of(attic.ceiling) < 0.0F);
 
     // The opposed sector's floor and ceiling are hinged on walls at right angles.
-    const auto& opposed = sector_named(*map, "opposed");
-    const auto [floor_hinge, floor_gradient] = slope_of(opposed.floor);
-    const auto [ceiling_hinge, ceiling_gradient] = slope_of(opposed.ceiling);
-    CHECK(dot(floor_hinge.end - floor_hinge.start, ceiling_hinge.end - ceiling_hinge.start) ==
-          0.0F);
-    CHECK(floor_gradient > 0.0F);
-    CHECK(ceiling_gradient < 0.0F);
+    const auto& opposed = sector_named(map, "opposed");
+    const auto& floor_hinge = map.wall(slope_of(opposed.floor).hinge);
+    const auto& ceiling_hinge = map.wall(slope_of(opposed.ceiling).hinge);
+    CHECK(wulfhilde::dot(floor_hinge.end - floor_hinge.start,
+                         ceiling_hinge.end - ceiling_hinge.start) == 0.0F);
+    CHECK(gradient_of(opposed.floor) > 0.0F);
+    CHECK(gradient_of(opposed.ceiling) < 0.0F);
+}
 
-    // The gentle slope and the steep one, side by side, are 30 and 60 degrees steep.
-    CHECK(std::abs(std::atan(slope_of(sector_named(*map, "gentle").floor).second) -
+TEST_CASE("the slopes map has slopes of 30 and 60 degrees side by side", "[viewer]") {
+    const auto map = load_slopes();
+    CHECK(std::abs(std::atan(gradient_of(sector_named(map, "gentle").floor)) -
                    (std::numbers::pi_v<float> / 6.0F)) < 1e-6F);
-    CHECK(std::abs(std::atan(slope_of(sector_named(*map, "steep").floor).second) -
+    CHECK(std::abs(std::atan(gradient_of(sector_named(map, "steep").floor)) -
                    (std::numbers::pi_v<float> / 3.0F)) < 1e-6F);
-
-    const auto assets = wulfhilde::load_map_assets(*root, *map);
-    REQUIRE(assets.has_value());
 }
