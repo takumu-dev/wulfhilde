@@ -13,6 +13,7 @@
         "offset": [0.25, 0.5],
         "scale": [2, 3],
         "rotation": 90,
+        "nits": 12.5,
         "slope": { "hinge": "hall-east", "gradient": 0.25 }
       },
       "ceiling": { "height": 3, "material": "plaster" },
@@ -24,7 +25,7 @@
             "id": "hall-east",
             "start": [4, 0],
             "surface": { "material": "brick/dark", "offset": [1, 2], "scale": [0.5, 4], "rotation": -45 },
-            "upper": { "material": "plaster", "offset": [0, 0.5] },
+            "upper": { "material": "plaster", "offset": [0, 0.5], "nits": 30 },
             "properties": { "switch": "lights" }
           },
           { "start": [4, 4], "surface": { "material": "brick" } },

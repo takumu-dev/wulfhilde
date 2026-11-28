@@ -1,0 +1,50 @@
+{
+  "$schema": "../../schema/map.schema.json",
+  "format": "wulfhilde-map",
+  "version": 1,
+  "ambient": { "color": [1, 1, 1], "lux": 300 },
+  "sectors": [
+    {
+      "id": "hall",
+      "floor": { "height": 0, "material": "materials/tiles" },
+      "ceiling": { "height": 3.5, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [0, 0], "surface": { "material": "materials/corrugated_steel" } },
+          { "start": [8, 0], "surface": { "material": "materials/plaster" } },
+          {
+            "id": "hall-annex",
+            "start": [8, 2.5],
+            "surface": { "material": "materials/plaster" },
+            "upper": { "material": "materials/grid/upper_strip" }
+          },
+          { "start": [8, 4], "surface": { "material": "materials/plaster" } },
+          { "start": [8, 6], "surface": { "material": "materials/plaster" } },
+          { "start": [6, 6], "surface": { "material": "materials/lamp" } },
+          { "start": [5, 6], "surface": { "material": "materials/plaster", "offset": [3, 0] } },
+          { "start": [3, 6], "surface": { "material": "materials/lamp", "nits": 80 } },
+          { "start": [2, 6], "surface": { "material": "materials/plaster", "offset": [6, 0] } },
+          { "start": [0, 6], "surface": { "material": "materials/plaster" } }
+        ]
+      ]
+    },
+    {
+      "id": "annex",
+      "floor": { "height": 0, "material": "materials/tiles" },
+      "ceiling": { "height": 3, "material": "materials/grid/ceiling" },
+      "ambient": { "color": [1, 0.85, 0.7], "lux": 75 },
+      "loops": [
+        [
+          { "start": [8, 1], "surface": { "material": "materials/plaster" } },
+          { "start": [12, 1], "surface": { "material": "materials/corrugated_steel" } },
+          { "start": [12, 5], "surface": { "material": "materials/plaster" } },
+          { "start": [8, 5], "surface": { "material": "materials/plaster" } },
+          { "id": "annex-hall", "start": [8, 4], "surface": { "material": "materials/plaster" } },
+          { "start": [8, 2.5], "surface": { "material": "materials/plaster" } }
+        ]
+      ]
+    }
+  ],
+  "portals": [{ "a": { "wall": "hall-annex" }, "b": { "wall": "annex-hall" } }],
+  "start": { "sector": "hall", "point": [2, 3, 0], "yaw": 0 }
+}

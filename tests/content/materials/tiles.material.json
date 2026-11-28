@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../schema/material.schema.json",
+  "format": "wulfhilde-material",
+  "version": 1,
+  "color": { "texture": "materials/tiles/color" },
+  "roughness": { "factor": 0.5, "texture": "materials/tiles/roughness" },
+  "metallic": { "factor": 0 },
+  "normal": { "texture": "materials/tiles/normal" },
+  "size": [2, 2]
+}

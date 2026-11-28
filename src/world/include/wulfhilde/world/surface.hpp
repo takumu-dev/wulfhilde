@@ -7,6 +7,8 @@
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/world/ids.hpp>
 
+#include <optional>
+
 namespace wulfhilde {
 
 /// What a surface carries, as a map holds it: the material that covers it, and how the material
@@ -27,6 +29,10 @@ struct Surface {
     /// How far the material is turned in the surface's plane, from +u toward +v, about the point
     /// `offset` moves its origin to. `scale` applies along the material's own turned axes.
     Angle rotation{};
+
+    /// The luminance of the material's emission at white, in nits, in place of the material's own,
+    /// or nothing to take the material's.
+    std::optional<float> nits{};
 
     /// Compares two surfaces exactly.
     constexpr bool operator==(const Surface&) const noexcept = default;

@@ -74,6 +74,7 @@ std::optional<SurfaceDescription> read_surface(const Field& field, JsonFile& fil
         .material = surface->required("material", read_string).value_or(""),
     };
     read_placement_members(*surface, description);
+    description.nits = surface->optional("nits", read_number);
     surface->finish();
     return description;
 }
@@ -106,7 +107,7 @@ std::optional<SlopeDescription> read_slope(const Field& field, JsonFile& file) {
 
 /// The members of a floor or a ceiling that say which material covers it and how, none of which
 /// a sky may have.
-constexpr std::array surface_members{"material", "offset", "scale", "rotation"};
+constexpr std::array surface_members{"material", "offset", "scale", "rotation", "nits"};
 
 /// Reads a floor or a ceiling, whose surface's members, or else its sky, sit beside its height and
 /// its slope.
@@ -139,6 +140,7 @@ struct ReadFloorOrCeiling {
                                            noun));
             }
             read_placement_members(*object, description);
+            description.nits = object->optional("nits", read_number);
         }
         object->finish();
         return description;

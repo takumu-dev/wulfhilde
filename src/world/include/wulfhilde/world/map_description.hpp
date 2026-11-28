@@ -36,6 +36,11 @@ struct SurfaceDescription {
     /// How far the material is turned in the surface's plane, from +u toward +v, about the point
     /// `offset` moves its origin to. `scale` applies along the material's own turned axes.
     Angle rotation{};
+
+    /// The luminance of the material's emission at white, in nits, in place of the material's own,
+    /// or nothing to take the material's. It changes the emission's brightness, not its colour or
+    /// its pattern, and only a material that emits may take it.
+    std::optional<float> nits{};
 };
 
 /// A wall of a loop, which runs from its own start to the start of the next wall in the loop.
@@ -115,6 +120,10 @@ struct FloorOrCeilingDescription {
     /// How far the material is turned in the surface's plane, from +u toward +v, about the point
     /// `offset` moves its origin to. `scale` applies along the material's own turned axes.
     Angle rotation{};
+
+    /// The luminance of the material's emission at white, in nits, in place of the material's own,
+    /// as in `SurfaceDescription::nits`.
+    std::optional<float> nits{};
 
     /// The sky it shows instead of a material, or nothing for a surface. With a sky, the fields of
     /// the material don't apply.

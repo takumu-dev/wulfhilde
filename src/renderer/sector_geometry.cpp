@@ -6,6 +6,7 @@
 #include <wulfhilde/core/narrow.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
+#include <wulfhilde/core/vector4.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map.hpp>
@@ -123,20 +124,69 @@ void end_surface(SectorGeometry& geometry, std::size_t first) {
     geometry.surfaces.push_back(surface);
 }
 
-// Each corner of a triangle carries the index of what shades it: its surface's material, or its
-// sky, numbered after the map's materials.
+// The normal and the tangent of a triangle, from its corners and where its material's textures are
+// sampled at them. The tangent runs the way texture x grows, which is u's, and its w says whether
+// v, which runs the way texture y shrinks, is the normal's cross product with it or the opposite. A
+// sky's corners are all sampled at the same place, so its tangent is any way along it.
+std::pair<Vector3, Vector4> frame_of(const std::array<Vector3, 3>& corners,
+                                     const std::array<Vector2, 3>& texture_coordinates) {
+    const auto edge_1 = corners.at(1) - corners.at(0);
+    const auto edge_2 = corners.at(2) - corners.at(0);
+    const auto normal = normalize(cross(edge_1, edge_2));
+    const auto step_1 = texture_coordinates.at(1) - texture_coordinates.at(0);
+    const auto step_2 = texture_coordinates.at(2) - texture_coordinates.at(0);
+    const auto determinant = (step_1.x * step_2.y) - (step_2.x * step_1.y);
+    if (determinant == 0.0F) {
+        const auto along = normalize(edge_1);
+        return {normal, {.x = along.x, .y = along.y, .z = along.z, .w = 1.0F}};
+    }
+    const auto along_x = ((edge_1 * step_2.y) - (edge_2 * step_1.y)) / determinant;
+    const auto along_y = ((edge_2 * step_1.x) - (edge_1 * step_2.x)) / determinant;
+    const auto tangent = normalize(along_x - (normal * dot(normal, along_x)));
+    const auto handedness = dot(cross(normal, tangent), -along_y) < 0.0F ? -1.0F : 1.0F;
+    return {normal, {.x = tangent.x, .y = tangent.y, .z = tangent.z, .w = handedness}};
+}
+
+// Each corner of a triangle carries the index of what shades it: its surface's material, or one of
+// the geometry's shadings, numbered after the map's materials.
 void add_triangle(std::vector<SectorVertex>& vertices, const std::array<Vector3, 3>& corners,
                   const std::array<Vector2, 3>& texture_coordinates, std::uint32_t shading,
                   SectorId sector) {
+    const auto [normal, tangent] = frame_of(corners, texture_coordinates);
     for (std::size_t index = 0; const auto& corner : corners) {
         vertices.push_back({
             .position = corner,
             .texture_coordinates = texture_coordinates.at(index),
+            .normal = normal,
+            .tangent = tangent,
             .material = shading,
             .sector = sector.index(),
         });
         ++index;
     }
+}
+
+// Returns the index of a shading: the map's materials come first, then each distinct shading,
+// which this adds to the geometry's shadings the first time it is met.
+std::uint32_t shading_index(SectorGeometry& geometry, const Shading& shading,
+                            std::span<const Material> materials) {
+    auto found = std::ranges::find(geometry.shadings, shading);
+    if (found == geometry.shadings.end()) {
+        geometry.shadings.push_back(shading);
+        found = std::prev(geometry.shadings.end());
+    }
+    return narrow<std::uint32_t>(materials.size() +
+                                 static_cast<std::size_t>(found - geometry.shadings.begin()));
+}
+
+// Returns the index of what shades a surface: its material, or its material at its own nits.
+std::uint32_t surface_shading(SectorGeometry& geometry, const Surface& surface,
+                              std::span<const Material> materials) {
+    if (!surface.nits) {
+        return surface.material.index();
+    }
+    return shading_index(
+        geometry, MaterialAtNits{.material = surface.material, .nits = *surface.nits}, materials);
 }
 
 // A wall faces its sector, to its left as it runs from its start to its end, so seen from there
@@ -157,6 +207,7 @@ void add_wall_part(SectorGeometry& geometry, const Wall& wall, const Surface& su
     };
     const MaterialPlacement placement(surface, materials, u_v(corners.front()));
 
+    const auto shading = surface_shading(geometry, surface, materials);
     const auto first = geometry.vertices.size();
     for (std::size_t next = 1; next + 1 < corners.size(); ++next) {
         const std::array triangle{corners.front(), corners.at(next), corners.at(next + 1)};
@@ -166,7 +217,7 @@ void add_wall_part(SectorGeometry& geometry, const Wall& wall, const Surface& su
                          placement(u_v(triangle.at(1))),
                          placement(u_v(triangle.at(2))),
                      },
-                     surface.material.index(), wall.sector);
+                     shading, wall.sector);
     }
     end_surface(geometry, first);
 }
@@ -207,19 +258,6 @@ Vector2 floor_or_ceiling_u_v(const Map& map, const FloorOrCeiling& floor_or_ceil
     };
 }
 
-// Returns the index of what shades a sky: the map's materials come first, then each distinct sky,
-// which this adds to the geometry's skies the first time it is met.
-std::uint32_t sky_shading(SectorGeometry& geometry, const Sky& sky,
-                          std::span<const Material> materials) {
-    auto found = std::ranges::find(geometry.skies, sky);
-    if (found == geometry.skies.end()) {
-        geometry.skies.push_back(sky);
-        found = std::prev(geometry.skies.end());
-    }
-    return narrow<std::uint32_t>(materials.size() +
-                                 static_cast<std::size_t>(found - geometry.skies.begin()));
-}
-
 // The floor faces up and the ceiling down, so the floor's triangles run anticlockwise seen from
 // above and the ceiling's clockwise. Each triangle is three indices into the sector's corners. A
 // sky samples its backdrop by direction, not by texture coordinates, so it has none.
@@ -231,7 +269,7 @@ void add_floor_or_ceiling(SectorGeometry& geometry, const Map& map, SectorId sec
     std::vector<Vector2> coordinates(corners.size());
     std::uint32_t shading = 0;
     if (const auto* const sky = std::get_if<Sky>(&floor_or_ceiling.cover)) {
-        shading = sky_shading(geometry, *sky, materials);
+        shading = shading_index(geometry, *sky, materials);
     } else {
         const auto& surface = std::get<Surface>(floor_or_ceiling.cover);
         const auto u_v = [&](const Vector2& point) {
@@ -240,7 +278,7 @@ void add_floor_or_ceiling(SectorGeometry& geometry, const Map& map, SectorId sec
         const MaterialPlacement placement(surface, materials, u_v(corners.front()));
         std::ranges::transform(corners, coordinates.begin(),
                                [&](const Vector2& point) { return placement(u_v(point)); });
-        shading = surface.material.index();
+        shading = surface_shading(geometry, surface, materials);
     }
 
     // A sloped floor or ceiling lies on its plane, so each corner is lifted to its height there.

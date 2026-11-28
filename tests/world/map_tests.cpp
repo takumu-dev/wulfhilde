@@ -294,6 +294,26 @@ TEST_CASE("a wall keeps its id, if it has one", "[world]") {
     CHECK(map.wall(WallId{0}).id == std::nullopt);
 }
 
+TEST_CASE("a surface keeps the nits that override its material's emission, if it sets them",
+          "[world]") {
+    auto description = doorway_map();
+    description.sectors.at(0).floor.nits = 40.0F;
+    auto& door = description.sectors.at(0).loops.at(0).at(3);
+    door.surface = {.material = "test/lamp", .nits = 120.0F};
+    door.upper = {.material = "test/lamp", .nits = 5.0F};
+    const auto map = make_map(description);
+
+    const auto& hall = map.sector(SectorId{0});
+    CHECK(std::get<Surface>(hall.floor.cover).nits == 40.0F);
+    CHECK(std::get<Surface>(hall.ceiling.cover).nits == std::nullopt);
+    const auto& hall_door = map.wall(WallId{3});
+    CHECK(hall_door.surface.nits == 120.0F);
+    CHECK(hall_door.upper.nits == 5.0F);
+    // A strip without a surface of its own takes the wall's, nits and all.
+    CHECK(hall_door.lower.nits == 120.0F);
+    CHECK(map.wall(WallId{0}).surface.nits == std::nullopt);
+}
+
 TEST_CASE("a wall's strips have surfaces of their own, or else the wall's", "[world]") {
     auto description = doorway_map();
     auto& door = description.sectors.at(0).loops.at(0).at(3);

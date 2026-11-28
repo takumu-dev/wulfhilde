@@ -30,6 +30,10 @@ a light cap straight up and a dark cap straight down.
 python3 tests/content/write_debug_content.py
 ```
 
+The other materials are written by hand: `materials/lamp`, which glows, and the few CC0 materials
+from ambientCG, each a `materials/<name>.material.json` beside its textures in `materials/<name>/`,
+whose sources `CREDITS.md` records.
+
 This file is also the manual checklist, run on every release branch before the release is
 finished: open each map in the viewer, and look at what it says needs eyes.
 
@@ -146,6 +150,30 @@ beyond, and the abyss's walls beside the bridge, the yard and the ledge are thei
   field's, which is dimmer; no line shows down the backdrop's seam behind `-X`; looking down from
   the bridge, the abyss shows the ground's labels and the dark cap; and a player who steps off the
   bridge falls and stands on the abyss's floor.
+
+### `lights`
+
+The hall, 8 m by 6 m under a ceiling 3.5 m up, lies in the map's white ambient light of 300 lux.
+Its floor is glossy limestone tiles, with relief in their normal texture, its south wall is
+corrugated steel and its other walls are plaster, the CC0 materials credited in `CREDITS.md`. Two
+lamps, each a wall 1 m wide of the same lamp material, glow on its north wall: the right one at the
+material's own 400 nits of 3,000 K, and the left one at the 80 nits its surface sets. A doorway
+1.5 m wide in the east wall opens into the annex, 4 m square under a ceiling 3 m up, which is lit by
+ambient light of its own, 75 lux of a warm white, and whose far wall is corrugated steel too. The
+player starts in the hall, facing east toward the doorway.
+
+- **Cases**: a material's emission at its own nits, and at a surface's; the map's ambient light and
+  a sector's own, stepping down at the portal between them; glTF's metallic-roughness materials
+  with every property, and specular anti-aliasing on a glossy floor with relief.
+- **Cameras**: `emission`, across the hall at the two lamps; `ambient`, from the hall through the
+  doorway into the annex.
+- **Benchmark walk**: `tour`, 6.75 s: east through the doorway into the annex, back into the hall,
+  and round to stand facing the lamps.
+- **Needs eyes**: the steel reads as metal and the tiles and plaster as stone, and the tiles' joints
+  stand in relief; the floor's highlights don't sparkle or crawl as the player walks; the lamps
+  glow without lighting the floor or the walls beside them, the right one five times as bright as
+  the left; the annex is darker and warmer than the hall, with the step in brightness exactly at
+  the opening, and exposure eases between them as the player walks through.
 
 ### `slopes`
 

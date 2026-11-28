@@ -73,6 +73,7 @@ using BackdropInterner = Interner<BackdropId>;
         .offset = description.offset,
         .scale = description.scale,
         .rotation = description.rotation,
+        .nits = description.nits,
     };
 }
 
@@ -119,6 +120,7 @@ make_floor_or_ceiling(MaterialInterner& materials, BackdropInterner& backdrops,
                                   .offset = description.offset,
                                   .scale = description.scale,
                                   .rotation = description.rotation,
+                                  .nits = description.nits,
                               }),
     };
 }
