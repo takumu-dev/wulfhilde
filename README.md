@@ -23,7 +23,7 @@ problem in it and its assets, or measures what drawing it costs.
 | `assets` | `world` | the files under a content root, read into what the other modules use: so far, a map's file, its materials and its backdrops, with their PNG images decoded into mip chains, and every problem reported at its file, line, column and JSON pointer. It is the only module that opens files |
 | `platform` | `core` | the system's windows, keyboard and mouse, through SDL3, which no public header names: a window that can be resized or cover the display, with relative mouse mode, and events of the window, the keys by their USB HID codes, and the mouse |
 | `renderer` | `world`, `assets`, `platform` | drawing with the GPU through Vulkan 1.3 or newer, which no public header names: a map's sectors, seen through the openings between them, with the strips above and below, drawing only the surfaces the camera sees through the openings from its sector, each sector seen through an opening into space another shares drawn confined to the opening, their materials' textures laid on them as the map says and filtered anisotropically, skies showing their backdrops infinitely far away, drawn in linear light with multisampling, exposed automatically within the map's range and tone-mapped with AgX, into a window frame after frame or into an image in memory, or measuring each pass of a frame on the GPU with timestamp queries |
-| `collision` | `world` | moving bodies through a map: a capsule, tilted or upright, stopped by walls and held between floor and ceiling, which straddles and crosses openings into the sectors beyond, slides along what it meets and stands on what its own gravity pulls it onto, through two stateless functions, `move` and `settle`, that any of a game's bodies can use |
+| `collision` | `world` | moving bodies through a map: a capsule, tilted or upright, stopped by walls and held between floor and ceiling, which straddles and crosses openings into the sectors beyond, steps up and down by Build's rule where it fits and is stopped by steps too high and openings too low for it, slides along what it meets and stands on what its own gravity pulls it onto, through two stateless functions, `move` and `settle`, that any of a game's bodies can use |
 
 Each module is a static library, `wulfhilde::<module>`, with its headers under
 `<wulfhilde/<module>/...>`. The umbrella target `wulfhilde::wulfhilde` links them all.
@@ -52,9 +52,9 @@ beside the others.
 
 The viewer opens a map's file, with the content root defaulting to the file's own directory, and
 lets you walk the map in first person from its start position: W, A, S and D walk, Shift runs,
-Space jumps and the mouse looks. R returns to the start position, and C prints where you see from
-as a `--camera` option, which looks from there without walking. Esc lets the mouse go, and a click
-takes it back:
+Space jumps and the mouse looks. The body walks up and down steps, and the eye eases over each
+one. R returns to the start position, and C prints where you see from as a `--camera` option,
+which looks from there without walking. Esc lets the mouse go, and a click takes it back:
 
 ```sh
 wulfhilde-viewer tests/content/sectors.map.json

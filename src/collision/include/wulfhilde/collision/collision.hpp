@@ -25,6 +25,14 @@ namespace wulfhilde {
 /// along a wall and stops in a corner. It holds no state: everything it needs is passed in, and
 /// the game keeps the result for the next call.
 ///
+/// Steps follow Build's rule on a capsule. A strip below an opening, or the floor beyond, doesn't
+/// stop the body where it is at most the body's step height above its feet, measured along its
+/// gravity up, if the body fits in the opening: an opening as tall as the body passes it, and a
+/// lower one stops it. The sector under the body's centre decides its height, so it is lifted
+/// onto the step at once as its centre crosses the opening. A body that stood on ground and walks
+/// off it, rather than leaving it upward, snaps down onto ground up to its step height below. Both
+/// are reported as instant steps.
+///
 /// \param map The map.
 /// \param shape The body's shape.
 /// \param pose Where the body starts, whose sector `map` issued.

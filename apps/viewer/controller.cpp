@@ -62,6 +62,10 @@ constexpr float top_speed = 50.0F;
 /// How high the eye is above the feet, in metres.
 constexpr float eye_height = 1.65F;
 
+/// How long the eye takes to ease over an instant step: the time constant of its offset's decay, in
+/// seconds. A 0.2 m step is 95% eased in 0.3 s.
+constexpr float step_easing_seconds = 0.1F;
+
 /// How far short of a surface the eye's trace stops, in metres. The renderer's near plane reaches
 /// 5 cm from the eye, and its corners about 1.55 times that, so a surface this far away is never
 /// cut.
@@ -189,6 +193,10 @@ void Controller::tick(const wulfhilde::Map& map, const Actions& actions) {
     body_ = movement.pose;
     velocity_ = movement.velocity;
     ground_ = movement.ground;
+    // The eye holds still through a step, then eases after the body, lagging by a step at most.
+    step_offset_ = std::clamp((step_offset_ * std::exp(-tick_seconds / step_easing_seconds)) -
+                                  movement.stepped,
+                              -body_shape.step_height, body_shape.step_height);
 }
 
 void Controller::return_to_start(const wulfhilde::Map& map) { *this = at_start(map, settings_); }
@@ -199,7 +207,8 @@ Eye Controller::eye(const wulfhilde::Map& map) const {
         return {.location = viewpoint_, .facing = look};
     }
     const auto up = body_->tilt.up();
-    const auto traced = traced_eye(map, body_->centre, up, eye_height - (body_shape.height * 0.5F));
+    const auto traced =
+        traced_eye(map, body_->centre, up, eye_height - (body_shape.height * 0.5F) + step_offset_);
     return {.location = traced.end, .facing = traced.transform.rotation * body_->tilt * look};
 }
 
