@@ -23,9 +23,12 @@ wulfhilde_add_module(world
         include/wulfhilde/world/wall_face.hpp
     SOURCES
         asset_path.cpp
+        height_plane.hpp
         map.cpp
         map_checks.cpp
         map_checks.hpp
+        overlap.cpp
+        overlap.hpp
         plan_geometry.hpp
     DEPENDS
         core

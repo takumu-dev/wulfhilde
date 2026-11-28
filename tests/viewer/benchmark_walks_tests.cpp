@@ -126,6 +126,23 @@ TEST_CASE("the outdoors tour crosses the bridge to the ledge and back, then walk
           std::vector<std::string>{"yard", "bridge", "ledge", "bridge", "yard", "field"});
 }
 
+TEST_CASE(
+    "the overlap tour walks into the hall and back, across the bridge and back, then under it "
+    "through the passage",
+    "[viewer]") {
+    const auto map = load_test_map("overlap");
+    const auto walk = viewer::find_benchmark_walk("overlap", "tour");
+    REQUIRE(walk.has_value());
+
+    const auto frames = viewer::walk_benchmark(map, *walk);
+
+    // The tour lasts 21.4 s.
+    CHECK(frames.size() == 1284);
+    CHECK(sectors_seen_from(map, frames) ==
+          std::vector<std::string>{"yard", "hall", "yard", "bridge", "bank", "bridge", "yard",
+                                   "chasm-west", "passage", "chasm-east"});
+}
+
 TEST_CASE("the slopes tour walks up the ramp onto the landing and back down, then into the sector "
           "whose floor and ceiling slope different ways",
           "[viewer]") {

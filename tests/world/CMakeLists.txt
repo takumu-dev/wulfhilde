@@ -5,6 +5,7 @@ wulfhilde_add_tests(world
         map_query_tests.cpp
         map_rules_tests.cpp
         map_tests.cpp
+        overlap_tests.cpp
         slope_tests.cpp
         trace_tests.cpp
     LIBRARIES

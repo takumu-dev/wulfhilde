@@ -54,6 +54,25 @@ constexpr std::array outdoors_tour{
     BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.5)},
 };
 
+/// The tour of `overlap`, 21.4 s long: from the yard through the hut's door into the hall, looking
+/// all round it, and back out across the yard and the bridge to the bank; back into the yard, then
+/// west, down into the chasm beside the bridge, and east under the bridge through the passage to
+/// the chasm beyond.
+constexpr std::array overlap_tour{
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.0)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(360.0F), .ticks = ticks(3.0)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.5)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(4.5)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.5)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.0)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(90.0F), .ticks = ticks(0.75)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(1.0)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(90.0F), .ticks = ticks(0.75)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(1.15)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(90.0F), .ticks = ticks(0.75)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.5)},
+};
+
 /// The tour of `slopes`, 10.5 s long: east across the hall in line with the middle of the ramp,
 /// north-east up the ramp onto the landing, back down into the hall, and west into the sector whose
 /// floor and ceiling slope different ways, turning to look back.
@@ -71,6 +90,7 @@ constexpr std::array slopes_tour{
 /// Every benchmark walk, by its map, in the order of the maps and then of their walks.
 constexpr std::array walks{
     BenchmarkWalk{.map = "outdoors", .name = "tour", .steps = outdoors_tour},
+    BenchmarkWalk{.map = "overlap", .name = "tour", .steps = overlap_tour},
     BenchmarkWalk{.map = "sectors", .name = "tour", .steps = sectors_tour},
     BenchmarkWalk{.map = "slopes", .name = "tour", .steps = slopes_tour},
 };

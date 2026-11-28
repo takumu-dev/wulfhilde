@@ -17,6 +17,7 @@
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/matrix4.hpp>
 #include <wulfhilde/core/narrow.hpp>
+#include <wulfhilde/core/plane.hpp>
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/renderer/camera.hpp>
@@ -50,6 +51,7 @@ namespace {
 
 #include "culling_spirv.h"
 #include "metering_spirv.h"
+#include "openings_spirv.h"
 #include "resolve_spirv.h"
 #include "sectors_spirv.h"
 
@@ -65,16 +67,29 @@ struct SectorShading {
     Color ambient;
 };
 
+// The C++ twin of the view shaders' `ViewShading`, with `Plane` as its twin of theirs.
+struct ViewShading {
+    Matrix4 view_projection;
+    Vector3 eye;
+    Plane clip;
+    std::array<Vector3, 6> opening{};
+    std::uint32_t opening_at_eye = 0;
+};
+
 // The C++ twin of the sector shaders' push constants.
 struct SceneConstants {
-    Matrix4 view_projection;
+    std::uint64_t view = 0;
     std::uint64_t vertices = 0;
     std::uint64_t materials = 0;
     std::uint64_t sectors = 0;
     DescriptorHandle texture_sampler;
-    Vector3 eye;
     DescriptorHandle backdrop_sampler;
-    float unused = 0.0F;
+};
+
+// The C++ twin of the opening shaders' push constants.
+struct OpeningConstants {
+    std::uint64_t view = 0;
+    std::uint64_t seen_from = 0;
 };
 
 // The C++ twin of the resolve shaders' push constants.
@@ -142,6 +157,7 @@ struct CullingConstants {
 
 #include "culling_layout.hpp"  // IWYU pragma: keep
 #include "metering_layout.hpp" // IWYU pragma: keep
+#include "openings_layout.hpp" // IWYU pragma: keep
 #include "resolve_layout.hpp"  // IWYU pragma: keep
 #include "sectors_layout.hpp"  // IWYU pragma: keep
 
@@ -355,6 +371,24 @@ void record_timestamp(VkCommandBuffer commands, VkQueryPool timestamps, std::uin
     }
 }
 
+// Writes what the sector shaders read of each of a frame's views, the main view clipping nowhere.
+void write_view_shading(const PortalTraversal& traversal, const Buffer& buffer) {
+    std::vector<ViewShading> views;
+    views.reserve(traversal.views.size());
+    for (const auto& view : traversal.views) {
+        views.push_back({
+            .view_projection = view.view_projection,
+            .eye = view.eye,
+            .clip = view.clip.value_or(Plane{.distance = -1.0F}),
+            .opening = view.opening,
+            .opening_at_eye = view.opening_at_eye ? 1U : 0U,
+        });
+    }
+    WULFHILDE_DEBUG_ASSERT(std::span(views).size_bytes() <= buffer.memory().size(),
+                           "the buffer holds the frame's views");
+    std::memcpy(buffer.memory().data(), views.data(), std::span(views).size_bytes());
+}
+
 // Writes what culling reads for a frame's views and the sectors each sees, given each sector's
 // surfaces, and returns each view's culling, with the room its draws take, one after another.
 std::vector<ViewCulling> write_culling(const PortalTraversal& traversal,
@@ -402,6 +436,12 @@ struct Drawing::Pipelines {
     // Culling each view's surfaces into its draws.
     PipelineHandle cull;
     PipelineHandle scene;
+    // Drawing a view's opening as the view it is seen from sees it: marking where it shows in the
+    // stencil, a level deeper, then taking away the depth within it, and once the view is drawn,
+    // putting its own depth there and the stencil a level back.
+    PipelineHandle mark_opening;
+    PipelineHandle clear_opening;
+    PipelineHandle close_opening;
     // Metering: counting the scene's pixels into the histogram, then the exposure it meters.
     PipelineHandle gather;
     PipelineHandle meter;
@@ -454,9 +494,12 @@ struct Drawing::Geometry {
     // Each surface's vertices and the box that holds them, and each sector's surfaces among them.
     Buffer surfaces;
     std::vector<Range> sector_surfaces;
+    // What the sector and opening shaders read of a frame's views, which the CPU writes, as many
+    // as a frame may have.
+    Buffer view_shading;
     // What culling reads and writes for a frame: its views and the sectors each sees, which the CPU
     // writes, then a draw for each surface in sight, and how many draws each view makes. Each holds
-    // as many as a frame of one view can need.
+    // as many as a frame of as many views as it may have can need.
     Buffer views;
     Buffer sectors_in_view;
     Buffer draws;
@@ -539,6 +582,27 @@ create_resolve_pipeline(const Device& device, VkSampleCountFlagBits samples, Win
                 });
 }
 
+// Makes a pipeline that draws a view's opening for a sample count into the stencil and the depth
+// alone, with a vertex entry point of the opening shaders, doing to the stencil and the depth as
+// the pipeline's description says.
+std::expected<PipelineHandle, DeviceError>
+create_opening_pipeline(const Device& device, VkSampleCountFlagBits samples,
+                        std::string_view vertex_entry_point, VkStencilOp stencil_op,
+                        bool ignores_depth, bool writes_depth) {
+    return create_graphics_pipeline(device, {
+                                                .spirv = openings_spirv,
+                                                .vertex_entry_point = vertex_entry_point,
+                                                .fragment_entry_point = "cover",
+                                                .color_format = scene_color_format,
+                                                .depth_stencil_format = scene_depth_format,
+                                                .samples = samples,
+                                                .stencil_op = stencil_op,
+                                                .ignores_depth = ignores_depth,
+                                                .writes_depth = writes_depth,
+                                                .writes_color = false,
+                                            });
+}
+
 } // namespace
 
 std::expected<std::unique_ptr<Drawing>, DeviceError>
@@ -555,6 +619,22 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
                                                   });
     if (!scene) {
         return std::unexpected(std::move(scene).error());
+    }
+    // Where the opening shows in front of what the view it is seen from holds there.
+    auto mark_opening = create_opening_pipeline(device, samples, "place_opening",
+                                                VK_STENCIL_OP_INCREMENT_AND_CLAMP, false, false);
+    if (!mark_opening) {
+        return std::unexpected(std::move(mark_opening).error());
+    }
+    auto clear_opening = create_opening_pipeline(device, samples, "place_opening_far",
+                                                 VK_STENCIL_OP_KEEP, true, true);
+    if (!clear_opening) {
+        return std::unexpected(std::move(clear_opening).error());
+    }
+    auto close_opening = create_opening_pipeline(device, samples, "place_opening",
+                                                 VK_STENCIL_OP_DECREMENT_AND_CLAMP, true, true);
+    if (!close_opening) {
+        return std::unexpected(std::move(close_opening).error());
     }
     auto cull = create_compute_pipeline(device, culling_spirv, "cull");
     if (!cull) {
@@ -610,8 +690,10 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
         device.descriptors().add_sampler(backdrop_sampler->get());
     return std::make_unique<Drawing>(
         Key{}, samples,
-        std::make_unique<Pipelines>(std::move(*cull), std::move(*scene), std::move(*gather),
-                                    std::move(*meter), std::move(*resolve), std::move(present)),
+        std::make_unique<Pipelines>(std::move(*cull), std::move(*scene), std::move(*mark_opening),
+                                    std::move(*clear_opening), std::move(*close_opening),
+                                    std::move(*gather), std::move(*meter), std::move(*resolve),
+                                    std::move(present)),
         std::move(*sampler), sampler_descriptor, std::move(*backdrop_sampler),
         backdrop_sampler_descriptor, std::move(*metering), std::move(timestamps));
 }
@@ -712,29 +794,33 @@ std::expected<void, DeviceError> Drawing::set_map(Device& device, const Map& map
     if (!surface_buffer) {
         return std::unexpected(std::move(surface_buffer).error());
     }
-    // One view sees each sector once at most, and draws each of their surfaces once at most.
+    // Each view sees each sector once at most, and draws each of their surfaces once at most.
     constexpr VkBufferUsageFlags indirect_usage =
         shader_buffer_usage | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-    auto views = buffer_of<ViewCulling>(device, 1);
+    auto view_shading = buffer_of<ViewShading>(device, view_limit);
+    if (!view_shading) {
+        return std::unexpected(std::move(view_shading).error());
+    }
+    auto views = buffer_of<ViewCulling>(device, view_limit);
     if (!views) {
         return std::unexpected(std::move(views).error());
     }
-    auto sectors_in_view = buffer_of<SectorInView>(device, map.sectors().size());
+    auto sectors_in_view = buffer_of<SectorInView>(device, view_limit * map.sectors().size());
     if (!sectors_in_view) {
         return std::unexpected(std::move(sectors_in_view).error());
     }
-    auto draws = buffer_of<DrawCommand>(device, surfaces.size(), indirect_usage);
+    auto draws = buffer_of<DrawCommand>(device, view_limit * surfaces.size(), indirect_usage);
     if (!draws) {
         return std::unexpected(std::move(draws).error());
     }
-    auto draw_counts = buffer_of<std::uint32_t>(device, 1, indirect_usage);
+    auto draw_counts = buffer_of<std::uint32_t>(device, view_limit, indirect_usage);
     if (!draw_counts) {
         return std::unexpected(std::move(draw_counts).error());
     }
     geometry_ = std::make_unique<Geometry>(
         &map, std::move(*vertex_buffer), std::move(*material_buffer), std::move(*sector_buffer),
-        std::move(*surface_buffer), std::move(triangles.sectors), std::move(*views),
-        std::move(*sectors_in_view), std::move(*draws), std::move(*draw_counts),
+        std::move(*surface_buffer), std::move(triangles.sectors), std::move(*view_shading),
+        std::move(*views), std::move(*sectors_in_view), std::move(*draws), std::move(*draw_counts),
         std::move(*textures));
     metering_->exposure = map.exposure();
     metering_->last_frame.reset();
@@ -769,6 +855,7 @@ float Drawing::next_blend() {
 void Drawing::record_passes(const Device& device, VkCommandBuffer commands,
                             const PortalTraversal& traversal, float blend, VkPipeline resolve,
                             VkImageView output, VkQueryPool timestamps) const {
+    write_view_shading(traversal, geometry_->view_shading);
     const auto views = write_culling(traversal, geometry_->sector_surfaces, geometry_->views,
                                      geometry_->sectors_in_view);
     const CullingConstants culling_constants{
@@ -853,22 +940,58 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands,
     };
     vkCmdBeginRendering(commands, &scene_rendering);
     set_viewport(commands, size);
-    for (std::uint32_t index = 0; const auto& view : views) {
+    const auto view_address = [this](std::size_t index) {
+        return geometry_->view_shading.address() + (index * sizeof(ViewShading));
+    };
+    // Draws a view's opening with a pipeline, as the view it is seen from sees it, where the
+    // stencil holds a level.
+    const auto draw_opening = [&](const PipelineHandle& pipeline, std::size_t index,
+                                  std::size_t level) {
+        const OpeningConstants opening_constants{
+            .view = view_address(index),
+            .seen_from = view_address(traversal.views.at(index).parent.value_or(0)),
+        };
+        device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.get(),
+                              std::as_bytes(std::span(&opening_constants, 1)));
+        vkCmdSetStencilReference(commands, VK_STENCIL_FACE_FRONT_AND_BACK,
+                                 narrow<std::uint32_t>(level));
+        vkCmdDraw(commands, 12, 1, 0, 0);
+    };
+    // Each view comes after the one it is seen from. Its opening is marked in the stencil a level
+    // deeper than that view's, where it shows, and the depth there is taken away, so that the view
+    // draws there alone, as far as it sees. Once a view and those nested in it are drawn, its
+    // opening is closed: its own depth is put back there and the stencil a level back, so that the
+    // openings marked after it meet it as a surface. Nothing after this pass reads depth or
+    // stencil, so the openings still open at its end are left so.
+    std::vector<std::size_t> open;
+    for (std::size_t index = 0; const auto& view : views) {
+        const auto& record = traversal.views.at(index);
+        while (!open.empty() && std::optional(open.back()) != record.parent) {
+            draw_opening(pipelines_->close_opening, open.back(),
+                         traversal.views.at(open.back()).depth);
+            open.pop_back();
+        }
+        if (record.parent) {
+            draw_opening(pipelines_->mark_opening, index, record.depth - 1);
+            draw_opening(pipelines_->clear_opening, index, record.depth);
+        }
         const SceneConstants scene_constants{
-            .view_projection = view.view_projection,
+            .view = view_address(index),
             .vertices = geometry_->vertices.address(),
             .materials = geometry_->materials.address(),
             .sectors = geometry_->sectors.address(),
             .texture_sampler = sampler_descriptor_,
-            .eye = traversal.views.at(index).eye,
             .backdrop_sampler = backdrop_sampler_descriptor_,
         };
         device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->scene.get(),
                               std::as_bytes(std::span(&scene_constants, 1)));
+        vkCmdSetStencilReference(commands, VK_STENCIL_FACE_FRONT_AND_BACK,
+                                 narrow<std::uint32_t>(record.depth));
         vkCmdDrawIndirectCount(commands, geometry_->draws.get(),
                                view.first_draw * sizeof(DrawCommand), geometry_->draw_counts.get(),
                                index * sizeof(std::uint32_t), view.candidate_count,
                                sizeof(DrawCommand));
+        open.push_back(index);
         ++index;
     }
     vkCmdEndRendering(commands);

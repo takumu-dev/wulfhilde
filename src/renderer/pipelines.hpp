@@ -35,13 +35,22 @@ struct GraphicsPipelineDescription {
     VkFormat color_format = VK_FORMAT_UNDEFINED;
     /// The format of the depth and stencil target, or none for a pipeline without depth. Depth is
     /// reversed, so a fragment is drawn where it is greater than what the target holds, and
-    /// written.
+    /// written. It is drawn only where the stencil holds the reference set while drawing.
     VkFormat depth_stencil_format = VK_FORMAT_UNDEFINED;
     /// How many samples each pixel of the targets holds.
     VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
     /// Whether triangles that face away are drawn, which a surface seen from behind isn't. A
     /// triangle faces the eye when its corners run anticlockwise in the image.
     VkCullModeFlags cull_mode = VK_CULL_MODE_NONE;
+    /// What a fragment that is drawn does to the stencil, with depth: keeps it as it is, or counts
+    /// it up or down.
+    VkStencilOp stencil_op = VK_STENCIL_OP_KEEP;
+    /// Whether a fragment is drawn whatever depth the target holds, with depth.
+    bool ignores_depth = false;
+    /// Whether a fragment that is drawn writes its depth, with depth.
+    bool writes_depth = true;
+    /// Whether a fragment that is drawn writes its colour.
+    bool writes_color = true;
 };
 
 /// Creates a graphics pipeline with no vertex input and no blending, whose viewport and scissor
