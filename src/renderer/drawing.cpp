@@ -12,6 +12,7 @@
 #include "sector_geometry.hpp"
 #include "vulkan.hpp"
 #include <wulfhilde/assets/map_assets.hpp>
+#include <wulfhilde/assets/material.hpp>
 #include <wulfhilde/assets/texture_image.hpp>
 #include <wulfhilde/core/assertion.hpp>
 #include <wulfhilde/core/color.hpp>
@@ -27,6 +28,7 @@
 #include <wulfhilde/renderer/renderer_settings.hpp>
 #include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/sky.hpp>
 
 #include <algorithm>
 #include <array>
@@ -42,6 +44,7 @@
 #include <span>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace wulfhilde::detail {
@@ -53,10 +56,25 @@ namespace {
 #include "resolve_spirv.h"
 #include "sectors_spirv.h"
 
+// The C++ twin of the sector shaders' `ValueShading`.
+struct ValueShading {
+    float factor = 1.0F;
+    DescriptorHandle texture;
+    std::uint32_t channel = 0;
+};
+
 // The C++ twin of the sector shaders' `MaterialShading`.
 struct MaterialShading {
     Color base_color;
     DescriptorHandle color_texture;
+    ValueShading roughness;
+    ValueShading metallic;
+    ValueShading occlusion;
+    float occlusion_strength = 0.0F;
+    DescriptorHandle normal_texture;
+    float normal_scale = 0.0F;
+    Color emission;
+    DescriptorHandle emission_texture;
     std::uint32_t sky = 0;
 };
 
@@ -660,25 +678,67 @@ std::expected<void, DeviceError> Drawing::set_map(Device& device, const Map& map
     }
     const auto white = texture_descriptors_.at(assets.images.size());
 
-    // The materials, then each sky, which shades its backdrop's image at its own nits or else the
-    // backdrop's.
-    std::vector<MaterialShading> materials;
-    materials.reserve(assets.materials.size() + triangles.skies.size());
-    for (const auto& material : assets.materials) {
-        materials.push_back({
+    // The materials, then each of the geometry's other shadings: a sky, which shades its
+    // backdrop's image at its own nits or else the backdrop's, or a material at a surface's nits.
+    const auto texture_or_white = [&](std::optional<std::size_t> texture) {
+        return texture ? texture_descriptors_.at(*texture) : white;
+    };
+    const auto shading_of = [&](const Material& material,
+                                std::optional<float> nits = std::nullopt) {
+        const auto value = [&](const ValueProperty& property) {
+            return ValueShading{
+                .factor = property.factor,
+                .texture = texture_or_white(property.texture),
+                .channel = static_cast<std::uint32_t>(property.channel),
+            };
+        };
+        // A material without a normal texture reads white, flattened by a scale of 0, and one
+        // without occlusion or emission reads white at a strength or a brightness of 0.
+        MaterialShading shading{
             .base_color = material.color.factor,
-            .color_texture =
-                material.color.texture ? texture_descriptors_.at(*material.color.texture) : white,
-        });
+            .color_texture = texture_or_white(material.color.texture),
+            .roughness = value(material.roughness),
+            .metallic = value(material.metallic),
+            .occlusion = {.texture = white},
+            .normal_texture = white,
+            .emission_texture = white,
+        };
+        if (material.occlusion) {
+            shading.occlusion = value(material.occlusion->value);
+            shading.occlusion_strength = material.occlusion->strength;
+        }
+        if (material.normal) {
+            shading.normal_texture = texture_descriptors_.at(material.normal->texture);
+            shading.normal_scale = material.normal->scale;
+        }
+        if (material.emission) {
+            shading.emission = material.emission->color * nits.value_or(material.emission->nits);
+            shading.emission_texture = texture_or_white(material.emission->texture);
+        }
+        return shading;
+    };
+    std::vector<MaterialShading> materials;
+    materials.reserve(assets.materials.size() + triangles.shadings.size());
+    for (const auto& material : assets.materials) {
+        materials.push_back(shading_of(material));
     }
-    for (const auto& sky : triangles.skies) {
-        const auto& backdrop = assets.backdrops.at(sky.backdrop.index());
-        const auto nits = sky.nits.value_or(backdrop.nits);
-        materials.push_back({
-            .base_color = {.r = nits, .g = nits, .b = nits},
-            .color_texture = texture_descriptors_.at(backdrop.image),
-            .sky = 1,
-        });
+    for (const auto& shading : triangles.shadings) {
+        if (const auto* const sky = std::get_if<Sky>(&shading)) {
+            const auto& backdrop = assets.backdrops.at(sky->backdrop.index());
+            const auto nits = sky->nits.value_or(backdrop.nits);
+            materials.push_back({
+                .base_color = {.r = nits, .g = nits, .b = nits},
+                .color_texture = texture_descriptors_.at(backdrop.image),
+                .occlusion = {.texture = white},
+                .normal_texture = white,
+                .emission_texture = white,
+                .sky = 1,
+            });
+        } else {
+            const auto& at_nits = std::get<MaterialAtNits>(shading);
+            materials.push_back(
+                shading_of(assets.materials.at(at_nits.material.index()), at_nits.nits));
+        }
     }
     std::vector<SectorShading> sectors;
     sectors.reserve(map.sectors().size());

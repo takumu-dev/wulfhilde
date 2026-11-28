@@ -26,7 +26,9 @@ namespace wulfhilde::detail {
 
 /// Draws a map on one device: culling, which keeps the surfaces of the sectors that a walk through
 /// the portals finds within what the camera sees, then those surfaces into a multisampled scene in
-/// linear light, textured and filtered anisotropically, with skies showing their backdrops, then
+/// linear light, textured and filtered anisotropically, shaded as glTF's metallic-roughness
+/// materials under their sectors' ambient light and glowing with their emission, with skies
+/// showing their backdrops, then
 /// metering, which moves the exposure toward what a histogram of the scene's light meters, then the
 /// AgX pass, which resolves the scene's samples into an sRGB image, or into a window's image to
 /// show. An image is drawn as a frame is.
