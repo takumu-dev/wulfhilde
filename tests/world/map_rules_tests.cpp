@@ -21,6 +21,7 @@ using wulfhilde::AmbientLight;
 using wulfhilde::MapDescription;
 using wulfhilde::MapProblemCode;
 using wulfhilde::SkyDescription;
+using wulfhilde::SurfaceDescription;
 
 TEST_CASE("the hall the rules' tests break is a valid map", "[world]") {
     CHECK(problems_in(hall_map()).empty());
@@ -231,6 +232,40 @@ TEST_CASE("a sky's nits are a problem below 0, or if they aren't a finite number
 TEST_CASE("a sky may be of no nits at all", "[world]") {
     auto description = hall_map();
     description.sectors.at(0).ceiling.sky = SkyDescription{.backdrop = "night", .nits = 0.0F};
+
+    CHECK(problems_in(description).empty());
+}
+
+TEST_CASE("a surface's nits are a problem below 0, or if they aren't a finite number",
+          "[world]") {
+    for (const float nits :
+         {-0.5F, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+        CAPTURE(nits);
+        auto description = doorway_map();
+        description.sectors.at(0).floor.nits = nits;
+        auto& door = description.sectors.at(0).loops.at(0).at(3);
+        door.surface.nits = nits;
+        door.upper = SurfaceDescription{.material = "test/lintel", .nits = nits};
+        door.lower = SurfaceDescription{.material = "test/sill", .nits = nits};
+
+        CHECK(problems_in(description) ==
+              std::vector<Problem>{
+                  {MapProblemCode::light_level_out_of_range, "/sectors/0/floor/nits"},
+                  {MapProblemCode::light_level_out_of_range,
+                   "/sectors/0/loops/0/3/surface/nits"},
+                  {MapProblemCode::light_level_out_of_range, "/sectors/0/loops/0/3/upper/nits"},
+                  {MapProblemCode::light_level_out_of_range, "/sectors/0/loops/0/3/lower/nits"},
+              });
+    }
+    auto description = hall_map();
+    description.sectors.at(0).ceiling.nits = -3.0F;
+    CHECK(only_problem_in(description).message ==
+          "-3 nits isn't a light level, which is 0 or more");
+}
+
+TEST_CASE("a surface may be of no nits at all", "[world]") {
+    auto description = hall_map();
+    description.sectors.at(0).loops.at(0).at(0).surface.nits = 0.0F;
 
     CHECK(problems_in(description).empty());
 }

@@ -19,6 +19,7 @@
 #include <wulfhilde/world/sector.hpp>
 #include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/surface.hpp>
+#include <wulfhilde/world/wall.hpp>
 
 #include <pedantjson/pedantjson.hpp>
 
@@ -94,6 +95,58 @@ FirstReferences first_references(const Map& map) {
         ++sector_index;
     }
     return references;
+}
+
+/// Reports each surface of a map that sets nits on a material that doesn't emit, at its nits in the
+/// map, in the order of the map's file. A strip that takes its wall's surface is the wall's surface,
+/// and isn't reported again. A material that couldn't be loaded has problems of its own already.
+void check_nits(const Map& map, const std::vector<std::optional<Material>>& materials,
+                std::vector<AssetProblem>& problems) {
+    const auto check = [&](const Surface& surface, auto pointer) {
+        if (!surface.nits) {
+            return;
+        }
+        const auto& material = materials.at(surface.material.index());
+        if (material && !material->emission) {
+            problems.push_back({
+                .code = AssetProblemCode::nits_without_emission,
+                .message = std::format("the surface sets nits, but its material {:?} doesn't emit",
+                                       map.materials().subspan(surface.material.index(), 1).front()),
+                .pointer = pointer(),
+            });
+        }
+    };
+    for (std::size_t sector_index = 0; const auto& sector : map.sectors()) {
+        for (const auto& [cover, member] :
+             {std::pair{&sector.floor.cover, "floor"}, std::pair{&sector.ceiling.cover, "ceiling"}}) {
+            if (const auto* const surface = std::get_if<Surface>(cover)) {
+                check(*surface, [sector_index, member] {
+                    return std::format("/sectors/{}/{}/nits", sector_index, member);
+                });
+            }
+        }
+        for (std::size_t loop_index = 0; const auto& loop : sector.loops) {
+            for (std::size_t wall_index = 0; const auto id : loop) {
+                const auto& wall = map.wall(id);
+                for (const auto& [surface, member] : {
+                         std::pair{&wall.surface, "surface"},
+                         std::pair{&wall.upper, "upper"},
+                         std::pair{&wall.lower, "lower"},
+                     }) {
+                    if (surface != &wall.surface && *surface == wall.surface) {
+                        continue;
+                    }
+                    check(*surface, [sector_index, loop_index, wall_index, member] {
+                        return std::format("/sectors/{}/loops/{}/{}/{}/nits", sector_index,
+                                           loop_index, wall_index, member);
+                    });
+                }
+                ++wall_index;
+            }
+            ++loop_index;
+        }
+        ++sector_index;
+    }
 }
 
 /// Gives a problem of a whole asset's file the file's name, and names the first place that refers
@@ -508,12 +561,10 @@ std::expected<MapAssets, AssetError> load_map_assets(const ContentRoot& root, co
     const auto references = first_references(map);
     Textures textures(root);
     std::vector<AssetProblem> problems;
-    std::vector<Material> materials;
+    std::vector<std::optional<Material>> materials;
+    materials.reserve(map.materials().size());
     for (const auto& [path, reference] : std::views::zip(map.materials(), references.materials)) {
-        auto material = load_material(root, path, reference, textures, problems);
-        if (material) {
-            materials.push_back(std::move(*material));
-        }
+        materials.push_back(load_material(root, path, reference, textures, problems));
     }
     std::vector<Backdrop> backdrops;
     for (const auto& [path, reference] : std::views::zip(map.backdrops(), references.backdrops)) {
@@ -521,6 +572,8 @@ std::expected<MapAssets, AssetError> load_map_assets(const ContentRoot& root, co
             backdrops.push_back(*backdrop);
         }
     }
+
+    check_nits(map, materials, problems);
 
     if (!problems.empty()) {
         return std::unexpected(AssetError{
@@ -531,7 +584,11 @@ std::expected<MapAssets, AssetError> load_map_assets(const ContentRoot& root, co
         });
     }
     return MapAssets{
-        .materials = std::move(materials),
+        .materials = std::move(materials) | std::views::as_rvalue |
+                     std::views::transform([](std::optional<Material>&& material) {
+                         return *std::move(material);
+                     }) |
+                     std::ranges::to<std::vector>(),
         .backdrops = std::move(backdrops),
         .images = std::move(textures).take_images(),
     };

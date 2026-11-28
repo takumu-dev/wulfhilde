@@ -264,6 +264,104 @@ TEST_CASE("the materials are held by the IDs the map gives them", "[assets]") {
     CHECK(assets.materials.at(1).color.factor == Color{.r = 0.8F, .g = 0.5F, .b = 0.25F});
 }
 
+namespace {
+
+// A map of one square sector whose floor carries a material that emits and whose ceiling and walls
+// carry one that doesn't, with nits on the floor, the ceiling and the first two walls.
+Map map_with_nits() {
+    const auto wall = [](float x, float y, std::optional<float> nits = std::nullopt) {
+        return wulfhilde::WallDescription{
+            .start = {.x = x, .y = y},
+            .surface = {.material = "valid/plain", .nits = nits},
+        };
+    };
+    auto map = Map::create({
+        .sectors =
+            {
+                {
+                    .id = "room",
+                    .floor = {.height = 0.0F, .material = "valid/glow", .nits = 40.0F},
+                    .ceiling = {.height = 3.0F, .material = "valid/plain", .nits = 10.0F},
+                    .loops = {{wall(0, 0, 5.0F), wall(4, 0, 0.0F), wall(4, 4), wall(0, 4)}},
+                },
+            },
+        .start = {.sector = "room", .point = {.x = 2.0F, .y = 2.0F, .z = 0.0F}},
+    });
+    REQUIRE(map.has_value());
+    return std::move(*map);
+}
+
+} // namespace
+
+TEST_CASE("a surface's nits on a material that doesn't emit are a problem at the nits in the map, "
+          "once for each surface that sets them",
+          "[assets]") {
+    const auto assets = load_map_assets(materials_root(), map_with_nits());
+
+    REQUIRE(!assets.has_value());
+    REQUIRE(assets.error().problems.size() == 3);
+    CHECK(assets.error().problems.at(0).code == AssetProblemCode::nits_without_emission);
+    CHECK(std::format("{}", assets.error()) ==
+          "the surface sets nits, but its material \"valid/plain\" doesn't emit "
+          "(/sectors/0/ceiling/nits)\n"
+          "the surface sets nits, but its material \"valid/plain\" doesn't emit "
+          "(/sectors/0/loops/0/0/surface/nits)\n"
+          "the surface sets nits, but its material \"valid/plain\" doesn't emit "
+          "(/sectors/0/loops/0/1/surface/nits)");
+}
+
+TEST_CASE("a surface may set nits on a material that emits", "[assets]") {
+    auto description = wulfhilde::MapDescription{
+        .sectors =
+            {
+                {
+                    .id = "room",
+                    .floor = {.height = 0.0F, .material = "valid/glow", .nits = 40.0F},
+                    .ceiling = {.height = 3.0F, .material = "valid/plain"},
+                    .loops = {{
+                        {.start = {.x = 0.0F, .y = 0.0F},
+                         .surface = {.material = "valid/glow", .nits = 0.0F}},
+                        {.start = {.x = 4.0F, .y = 0.0F}, .surface = {.material = "valid/plain"}},
+                        {.start = {.x = 4.0F, .y = 4.0F}, .surface = {.material = "valid/plain"}},
+                    }},
+                },
+            },
+        .start = {.sector = "room", .point = {.x = 2.0F, .y = 1.0F, .z = 0.0F}},
+    };
+    const auto map = Map::create(std::move(description));
+    REQUIRE(map.has_value());
+
+    CHECK(load_map_assets(materials_root(), *map).has_value());
+}
+
+TEST_CASE("a surface's nits on a material that can't be loaded add no problem of their own",
+          "[assets]") {
+    auto description = wulfhilde::MapDescription{
+        .sectors =
+            {
+                {
+                    .id = "room",
+                    .floor = {.height = 0.0F, .material = "missing/floor", .nits = 40.0F},
+                    .ceiling = {.height = 3.0F, .material = "valid/plain"},
+                    .loops = {{
+                        {.start = {.x = 0.0F, .y = 0.0F}, .surface = {.material = "valid/plain"}},
+                        {.start = {.x = 4.0F, .y = 0.0F}, .surface = {.material = "valid/plain"}},
+                        {.start = {.x = 4.0F, .y = 4.0F}, .surface = {.material = "valid/plain"}},
+                    }},
+                },
+            },
+        .start = {.sector = "room", .point = {.x = 2.0F, .y = 1.0F, .z = 0.0F}},
+    };
+    const auto map = Map::create(std::move(description));
+    REQUIRE(map.has_value());
+
+    const auto loaded = load_map_assets(materials_root(), *map);
+
+    REQUIRE(!loaded.has_value());
+    REQUIRE(loaded.error().problems.size() == 1);
+    CHECK(loaded.error().problems.at(0).code == AssetProblemCode::missing_file);
+}
+
 TEST_CASE("a missing material is reported once, at the first surface that carries it", "[assets]") {
     const auto assets =
         load_map_assets(materials_root(), map_of("valid/plain", "missing/ceiling", "missing/wall"));

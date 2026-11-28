@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "wulfhilde map",
-  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, portals that link them, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, sector and wall ids that repeat, references to sectors and walls that don't exist, a portal's walls that don't run between the same corners in opposite directions, a wall that is a side of two portals, and an exposure range whose minimum is above its maximum.",
+  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, portals that link them, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, sector and wall ids that repeat, references to sectors and walls that don't exist, a portal's walls that don't run between the same corners in opposite directions, a wall that is a side of two portals, an exposure range whose minimum is above its maximum, and nits on a surface whose material doesn't emit.",
   "type": "object",
   "required": ["format", "version", "sectors", "start"],
   "additionalProperties": false,
@@ -151,6 +151,11 @@
       "description": "How far the material is turned in the surface's plane, in degrees, from +u toward +v, about the point its offset moves its origin to. Its scale applies along its own turned axes. Defaults to 0.",
       "$ref": "#/$defs/angle"
     },
+    "surfaceNits": {
+      "description": "The luminance of the material's emission at white, in nits, in place of the material's own. It changes the emission's brightness, not its colour or its pattern, and only a material that emits may take it.",
+      "$ref": "#/$defs/number",
+      "minimum": 0
+    },
     "surface": {
       "description": "The material that covers a wall, and how it lies on it: u runs along the wall from its start, to the right as the wall is seen from its sector, and v is height.",
       "type": "object",
@@ -160,7 +165,8 @@
         "material": { "$ref": "#/$defs/materialPath" },
         "offset": { "$ref": "#/$defs/offset" },
         "scale": { "$ref": "#/$defs/scale" },
-        "rotation": { "$ref": "#/$defs/rotation" }
+        "rotation": { "$ref": "#/$defs/rotation" },
+        "nits": { "$ref": "#/$defs/surfaceNits" }
       }
     },
     "sky": {
@@ -186,7 +192,9 @@
       "required": ["height"],
       "oneOf": [{ "required": ["material"] }, { "required": ["sky"] }],
       "dependentSchemas": {
-        "sky": { "properties": { "offset": false, "scale": false, "rotation": false } }
+        "sky": {
+          "properties": { "offset": false, "scale": false, "rotation": false, "nits": false }
+        }
       },
       "additionalProperties": false,
       "properties": {
@@ -198,6 +206,7 @@
         "offset": { "$ref": "#/$defs/offset" },
         "scale": { "$ref": "#/$defs/scale" },
         "rotation": { "$ref": "#/$defs/rotation" },
+        "nits": { "$ref": "#/$defs/surfaceNits" },
         "sky": { "$ref": "#/$defs/sky" }
       }
     },

@@ -41,7 +41,10 @@ Each surface names a material, a strict JSON file ending `.material.json` in the
 root, with glTF's metallic-roughness properties, each a factor times an optional texture, an
 emission in nits, and the real-world size of one repeat of its textures. A texture is a PNG,
 named by its asset path without `.png`, whose colour space is the one the property reading it
-needs. `schema/material.schema.json` is the material's JSON Schema, installed beside the map's.
+needs. `schema/material.schema.json` is the material's JSON Schema, installed beside the map's. A
+surface whose material emits may set its own `nits`, which change how brightly it glows but not
+its colour or its pattern, so that one lamp material serves dim lamps and bright ones. Emission
+makes a surface glow, and lights nothing else.
 
 A floor or a ceiling may be a sky instead, which shows a backdrop: a strict JSON file ending
 `.backdrop.json`, holding an equirectangular PNG of everything infinitely far away and its

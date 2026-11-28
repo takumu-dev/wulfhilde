@@ -45,6 +45,7 @@ enum class AssetProblemCode : std::uint8_t {
     missing_channel,        ///< A single-value property reads an image of several channels without
                             ///< naming the one it reads.
     no_such_channel, ///< A single-value property names the alpha channel of an image without one.
+    nits_without_emission, ///< A surface in the map sets nits, but its material doesn't emit.
 };
 
 /// A problem in an asset that a map uses, at the place in its file where it lies.

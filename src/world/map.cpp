@@ -66,6 +66,7 @@ using BackdropInterner = Interner<BackdropId>;
         .offset = description.offset,
         .scale = description.scale,
         .rotation = description.rotation,
+        .nits = description.nits,
     };
 }
 
@@ -91,6 +92,7 @@ using BackdropInterner = Interner<BackdropId>;
                                   .offset = description.offset,
                                   .scale = description.scale,
                                   .rotation = description.rotation,
+                                  .nits = description.nits,
                               }),
     };
 }

@@ -1,0 +1,1 @@
+surface_nits_out_of_range.map.json:12:76: -5 nits isn't a light level, which is 0 or more (/sectors/0/loops/0/1/surface/nits)
