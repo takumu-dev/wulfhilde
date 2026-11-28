@@ -109,6 +109,51 @@ TEST_CASE("sectors: the body walks through the doorway under its lower ceiling i
     check_walk(walked, {.sectors = {"hall", "doorway", "nook"}});
 }
 
+TEST_CASE("sectors: walking at the pillar's south-west corner, the body slides round it and on "
+          "past it",
+          "[viewer]") {
+    const auto map = load_test_map("sectors");
+
+    // The pillar stands from (3, 6) to (3.6, 6.6), and the body's line passes 0.08 m west of its
+    // corner, well within the body's radius of 0.3 m.
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = turn_toward(2.92F, 6.0F),
+                                          .timeout = 2.0F,
+                                      },
+                                  });
+
+    check_walk(walked, {.sectors = {"hall"}});
+    // North of the pillar and east of its west wall, so round it, but turned west of the line the
+    // body set out on, which runs through x = 3.6 m at y = 9 m.
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(end.y > 9.0F);
+    CHECK(end.x > 3.0F);
+    CHECK(end.x < 3.4F);
+}
+
+TEST_CASE("sectors: the body steps onto the dais through its inner loop's opening", "[viewer]") {
+    const auto map = load_test_map("sectors");
+
+    // The dais stands 0.3 m up, from (0.4, 7) to (1.4, 9).
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = turn_toward(0.9F, 8.0F),
+                                          .until = "dais",
+                                          .timeout = 3.0F,
+                                      },
+                                      {.actions = {.forward = 1.0F}, .timeout = 0.1F},
+                                  });
+
+    check_walk(walked, {.sectors = {"hall", "dais"}});
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(std::abs(end.z - 1.2F) < 1e-3F);
+}
+
 TEST_CASE("sectors: the step too high stops the body before it", "[viewer]") {
     const auto map = load_test_map("sectors");
 

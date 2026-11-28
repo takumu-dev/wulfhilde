@@ -211,3 +211,42 @@ TEST_CASE("a bridge whose floor slopes down into a passage beneath it overlaps i
     // It falls only to 3 m, the passage's ceiling, at the passage's far wall.
     CHECK(apart(map_of({passage, bridge(-0.25F)})));
 }
+
+namespace {
+
+// The yard, a square 10 m on a side, around a hole from (2, 2) to (6, 6).
+wulfhilde::SectorDescription yard_around_hole() {
+    auto yard = rectangle("yard", {.x = 0.0F, .y = 0.0F}, {.x = 10.0F, .y = 10.0F});
+    yard.loops.push_back(walls_through({
+        {.x = 2.0F, .y = 2.0F},
+        {.x = 2.0F, .y = 6.0F},
+        {.x = 6.0F, .y = 6.0F},
+        {.x = 6.0F, .y = 2.0F},
+    }));
+    return yard;
+}
+
+} // namespace
+
+TEST_CASE("a sector in another's hole shares no space with it, whether it fills the hole or not",
+          "[world]") {
+    CHECK(apart(map_of({
+        yard_around_hole(),
+        rectangle("dais", {.x = 2.0F, .y = 2.0F}, {.x = 6.0F, .y = 6.0F}),
+    })));
+    CHECK(apart(map_of({
+        yard_around_hole(),
+        rectangle("shed", {.x = 3.0F, .y = 3.0F}, {.x = 5.0F, .y = 4.0F}),
+    })));
+}
+
+TEST_CASE("a sector reaching out of another's hole, or round it, overlaps it", "[world]") {
+    CHECK(overlap(map_of({
+        yard_around_hole(),
+        rectangle("shed", {.x = 5.0F, .y = 3.0F}, {.x = 8.0F, .y = 4.0F}),
+    })));
+    CHECK(overlap(map_of({
+        yard_around_hole(),
+        rectangle("hall", {.x = 1.0F, .y = 1.0F}, {.x = 7.0F, .y = 7.0F}),
+    })));
+}

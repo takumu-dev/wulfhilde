@@ -131,6 +131,13 @@ TEST_CASE("a trace through a corner stops at one of the corner's walls", "[world
     CHECK((trace.surface == SurfaceRef{WallId{1}} || trace.surface == SurfaceRef{WallId{2}}));
 }
 
+TEST_CASE("a trace stops at the wall of an inner loop it meets", "[world]") {
+    const auto map = make_map(pillared_hall_map());
+    const auto trace = trace_in_hall(map, {.x = 0.5F, .y = 1.5F, .z = 1.0F}, {.x = 2.0F});
+    CHECK(trace.end.point == Vector3{.x = 1.0F, .y = 1.5F, .z = 1.0F});
+    CHECK(trace.surface == SurfaceRef{WallId{4}});
+}
+
 TEST_CASE("a trace from a surface stops at once moving into it, and not moving away", "[world]") {
     const auto map = make_map(hall_map());
     constexpr Vector3 on_floor{.x = 2.0F, .y = 2.0F, .z = 0.0F};
@@ -286,4 +293,26 @@ TEST_CASE("a trace through an opening and back returns to the sector it started 
     const auto back = map.trace(there.end, {.y = -2.0F});
     CHECK(back.end == Location{.sector = hall, .point = {.x = 2.0F, .y = 3.0F, .z = 1.5F}});
     CHECK(back.surface == std::nullopt);
+}
+
+TEST_CASE("a trace through an inner loop's opening carries on into the sector inside it, and out "
+          "beyond",
+          "[world]") {
+    const auto map = make_map(dais_map());
+    constexpr SectorId dais{1};
+
+    const auto onto =
+        map.trace({.sector = hall, .point = {.x = 0.5F, .y = 1.5F, .z = 1.0F}}, {.x = 1.0F});
+    CHECK(onto.end == Location{.sector = dais, .point = {.x = 1.5F, .y = 1.5F, .z = 1.0F}});
+    CHECK(onto.surface == std::nullopt);
+
+    const auto across =
+        map.trace({.sector = hall, .point = {.x = 0.5F, .y = 1.5F, .z = 1.0F}}, {.x = 3.0F});
+    CHECK(across.end == Location{.sector = hall, .point = {.x = 3.5F, .y = 1.5F, .z = 1.0F}});
+    CHECK(across.surface == std::nullopt);
+
+    // Below the opening, the trace meets the dais's west rim.
+    const auto rim = trace_in_hall(map, {.x = 0.5F, .y = 1.5F, .z = 0.25F}, {.x = 1.0F});
+    CHECK(rim.end.point == Vector3{.x = 1.0F, .y = 1.5F, .z = 0.25F});
+    CHECK(rim.surface == SurfaceRef{WallId{4}});
 }

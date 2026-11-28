@@ -403,6 +403,78 @@ TEST_CASE_METHOD(GpuTest, "a concave sector's floor covers the sector and nothin
     CHECK(at(8.0F, 7.0F) == black);
 }
 
+TEST_CASE_METHOD(GpuTest, "a sector's floor leaves a hole where each of its inner loops is",
+                 "[renderer]") {
+    // A square 12 m on a side around two holes, a square one and an L, seen from 20 m up, where
+    // the ceiling faces away, and so do the walls round the holes, which face out of them.
+    auto hall = sector("hall",
+                       {
+                           {.x = 0.0F, .y = 0.0F},
+                           {.x = 12.0F, .y = 0.0F},
+                           {.x = 12.0F, .y = 12.0F},
+                           {.x = 0.0F, .y = 12.0F},
+                       },
+                       {"south", "east", "north", "west"});
+    hall.loops.push_back(sector("square",
+                                {
+                                    {.x = 2.0F, .y = 2.0F},
+                                    {.x = 2.0F, .y = 5.0F},
+                                    {.x = 5.0F, .y = 5.0F},
+                                    {.x = 5.0F, .y = 2.0F},
+                                },
+                                {"east", "south", "west", "north"})
+                             .loops.front());
+    hall.loops.push_back(sector("l",
+                                {
+                                    {.x = 7.0F, .y = 6.0F},
+                                    {.x = 7.0F, .y = 10.0F},
+                                    {.x = 8.0F, .y = 10.0F},
+                                    {.x = 8.0F, .y = 7.0F},
+                                    {.x = 10.0F, .y = 7.0F},
+                                    {.x = 10.0F, .y = 6.0F},
+                                },
+                                {"east", "south", "west", "south", "west", "north"})
+                             .loops.front());
+    const auto map = make_map({
+        .ambient = white_light,
+        .sectors = {std::move(hall)},
+        .start = {.sector = "hall", .point = {.x = 1.0F, .y = 1.0F}},
+    });
+    auto renderer = renderer_of(map);
+
+    // Looking straight down, +X is up in the image and +Y to the left, and with a field of view
+    // of 90° the image's edges are 20 m from its centre on the floor, 5 px a metre.
+    const auto image = render(renderer,
+                              camera_at(map, {.x = 6.0F, .y = 6.0F, .z = 20.0F},
+                                        Angle::degrees(0.0F), Angle::degrees(-90.0F)),
+                              {.width = 200, .height = 200});
+    const auto at = [&image](float x, float y) {
+        const auto column = static_cast<std::size_t>(100.0F - ((y - 6.0F) * 5.0F));
+        const auto row = static_cast<std::size_t>(100.0F - ((x - 6.0F) * 5.0F));
+        return pixel_at(image, column, row);
+    };
+
+    // In the square hole, and in each arm of the L.
+    for (const auto& [x, y] : {
+             std::pair{3.5F, 3.5F},
+             std::pair{7.5F, 8.5F},
+             std::pair{9.0F, 6.5F},
+         }) {
+        CAPTURE(x, y, describe(at(x, y)));
+        CHECK(at(x, y) == black);
+    }
+    // The floor between the holes, beside them, and in the L's notch.
+    for (const auto& [x, y] : {
+             std::pair{6.0F, 6.0F},
+             std::pair{1.0F, 3.5F},
+             std::pair{9.0F, 9.0F},
+             std::pair{11.0F, 11.0F},
+         }) {
+        CAPTURE(x, y, describe(at(x, y)));
+        CHECK(shows(at(x, y), red));
+    }
+}
+
 TEST_CASE_METHOD(GpuTest, "a surface nearer the eye than 5 cm isn't drawn, and one further is",
                  "[renderer]") {
     const auto map = make_map(box_map());

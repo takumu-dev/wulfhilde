@@ -49,8 +49,8 @@ struct FloorOrCeiling {
     Cover cover;
 };
 
-/// A sector of a map: a region bounded by a loop of walls, with a floor below and a ceiling above.
-/// Its down points toward its floor.
+/// A sector of a map: a region bounded by an outer loop of walls and any inner loops around holes
+/// in it, with a floor below and a ceiling above. Its down points toward its floor.
 ///
 /// A map holds it, and every reference in it is to that map's objects.
 struct Sector {
@@ -63,8 +63,8 @@ struct Sector {
     /// The sector's ceiling.
     FloorOrCeiling ceiling;
 
-    /// The sector's loops, each the IDs of its walls in order. A sector has one, its outer loop,
-    /// which runs anticlockwise seen from above.
+    /// The sector's loops, each the IDs of its walls in order: first its outer loop, which runs
+    /// anticlockwise seen from above, then any inner loops, which run clockwise.
     std::vector<std::vector<WallId>> loops{};
 
     /// The sector's ambient light: its own, or else its map's, or else black.

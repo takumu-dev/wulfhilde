@@ -100,6 +100,7 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     CHECK(hall.ambient == AmbientLight{.color = {.r = 1.0F, .g = 0.5F, .b = 0.25F}, .lux = 5.0F});
     CHECK(hall.loops == std::vector<std::vector<WallId>>{
                             {WallId{0}, WallId{1}, WallId{2}, WallId{3}},
+                            {WallId{4}, WallId{5}, WallId{6}, WallId{7}},
                         });
     CHECK(hall.properties == R"({
         "secret": true,
@@ -120,12 +121,12 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     CHECK(wall.id == "hall-east");
     CHECK(wall.upper == Surface{.material = MaterialId{1}, .offset = {.x = 0.0F, .y = 0.5F}});
     CHECK(wall.lower == wall.surface);
-    CHECK(wall.link == PortalLink{.portal = PortalId{0}, .wall = WallId{6}});
+    CHECK(wall.link == PortalLink{.portal = PortalId{0}, .wall = WallId{10}});
     CHECK(map.wall(WallId{0}).surface == Surface{.material = MaterialId{2}});
     CHECK(map.wall(WallId{0}).properties.empty());
     CHECK(map.wall(WallId{0}).id == std::nullopt);
 
-    const auto& closet_west = map.wall(WallId{6});
+    const auto& closet_west = map.wall(WallId{10});
     CHECK(closet_west.id == "closet-west");
     CHECK(closet_west.upper == Surface{.material = MaterialId{2}});
     CHECK(closet_west.lower ==
@@ -134,7 +135,7 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
 
     REQUIRE(map.portals().size() == 1);
     CHECK(map.portal(PortalId{0}).a == wulfhilde::SurfaceRef{WallId{1}});
-    CHECK(map.portal(PortalId{0}).b == wulfhilde::SurfaceRef{WallId{6}});
+    CHECK(map.portal(PortalId{0}).b == wulfhilde::SurfaceRef{WallId{10}});
     CHECK(map.portal(PortalId{0}).properties == R"({ "sound": "creak" })");
 
     const auto backdrops = map.backdrops();
@@ -147,7 +148,7 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     CHECK(closet.ceiling.height == 2.5F);
     CHECK(closet.ceiling.cover == Cover{Sky{.backdrop = BackdropId{1}, .nits = 50.0F}});
     CHECK(closet.floor.slope == std::nullopt);
-    CHECK(closet.ceiling.slope == Slope{.hinge = WallId{6}, .gradient = -0.5F});
+    CHECK(closet.ceiling.slope == Slope{.hinge = WallId{10}, .gradient = -0.5F});
     CHECK(closet.ambient ==
           AmbientLight{.color = {.r = 0.5F, .g = 0.75F, .b = 1.0F}, .lux = 20.0F});
     CHECK(closet.properties.empty());

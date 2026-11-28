@@ -9,6 +9,7 @@
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map_description.hpp>
+#include <wulfhilde/world/opening.hpp>
 #include <wulfhilde/world/portal.hpp>
 #include <wulfhilde/world/portal_link.hpp>
 #include <wulfhilde/world/sector.hpp>
@@ -168,6 +169,37 @@ TEST_CASE("each wall runs to the start of the next one in its loop, and knows it
                                      .rotation = Angle::degrees(-90.0F),
                                  });
     CHECK(map.wall(WallId{6}).end == Vector2{.x = 10.0F, .y = 0.0F});
+}
+
+TEST_CASE("a sector's inner loops follow its outer loop, their walls numbered on from its",
+          "[world]") {
+    auto description = pillared_hall_map();
+    description.sectors.push_back(closet_sector());
+    const auto map = make_map(description);
+
+    using Loops = std::vector<std::vector<WallId>>;
+    CHECK(map.sector(SectorId{0}).loops == Loops{{WallId{0}, WallId{1}, WallId{2}, WallId{3}},
+                                                 {WallId{4}, WallId{5}, WallId{6}, WallId{7}}});
+    CHECK(map.sector(SectorId{1}).loops == Loops{{WallId{8}, WallId{9}, WallId{10}}});
+
+    const auto& pillar_west = map.wall(WallId{4});
+    CHECK(pillar_west.sector == SectorId{0});
+    CHECK(pillar_west.start == Vector2{.x = 1.0F, .y = 1.0F});
+    CHECK(pillar_west.end == Vector2{.x = 1.0F, .y = 2.0F});
+    // The inner loop's last wall runs back to its own first corner, not the outer loop's.
+    CHECK(map.wall(WallId{7}).start == Vector2{.x = 2.0F, .y = 1.0F});
+    CHECK(map.wall(WallId{7}).end == Vector2{.x = 1.0F, .y = 1.0F});
+}
+
+TEST_CASE("an inner loop's walls may be sides of portals into the sector inside it", "[world]") {
+    const auto map = make_map(dais_map());
+
+    REQUIRE(map.portals().size() == 4);
+    CHECK(map.wall(WallId{4}).link == PortalLink{.portal = PortalId{0}, .wall = WallId{11}});
+    CHECK(map.wall(WallId{11}).link == PortalLink{.portal = PortalId{0}, .wall = WallId{4}});
+    CHECK(map.wall(WallId{7}).link == PortalLink{.portal = PortalId{3}, .wall = WallId{8}});
+    CHECK(map.opening(WallId{5}, {.x = 1.5F, .y = 2.0F}) ==
+          wulfhilde::Opening{.bottom = 0.5F, .top = 3.0F});
 }
 
 TEST_CASE("a sector's ambient light is its own, or else the map's, or else black", "[world]") {

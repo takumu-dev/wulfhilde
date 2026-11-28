@@ -9,8 +9,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <format>
 #include <initializer_list>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -152,4 +154,76 @@ inline wulfhilde::Map gallery_map() {
 // (3, 8), at heights of its own.
 inline wulfhilde::Map corridor_beyond_map(float floor = 0.0F, float ceiling = 3.0F) {
     return doorway_map(floor, ceiling, {{.x = 3.0F, .y = 8.0F}, {.x = 1.0F, .y = 8.0F}});
+}
+
+// The great hall: a square sector 8 m on a side from (0, 0) to (8, 8), with its floor at 0 m and
+// its ceiling at 3 m, around a hole whose inner loop runs clockwise through the points. Its outer
+// loop's walls are #0 to #3, and its inner loop's run on from #4.
+inline wulfhilde::SectorDescription great_hall(const std::vector<wulfhilde::Vector2>& hole) {
+    auto hall = sector_through("hall", 0.0F, 3.0F,
+                               {
+                                   {.x = 0.0F, .y = 0.0F},
+                                   {.x = 8.0F, .y = 0.0F},
+                                   {.x = 8.0F, .y = 8.0F},
+                                   {.x = 0.0F, .y = 8.0F},
+                               });
+    auto& inner = hall.loops.emplace_back();
+    for (const auto& point : hole) {
+        inner.push_back({.start = point, .surface = {.material = "test/wall"}});
+    }
+    return hall;
+}
+
+// The great hall with a pillar in its middle, a square from (3, 3) to (5, 5), whose walls run
+// clockwise from the corner nearest the origin: west, north, east and south.
+inline wulfhilde::Map pillar_map() {
+    return one_sector_map(great_hall({
+        {.x = 3.0F, .y = 3.0F},
+        {.x = 3.0F, .y = 5.0F},
+        {.x = 5.0F, .y = 5.0F},
+        {.x = 5.0F, .y = 3.0F},
+    }));
+}
+
+// The great hall around a raised sector, with its floor at a height and its ceiling at the hall's,
+// whose loop runs anticlockwise through the hole's points. Each wall of the hall's inner loop is a
+// side of a portal into it.
+inline wulfhilde::Map raised_map(float floor, const std::vector<wulfhilde::Vector2>& hole) {
+    auto hall = great_hall(hole);
+    auto raised = sector_through("raised", floor, 3.0F, {});
+    for (const auto& point : hole | std::views::reverse) {
+        raised.loops.front().push_back({.start = point, .surface = {.material = "test/wall"}});
+    }
+
+    wulfhilde::MapDescription description{
+        .start = {.sector = "hall", .point = {.x = 1.0F, .y = 1.0F}},
+    };
+    // Of n walls, the hall's from the hole's point i to the next runs back as the raised sector's
+    // wall n - 2 - i, counted round its loop.
+    const auto count = hole.size();
+    for (std::size_t i = 0; i < count; ++i) {
+        hall.loops.back().at(i).id = std::format("hall-{}", i);
+        raised.loops.front().at(((2 * count) - 2 - i) % count).id = std::format("raised-{}", i);
+        description.portals.push_back({
+            .a = {.id = std::format("hall-{}", i)},
+            .b = {.id = std::format("raised-{}", i)},
+        });
+    }
+    description.sectors = {std::move(hall), std::move(raised)};
+    auto map = wulfhilde::Map::create(std::move(description));
+    if (!map) {
+        FAIL(std::format("the description has problems:\n{}", map.error()));
+    }
+    return *std::move(map);
+}
+
+// The great hall with a dais in its middle, a square from (3, 3) to (5, 5) with its floor at a
+// height.
+inline wulfhilde::Map dais_map(float floor) {
+    return raised_map(floor, {
+                                 {.x = 3.0F, .y = 3.0F},
+                                 {.x = 3.0F, .y = 5.0F},
+                                 {.x = 5.0F, .y = 5.0F},
+                                 {.x = 5.0F, .y = 3.0F},
+                             });
 }

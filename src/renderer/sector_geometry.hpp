@@ -55,8 +55,9 @@ struct SectorGeometry {
 
 /// Triangulates every sector of a map: each solid wall as a fan of triangles from the floor to the
 /// ceiling, each side of a portal as a fan for each of its strips, below and above its opening,
-/// and the floor and the ceiling across the sector's loops, concave or not, whether a surface or a
-/// sky, each corner lifted onto the floor's or the ceiling's plane. Every triangle's corners run
+/// and the floor and the ceiling across the sector's outer loop, concave or not, with holes where
+/// its inner loops are, whether a surface or a sky, each corner lifted onto the floor's or the
+/// ceiling's plane. Every triangle's corners run
 /// anticlockwise seen from the side its surface faces: into the sector.
 ///
 /// Each surface's material lies on it as the map says, a strip's as its wall's. On a wall, u runs

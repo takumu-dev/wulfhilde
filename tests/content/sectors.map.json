@@ -51,6 +51,38 @@
             "lower": { "material": "materials/grid/lower_strip", "offset": [7, 0] }
           },
           { "start": [0, 1], "surface": { "material": "materials/grid/wall", "offset": [9, 0] } }
+        ],
+        [
+          { "start": [3, 6], "surface": { "material": "materials/grid/wall" } },
+          { "start": [3, 6.6], "surface": { "material": "materials/grid/wall", "offset": [0.6, 0] } },
+          { "start": [3.6, 6.6], "surface": { "material": "materials/grid/wall", "offset": [1.2, 0] } },
+          { "start": [3.6, 6], "surface": { "material": "materials/grid/wall", "offset": [1.8, 0] } }
+        ],
+        [
+          {
+            "id": "hall-dais-west",
+            "start": [0.4, 7],
+            "surface": { "material": "materials/grid/wall" },
+            "lower": { "material": "materials/grid/lower_strip" }
+          },
+          {
+            "id": "hall-dais-north",
+            "start": [0.4, 9],
+            "surface": { "material": "materials/grid/wall", "offset": [2, 0] },
+            "lower": { "material": "materials/grid/lower_strip", "offset": [2, 0] }
+          },
+          {
+            "id": "hall-dais-east",
+            "start": [1.4, 9],
+            "surface": { "material": "materials/grid/wall", "offset": [3, 0] },
+            "lower": { "material": "materials/grid/lower_strip", "offset": [3, 0] }
+          },
+          {
+            "id": "hall-dais-south",
+            "start": [1.4, 7],
+            "surface": { "material": "materials/grid/wall", "offset": [5, 0] },
+            "lower": { "material": "materials/grid/lower_strip", "offset": [5, 0] }
+          }
         ]
       ]
     },
@@ -195,6 +227,19 @@
           { "start": [4.5, 7], "surface": { "material": "materials/grid/wall" } }
         ]
       ]
+    },
+    {
+      "id": "dais",
+      "floor": { "height": 0.3, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "id": "dais-south", "start": [0.4, 7], "surface": { "material": "materials/grid/wall" } },
+          { "id": "dais-east", "start": [1.4, 7], "surface": { "material": "materials/grid/wall" } },
+          { "id": "dais-north", "start": [1.4, 9], "surface": { "material": "materials/grid/wall" } },
+          { "id": "dais-west", "start": [0.4, 9], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
     }
   ],
   "portals": [
@@ -206,7 +251,11 @@
     { "a": { "wall": "stair-1-north" }, "b": { "wall": "stair-2-south" } },
     { "a": { "wall": "stair-2-north" }, "b": { "wall": "ledge-south" } },
     { "a": { "wall": "hall-doorway" }, "b": { "wall": "doorway-south" } },
-    { "a": { "wall": "doorway-north" }, "b": { "wall": "nook-south" } }
+    { "a": { "wall": "doorway-north" }, "b": { "wall": "nook-south" } },
+    { "a": { "wall": "hall-dais-west" }, "b": { "wall": "dais-west" } },
+    { "a": { "wall": "hall-dais-north" }, "b": { "wall": "dais-north" } },
+    { "a": { "wall": "hall-dais-east" }, "b": { "wall": "dais-east" } },
+    { "a": { "wall": "hall-dais-south" }, "b": { "wall": "dais-south" } }
   ],
   "start": { "sector": "hall", "point": [2, 2, 0], "yaw": 0 }
 }
