@@ -389,3 +389,49 @@ TEST_CASE(
               {MapProblemCode::coordinate_out_of_range, "/sectors/0/loops/0/2/start/0"},
           });
 }
+
+TEST_CASE("a slope may be hinged on a wall of an inner loop, and lies on one plane all round the "
+          "hole",
+          "[world]") {
+    // Hinged on the pillar's north wall, wall #5 from (1, 2) to (2, 2), which faces north.
+    auto description = pillared_hall_map();
+    description.sectors.at(0).loops.at(1).at(1).id = "pillar-north";
+    description.sectors.at(0).floor.slope =
+        SlopeDescription{.hinge = "pillar-north", .gradient = 0.5F};
+    const auto map = make_map(description);
+
+    CHECK(map.sector(hall).floor.slope == Slope{.hinge = WallId{5}, .gradient = 0.5F});
+    CHECK(std::abs(map.floor_height({.sector = hall, .point = {.x = 1.5F, .y = 3.0F}}) - 0.5F) <
+          tolerance);
+    CHECK(std::abs(map.floor_height({.sector = hall, .point = {.x = 3.0F, .y = 1.0F}}) + 0.5F) <
+          tolerance);
+    CHECK(!map.contains({.sector = hall, .point = {.x = 1.5F, .y = 3.0F, .z = 0.4F}}));
+    CHECK(map.contains({.sector = hall, .point = {.x = 1.5F, .y = 3.0F, .z = 0.6F}}));
+    CHECK(!map.contains({.sector = hall, .point = {.x = 1.5F, .y = 1.5F, .z = 1.0F}}));
+    // The pillar's west wall runs north from (1, 1), where the floor is at -0.5 m, to (1, 2).
+    CHECK(same_polygon(map.face(WallId{4}).whole, {
+                                                      {.x = 1.0F, .y = 1.0F, .z = -0.5F},
+                                                      {.x = 1.0F, .y = 1.0F, .z = 3.0F},
+                                                      {.x = 1.0F, .y = 2.0F, .z = 3.0F},
+                                                      {.x = 1.0F, .y = 2.0F, .z = 0.0F},
+                                                  }));
+}
+
+TEST_CASE("the openings into a dais whose floor slopes follow its slope along the inner loop",
+          "[world]") {
+    // The dais's floor rises northward from 0.5 m along its south wall.
+    auto description = dais_map();
+    description.sectors.at(1).floor.slope =
+        SlopeDescription{.hinge = "dais-south", .gradient = 0.25F};
+    const auto map = make_map(description);
+
+    CHECK(map.opening(WallId{5}, {.x = 1.5F, .y = 2.0F}) == Opening{.bottom = 0.75F, .top = 3.0F});
+    // The hall's side of the dais's west wall runs north from (1, 1), and its lower strip rises
+    // with the dais's floor.
+    CHECK(same_polygon(map.face(WallId{4}).lower, {
+                                                      {.x = 1.0F, .y = 1.0F, .z = 0.0F},
+                                                      {.x = 1.0F, .y = 1.0F, .z = 0.5F},
+                                                      {.x = 1.0F, .y = 2.0F, .z = 0.75F},
+                                                      {.x = 1.0F, .y = 2.0F, .z = 0.0F},
+                                                  }));
+}

@@ -250,3 +250,20 @@ TEST_CASE("a sector reaching out of another's hole, or round it, overlaps it", "
         rectangle("hall", {.x = 1.0F, .y = 1.0F}, {.x = 7.0F, .y = 7.0F}),
     })));
 }
+
+TEST_CASE("a bridge over another sector's hole and its edge overlaps it only where they share "
+          "height outside the hole",
+          "[world]") {
+    // The yard's ceiling falls northward from 4.5 m at y = 3, over the hole, to 3 m at the hole's
+    // north edge and 2.5 m at the bridge's far end.
+    auto yard = yard_around_hole();
+    yard.loops.at(0).at(0).id = "yard-south";
+    yard.ceiling.height = 6.0F;
+    yard.ceiling.slope = wulfhilde::SlopeDescription{.hinge = "yard-south", .gradient = -0.5F};
+    const auto bridge = [](float floor) {
+        return rectangle("bridge", {.x = 3.0F, .y = 3.0F}, {.x = 5.0F, .y = 7.0F}, floor, 8.0F);
+    };
+
+    CHECK(apart(map_of({yard, bridge(3.5F)})));
+    CHECK(overlap(map_of({yard, bridge(2.8F)})));
+}
