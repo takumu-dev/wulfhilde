@@ -1,0 +1,3 @@
+loader_only/inner_loops.map.json:18:11: the wall crosses or touches /sectors/0/loops/0/1, a wall of another loop of its sector (/sectors/0/loops/1/1)
+loader_only/inner_loops.map.json:20:11: the wall crosses or touches /sectors/0/loops/0/1, a wall of another loop of its sector (/sectors/0/loops/1/3)
+loader_only/inner_loops.map.json:22:9: the inner loop runs anticlockwise seen from above, but must run clockwise (/sectors/0/loops/2)

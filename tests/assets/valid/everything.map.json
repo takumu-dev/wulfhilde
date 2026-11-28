@@ -28,6 +28,12 @@
           },
           { "start": [4, 4], "surface": { "material": "brick" } },
           { "start": [0, 4], "surface": { "material": "stone/floor" } }
+        ],
+        [
+          { "start": [1, 1], "surface": { "material": "brick" } },
+          { "start": [1, 2], "surface": { "material": "brick" } },
+          { "start": [2, 2], "surface": { "material": "brick" } },
+          { "start": [2, 1], "surface": { "material": "brick" } }
         ]
       ],
       "properties": {

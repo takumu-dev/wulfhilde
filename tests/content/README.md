@@ -62,14 +62,22 @@ under a ceiling 2 m up that leaves an upper strip on either side, leads into the
 hall's west wall between y = 1 and 3, behind the start, is the high step, a sector 0.6 m up; and
 through the south wall, to the start's right, the low passage, under a ceiling 1.6 m up.
 
+Up the arm along Y stand two inner loops of the hall, either side of the way from the start to the
+gallery's doorway. On the right, a pillar 0.6 m square from (3, 6) to (3.6, 6.6) is a solid inner
+loop. On the left, the dais, a sector 1 m by 2 m from (0.4, 7) to (1.4, 9), 0.3 m up, lies inside
+an inner loop whose four walls are the sides of portals into it, each with a lower strip for its
+rim. The grids of the walls round each run on from wall to wall, as the hall's do.
+
 - **Cases**: a concave sector, which no convex piece needs to be cut from; walls that run to the
   right from their starts as they are seen from inside, with height as v; floors and ceilings along
   X and Y, so the ceiling's grid reads mirrored from below; a surface's offset, scale and
   rotation; sectors beyond wall portals, seen and walked into through their openings; steps the
-  player walks up and down, a step too high and a passage too low.
+  player walks up and down, a step too high and a passage too low; a sector with holes in it, one
+  round a pillar and one round a dais reached through an inner loop of portals.
 - **Cameras**: `mapping`, from the far end of the arm along X back toward the corner where the arm
   along Y opens, showing both split sides of the arm and their strips, the floor and the ceiling;
-  `stairs`, from the arm along X up the stair onto the ledge, with the doorway beside it.
+  `stairs`, from the arm along X up the stair onto the ledge, with the doorway beside it; `holes`,
+  from the foot of the arm along Y up it, to the dais on the left and the pillar on the right.
 - **Benchmark walk**: `tour`, 19.5 s: down the arm along X to where `mapping` stands, back down
   it, up the arm along Y and through the doorway into the gallery, across into the bay and back,
   then back through the doorway to the start, facing as the start faces.
@@ -80,7 +88,9 @@ through the south wall, to the start's right, the low passage, under a ceiling 1
   without a hitch; from the bay, the upper strip shows above the opening into the gallery. The
   player walks up the stair onto the ledge and back down without stopping, the eye easing over
   each step rather than jumping, and walks through the doorway into the nook; the high step and the
-  low passage stop the player.
+  low passage stop the player. The floor and the ceiling show no seam round the pillar or the dais,
+  whose floor and ceiling meet the hall's grids; the player slides round the pillar without
+  snagging, and steps up onto the dais from any side and back down.
 
 ### `overlap`
 

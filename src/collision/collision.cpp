@@ -442,7 +442,9 @@ struct Strip {
 
 /// Adds the contacts of the strips of a side of a portal in a sector the body reaches, unless the
 /// body passes them, and reaches the sector beyond if the body comes through its opening, unless
-/// it is reached already.
+/// it is reached already. A sector reached through one opening may lie beyond another beside it,
+/// as a raised sector does beyond each wall of the inner loop around it, so each opening's strips
+/// are tested all the same.
 ///
 /// The edge of a strip along the opening is the edge on the portal's plane of the floor or the
 /// ceiling beyond, so a cap reaching past the plane meets that surface there, and is pushed along
@@ -452,8 +454,7 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
     const auto& wall = map.wall(id);
     const auto& link = wall.link;
     const auto opening = map.opening(id);
-    if (!link || !opening ||
-        std::ranges::contains(reached, map.wall(link->wall).sector, &Reach::sector)) {
+    if (!link || !opening) {
         return;
     }
     const auto& sector = map.sector(wall.sector);
@@ -473,8 +474,10 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
         }
     }
 
+    const auto beyond = map.wall(link->wall).sector;
     const auto share = clip_axis(reach.share, opening->bottom, opening->top);
-    if (!share || opening->bottom >= opening->top) {
+    if (!share || opening->bottom >= opening->top ||
+        std::ranges::contains(reached, beyond, &Reach::sector)) {
         return;
     }
     Nearest nearest;
@@ -489,7 +492,7 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
         auto through = reach.through;
         through.push_back(id);
         reached.push_back({
-            .sector = map.wall(link->wall).sector,
+            .sector = beyond,
             .through = std::move(through),
             .share = *share,
         });
