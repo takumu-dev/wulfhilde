@@ -97,32 +97,38 @@ FirstReferences first_references(const Map& map) {
     return references;
 }
 
-/// Reports each surface of a map that sets nits on a material that doesn't emit, at its nits in the
-/// map, in the order of the map's file. A strip that takes its wall's surface is the wall's surface,
-/// and isn't reported again. A material that couldn't be loaded has problems of its own already.
+/// Reports a surface's nits if its material loaded and doesn't emit, at the pointer of the nits in
+/// the map, which `pointer` gives. A material that couldn't be loaded has problems of its own
+/// already.
+template <typename Pointer>
+void check_surface_nits(const Map& map, const std::vector<std::optional<Material>>& materials,
+                        const Surface& surface, const Pointer& pointer,
+                        std::vector<AssetProblem>& problems) {
+    const auto& material = materials.at(surface.material.index());
+    if (!surface.nits || !material || material->emission) {
+        return;
+    }
+    problems.push_back({
+        .code = AssetProblemCode::nits_without_emission,
+        .message = std::format("the surface sets nits, but its material {:?} doesn't emit",
+                               map.materials().subspan(surface.material.index(), 1).front()),
+        .pointer = pointer(),
+    });
+}
+
+/// Reports each surface of a map that sets nits on a material that doesn't emit, in the order of
+/// the map's file. A strip that takes its wall's surface is the wall's surface, and isn't reported
+/// again.
 void check_nits(const Map& map, const std::vector<std::optional<Material>>& materials,
                 std::vector<AssetProblem>& problems) {
-    const auto check = [&](const Surface& surface, auto pointer) {
-        if (!surface.nits) {
-            return;
-        }
-        const auto& material = materials.at(surface.material.index());
-        if (material && !material->emission) {
-            problems.push_back({
-                .code = AssetProblemCode::nits_without_emission,
-                .message = std::format("the surface sets nits, but its material {:?} doesn't emit",
-                                       map.materials().subspan(surface.material.index(), 1).front()),
-                .pointer = pointer(),
-            });
-        }
-    };
     for (std::size_t sector_index = 0; const auto& sector : map.sectors()) {
-        for (const auto& [cover, member] :
-             {std::pair{&sector.floor.cover, "floor"}, std::pair{&sector.ceiling.cover, "ceiling"}}) {
+        for (const auto& [cover, member] : {std::pair{&sector.floor.cover, "floor"},
+                                            std::pair{&sector.ceiling.cover, "ceiling"}}) {
             if (const auto* const surface = std::get_if<Surface>(cover)) {
-                check(*surface, [sector_index, member] {
-                    return std::format("/sectors/{}/{}/nits", sector_index, member);
-                });
+                check_surface_nits(
+                    map, materials, *surface,
+                    [&] { return std::format("/sectors/{}/{}/nits", sector_index, member); },
+                    problems);
             }
         }
         for (std::size_t loop_index = 0; const auto& loop : sector.loops) {
@@ -133,13 +139,15 @@ void check_nits(const Map& map, const std::vector<std::optional<Material>>& mate
                          std::pair{&wall.upper, "upper"},
                          std::pair{&wall.lower, "lower"},
                      }) {
-                    if (surface != &wall.surface && *surface == wall.surface) {
-                        continue;
+                    if (surface == &wall.surface || *surface != wall.surface) {
+                        check_surface_nits(
+                            map, materials, *surface,
+                            [&] {
+                                return std::format("/sectors/{}/loops/{}/{}/{}/nits", sector_index,
+                                                   loop_index, wall_index, member);
+                            },
+                            problems);
                     }
-                    check(*surface, [sector_index, loop_index, wall_index, member] {
-                        return std::format("/sectors/{}/loops/{}/{}/{}/nits", sector_index,
-                                           loop_index, wall_index, member);
-                    });
                 }
                 ++wall_index;
             }
@@ -585,9 +593,8 @@ std::expected<MapAssets, AssetError> load_map_assets(const ContentRoot& root, co
     }
     return MapAssets{
         .materials = std::move(materials) | std::views::as_rvalue |
-                     std::views::transform([](std::optional<Material>&& material) {
-                         return *std::move(material);
-                     }) |
+                     std::views::transform(
+                         [](std::optional<Material>&& material) { return *std::move(material); }) |
                      std::ranges::to<std::vector>(),
         .backdrops = std::move(backdrops),
         .images = std::move(textures).take_images(),

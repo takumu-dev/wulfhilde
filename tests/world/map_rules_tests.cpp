@@ -236,8 +236,7 @@ TEST_CASE("a sky may be of no nits at all", "[world]") {
     CHECK(problems_in(description).empty());
 }
 
-TEST_CASE("a surface's nits are a problem below 0, or if they aren't a finite number",
-          "[world]") {
+TEST_CASE("a surface's nits are a problem below 0, or if they aren't a finite number", "[world]") {
     for (const float nits :
          {-0.5F, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
         CAPTURE(nits);
@@ -251,8 +250,7 @@ TEST_CASE("a surface's nits are a problem below 0, or if they aren't a finite nu
         CHECK(problems_in(description) ==
               std::vector<Problem>{
                   {MapProblemCode::light_level_out_of_range, "/sectors/0/floor/nits"},
-                  {MapProblemCode::light_level_out_of_range,
-                   "/sectors/0/loops/0/3/surface/nits"},
+                  {MapProblemCode::light_level_out_of_range, "/sectors/0/loops/0/3/surface/nits"},
                   {MapProblemCode::light_level_out_of_range, "/sectors/0/loops/0/3/upper/nits"},
                   {MapProblemCode::light_level_out_of_range, "/sectors/0/loops/0/3/lower/nits"},
               });
