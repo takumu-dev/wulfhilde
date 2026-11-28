@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -37,6 +38,19 @@ wulfhilde::SectorDescription rectangle(std::string id, Vector2 lowest, Vector2 h
                               highest,
                               {.x = lowest.x, .y = highest.y},
                           });
+}
+
+// Which of a rectangle's walls a slope is hinged on: they run anticlockwise from its lowest corner.
+enum class Side : std::uint8_t { south, east, north, west };
+
+// A sector with its ceiling, or its floor, sloped from one of its walls at a gradient.
+wulfhilde::SectorDescription sloped(wulfhilde::SectorDescription sector, Side hinge, bool ceiling,
+                                    float gradient) {
+    auto& wall = sector.loops.at(0).at(std::to_underlying(hinge));
+    wall.id = sector.id + "-hinge";
+    (ceiling ? sector.ceiling : sector.floor).slope =
+        wulfhilde::SlopeDescription{.hinge = *wall.id, .gradient = gradient};
+    return sector;
 }
 
 // A map of the sectors, where the player starts at the first point of the first's loop.
@@ -161,4 +175,39 @@ TEST_CASE("a map lists the sectors overlapping each of its sectors in order of t
     CHECK(overlapping(map, SectorId{1}) == std::vector{SectorId{0}});
     CHECK(overlapping(map, SectorId{2}).empty());
     CHECK(overlapping(map, SectorId{3}) == std::vector{SectorId{0}});
+}
+
+TEST_CASE("a bridge over a passage whose ceiling slopes overlaps it only where the ceiling rises "
+          "above the bridge's floor within the area they share seen from above",
+          "[world]") {
+    const auto bridge =
+        rectangle("bridge", {.x = 4.0F, .y = 0.0F}, {.x = 6.0F, .y = 6.0F}, 3.0F, 6.0F);
+    const auto passage = [](float ceiling, Side hinge, float gradient) {
+        return sloped(
+            rectangle("passage", {.x = 0.0F, .y = 2.0F}, {.x = 10.0F, .y = 4.0F}, 0.0F, ceiling),
+            hinge, true, gradient);
+    };
+
+    // Across the passage, the ceiling rises from 2 m to 2.9 m, under the bridge's floor.
+    CHECK(apart(map_of({passage(2.0F, Side::south, 0.45F), bridge})));
+    // Along it, the ceiling rises from 2.6 m to 3.4 m beneath the bridge, into it.
+    CHECK(overlap(map_of({passage(1.0F, Side::west, 0.4F), bridge})));
+    // Along it, the ceiling rises from 2.2 m to 2.8 m beneath the bridge, and above 3 m only
+    // beyond it.
+    CHECK(apart(map_of({passage(1.0F, Side::west, 0.3F), bridge})));
+}
+
+TEST_CASE("a bridge whose floor slopes down into a passage beneath it overlaps it", "[world]") {
+    const auto passage =
+        rectangle("passage", {.x = 0.0F, .y = 2.0F}, {.x = 10.0F, .y = 4.0F}, 0.0F, 3.0F);
+    const auto bridge = [](float gradient) {
+        return sloped(
+            rectangle("bridge", {.x = 4.0F, .y = 0.0F}, {.x = 6.0F, .y = 6.0F}, 4.0F, 8.0F),
+            Side::south, false, gradient);
+    };
+
+    // The bridge's floor falls from 3 m to 2 m over the passage.
+    CHECK(overlap(map_of({passage, bridge(-0.5F)})));
+    // It falls only to 3 m, the passage's ceiling, at the passage's far wall.
+    CHECK(apart(map_of({passage, bridge(-0.25F)})));
 }
