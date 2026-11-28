@@ -13,7 +13,8 @@
         "offset": [0.25, 0.5],
         "scale": [2, 3],
         "rotation": 90,
-        "nits": 12.5
+        "nits": 12.5,
+        "slope": { "hinge": "hall-east", "gradient": 0.25 }
       },
       "ceiling": { "height": 3, "material": "plaster" },
       "ambient": { "color": [1, 0.5, 0.25], "lux": 5 },
@@ -45,7 +46,11 @@
     {
       "id": "closet",
       "floor": { "height": 0, "sky": { "backdrop": "sky/abyss" } },
-      "ceiling": { "height": 2.5, "sky": { "backdrop": "sky/dusk", "nits": 50 } },
+      "ceiling": {
+        "height": 2.5,
+        "sky": { "backdrop": "sky/dusk", "nits": 50 },
+        "slope": { "hinge": "closet-west", "gradient": -0.5 }
+      },
       "loops": [
         [
           { "start": [4, 0], "surface": { "material": "brick" } },

@@ -20,8 +20,10 @@ wulfhilde_add_module(world
         include/wulfhilde/world/text_position.hpp
         include/wulfhilde/world/trace.hpp
         include/wulfhilde/world/wall.hpp
+        include/wulfhilde/world/wall_face.hpp
     SOURCES
         asset_path.cpp
+        height_plane.hpp
         map.cpp
         map_checks.cpp
         map_checks.hpp

@@ -19,8 +19,8 @@ public struct ViewShading {
     // The main view's faces away from every point, with a normal of zero and a distance of -1.
     public Plane clip;
     // The corners of the opening the view is seen through, in order round it, in the coordinates
-    // of the view it is seen from.
-    public float3 opening[4];
+    // of the view it is seen from, the last repeated after them where it has fewer than six.
+    public float3 opening[6];
     // Whether the opening's plane lies so near the eye that the near plane would take away some of
     // what the screen shows of it, which is then drawn as near as depth goes.
     public uint opening_at_eye;

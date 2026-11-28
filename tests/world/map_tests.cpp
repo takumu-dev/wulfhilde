@@ -198,7 +198,8 @@ TEST_CASE("an inner loop's walls may be sides of portals into the sector inside 
     CHECK(map.wall(WallId{4}).link == PortalLink{.portal = PortalId{0}, .wall = WallId{11}});
     CHECK(map.wall(WallId{11}).link == PortalLink{.portal = PortalId{0}, .wall = WallId{4}});
     CHECK(map.wall(WallId{7}).link == PortalLink{.portal = PortalId{3}, .wall = WallId{8}});
-    CHECK(map.opening(WallId{5}) == wulfhilde::Opening{.bottom = 0.5F, .top = 3.0F});
+    CHECK(map.opening(WallId{5}, {.x = 1.5F, .y = 2.0F}) ==
+          wulfhilde::Opening{.bottom = 0.5F, .top = 3.0F});
 }
 
 TEST_CASE("a sector's ambient light is its own, or else the map's, or else black", "[world]") {

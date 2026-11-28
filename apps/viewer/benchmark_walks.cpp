@@ -83,12 +83,27 @@ constexpr std::array overlap_tour{
     BenchmarkStep{.actions = forward, .ticks = ticks(2.5)},
 };
 
+/// The tour of `slopes`, 10.5 s long: east across the hall in line with the middle of the ramp,
+/// north-east up the ramp onto the landing, back down into the hall, and west into the sector whose
+/// floor and ceiling slope different ways, turning to look back.
+constexpr std::array slopes_tour{
+    BenchmarkStep{.actions = forward, .ticks = ticks(0.5)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(45.0F), .ticks = ticks(0.5)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.25)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.0)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.25)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(-45.0F), .ticks = ticks(0.5)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.5)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.0)},
+};
+
 /// Every benchmark walk, by its map, in the order of the maps and then of their walks.
 constexpr std::array walks{
     BenchmarkWalk{.map = "lights", .name = "tour", .steps = lights_tour},
     BenchmarkWalk{.map = "outdoors", .name = "tour", .steps = outdoors_tour},
     BenchmarkWalk{.map = "overlap", .name = "tour", .steps = overlap_tour},
     BenchmarkWalk{.map = "sectors", .name = "tour", .steps = sectors_tour},
+    BenchmarkWalk{.map = "slopes", .name = "tour", .steps = slopes_tour},
 };
 
 /// Joins names as prose: "a", "a or b", "a, b or c".

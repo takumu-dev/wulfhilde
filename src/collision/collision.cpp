@@ -9,9 +9,11 @@
 #include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ids.hpp>
+#include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/opening.hpp>
 #include <wulfhilde/world/surface_ref.hpp>
+#include <wulfhilde/world/wall_face.hpp>
 
 #include <algorithm>
 #include <array>
@@ -19,6 +21,7 @@
 #include <cstddef>
 #include <iterator>
 #include <optional>
+#include <ranges>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -284,33 +287,38 @@ struct NearestPoints {
     return {.on_axis = a + (first * s), .on_other = c + (second * t)};
 }
 
-/// A wall, or part of one, as an upright rectangle that faces into its sector.
-struct Panel {
-    Vector2 start{};     ///< Where it starts, seen from above.
-    Vector2 end{};       ///< Where it ends, seen from above.
-    float bottom = 0.0F; ///< The height of its bottom.
-    float top = 0.0F;    ///< The height of its top.
-};
-
-/// Returns the contact of the capsule with a panel of a wall, met from its sector's side only.
+/// Returns the contact of the capsule with a part of a wall, a convex polygon in the wall's upright
+/// plane whose corners run anticlockwise as the wall is seen from its sector, met from that side
+/// only.
 ///
-/// \param nearest Set to the nearest points of the axis and the panel, when they touch.
-[[nodiscard]] std::optional<Contact> panel_contact(const Axis& axis, float radius,
-                                                   const SurfaceRef& surface, const Panel& panel,
-                                                   Nearest& nearest) {
-    const auto inward = inward_of(panel.start, panel.end);
-    const auto a_side = dot(plan(axis.bottom) - panel.start, inward);
-    const auto b_side = dot(plan(axis.top) - panel.start, inward);
+/// \param nearest Set to the nearest points of the axis and the part, when they touch.
+[[nodiscard]] std::optional<Contact>
+part_contact(const Axis& axis, float radius, const SurfaceRef& surface, const Vector2& start,
+             const Vector2& end, const std::vector<Vector3>& corners, Nearest& nearest) {
+    const auto inward = inward_of(start, end);
+    const auto a_side = dot(plan(axis.bottom) - start, inward);
+    const auto b_side = dot(plan(axis.top) - start, inward);
     if (a_side < 0.0F && b_side < 0.0F) {
         return std::nullopt;
     }
     const Vector3 normal{.x = inward.x, .y = inward.y};
-    const auto run = panel.end - panel.start;
-    const auto run_squared = length_squared(run);
-    // Whether a point of the panel's plane lies within the panel.
+    const auto along_unit = normalize(end - start);
+    // Where a point of the wall's plane lies on it: how far along it, and how high.
+    const auto on_wall = [&](const Vector3& point) {
+        return Vector2{.x = dot(plan(point) - start, along_unit), .y = point.z};
+    };
+    // Whether a point of the wall's plane lies within the part, whose corners run clockwise as
+    // along and height run, with the part to the right of each edge.
     const auto inside = [&](const Vector3& point) {
-        const auto along = dot(plan(point) - panel.start, run) / run_squared;
-        return 0.0F <= along && along <= 1.0F && panel.bottom <= point.z && point.z <= panel.top;
+        const auto p = on_wall(point);
+        for (std::size_t i = 0; i < corners.size(); ++i) {
+            const auto from = on_wall(corners.at(i));
+            const auto to = on_wall(corners.at((i + 1) % corners.size()));
+            if (perp_dot(to - from, p - from) > 0.0F) {
+                return false;
+            }
+        }
+        return true;
     };
     if ((a_side <= 0.0F) != (b_side <= 0.0F)) {
         const auto crossing =
@@ -325,31 +333,23 @@ struct Panel {
         }
     }
 
-    const auto corner = [](const Vector2& point, float height) {
-        return Vector3{.x = point.x, .y = point.y, .z = height};
-    };
-    const std::array edges{
-        std::pair{corner(panel.start, panel.bottom), corner(panel.end, panel.bottom)},
-        std::pair{corner(panel.start, panel.top), corner(panel.end, panel.top)},
-        std::pair{corner(panel.start, panel.bottom), corner(panel.start, panel.top)},
-        std::pair{corner(panel.end, panel.bottom), corner(panel.end, panel.top)},
-    };
-    // The nearest points of the axis and the panel's edges, or of an end of the axis and the
-    // point of the panel it lies square to.
-    auto best = nearest_points(axis.bottom, axis.top, edges.front().first, edges.front().second);
+    // The nearest points of the axis and the part's edges, or of an end of the axis and the point
+    // of the part it lies square to.
+    auto best = nearest_points(axis.bottom, axis.top, corners.front(), corners.at(1));
     const auto consider = [&best](const Nearest& candidate) {
         if (length_squared(candidate.on_axis - candidate.on_other) <
             length_squared(best.on_axis - best.on_other)) {
             best = candidate;
         }
     };
-    for (const auto& [from, to] : edges) {
-        consider(nearest_points(axis.bottom, axis.top, from, to));
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        consider(nearest_points(axis.bottom, axis.top, corners.at(i),
+                                corners.at((i + 1) % corners.size())));
     }
-    for (const auto& [end, side] : {std::pair{axis.bottom, a_side}, std::pair{axis.top, b_side}}) {
-        const auto onto = end - (normal * side);
+    for (const auto& [tip, side] : {std::pair{axis.bottom, a_side}, std::pair{axis.top, b_side}}) {
+        const auto onto = tip - (normal * side);
         if (inside(onto)) {
-            consider({.on_axis = end, .on_other = onto});
+            consider({.on_axis = tip, .on_other = onto});
         }
     }
     const auto apart = best.on_axis - best.on_other;
@@ -394,7 +394,7 @@ struct Reach {
         const auto run = wall.end - wall.start;
         const auto slack = skin / length(run);
         const auto along = dot(plan(crossing) - wall.start, run) / length_squared(run);
-        const auto opening = map.opening(id).value_or(Opening{});
+        const auto opening = map.opening(id, plan(crossing)).value_or(Opening{});
         return -slack <= along && along <= 1.0F + slack && opening.bottom - skin <= crossing.z &&
                crossing.z <= opening.top + skin;
     });
@@ -410,12 +410,34 @@ void add_contact(const Map& map, const Reach& reach, const std::optional<Contact
     }
 }
 
-/// A strip of a side of a portal, from the sector's floor or ceiling to the opening's edge.
+/// A strip of a side of a portal at a point of its wall, from the sector's floor or ceiling to the
+/// opening's edge.
 struct Strip {
     float bottom = 0.0F; ///< The height of its bottom.
     float top = 0.0F;    ///< The height of its top.
     float edge = 0.0F;   ///< The height of its edge along the opening: its top or its bottom.
 };
+
+/// Returns a strip of a side of a portal, and the opening beside it, at a point of its wall.
+[[nodiscard]] std::pair<Strip, Opening> strip_at(const Map& map, WallId id, bool lower,
+                                                 const Vector3& point) {
+    const auto opening = map.opening(id, plan(point)).value_or(Opening{});
+    const Location on_wall{.sector = map.wall(id).sector, .point = point};
+    if (lower) {
+        return {
+            Strip{
+                .bottom = map.floor_height(on_wall),
+                .top = opening.bottom,
+                .edge = opening.bottom,
+            },
+            opening,
+        };
+    }
+    return {
+        Strip{.bottom = opening.top, .top = map.ceiling_height(on_wall), .edge = opening.top},
+        opening,
+    };
+}
 
 /// Tells whether a body passes a strip beside an opening that it touches, by Build's rules on a
 /// capsule, with heights measured along its gravity up at the point of the strip it touches.
@@ -453,41 +475,39 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
                    WallId id, std::vector<Reach>& reached, std::vector<Contact>& contacts) {
     const auto& wall = map.wall(id);
     const auto& link = wall.link;
-    const auto opening = map.opening(id);
-    if (!link || !opening) {
+    if (!link) {
         return;
     }
-    const auto& sector = map.sector(wall.sector);
-    for (const auto& strip : {
-             Strip{.bottom = sector.floor.height, .top = opening->bottom, .edge = opening->bottom},
-             Strip{.bottom = opening->top, .top = sector.ceiling.height, .edge = opening->top},
-         }) {
-        if (strip.bottom < strip.top) {
-            Nearest nearest;
-            const auto contact = panel_contact(
-                reach.share, shape.radius, id,
-                {.start = wall.start, .end = wall.end, .bottom = strip.bottom, .top = strip.top},
-                nearest);
-            if (contact && !passes(shape, pose, *opening, strip, nearest)) {
-                add_contact(map, reach, contact, nearest, contacts);
-            }
+    const auto face = map.face(id);
+    for (const auto& [corners, lower] :
+         {std::pair{&face.lower, true}, std::pair{&face.upper, false}}) {
+        if (corners->empty()) {
+            continue;
+        }
+        Nearest nearest;
+        const auto contact =
+            part_contact(reach.share, shape.radius, id, wall.start, wall.end, *corners, nearest);
+        if (!contact) {
+            continue;
+        }
+        const auto [strip, opening] = strip_at(map, id, lower, nearest.on_other);
+        if (!passes(shape, pose, opening, strip, nearest)) {
+            add_contact(map, reach, contact, nearest, contacts);
         }
     }
 
+    if (face.opening.empty()) {
+        return;
+    }
     const auto beyond = map.wall(link->wall).sector;
-    const auto share = clip_axis(reach.share, opening->bottom, opening->top);
-    if (!share || opening->bottom >= opening->top ||
-        std::ranges::contains(reached, beyond, &Reach::sector)) {
+    const auto [lowest, highest] =
+        std::ranges::minmax(face.opening | std::views::transform(&Vector3::z));
+    const auto share = clip_axis(reach.share, lowest, highest);
+    if (!share || std::ranges::contains(reached, beyond, &Reach::sector)) {
         return;
     }
     Nearest nearest;
-    const Panel open{
-        .start = wall.start,
-        .end = wall.end,
-        .bottom = opening->bottom,
-        .top = opening->top,
-    };
-    if (panel_contact(*share, shape.radius, id, open, nearest) &&
+    if (part_contact(*share, shape.radius, id, wall.start, wall.end, face.opening, nearest) &&
         comes_through(map, reach.through, nearest.on_axis, nearest.on_other)) {
         auto through = reach.through;
         through.push_back(id);
@@ -497,6 +517,33 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
             .share = *share,
         });
     }
+}
+
+/// Returns the contact of the capsule with a sector's floor or ceiling, a plane that carries on
+/// beyond its walls, if it touches it, along with the nearest points of the axis and the plane.
+[[nodiscard]] std::optional<Contact> plane_contact(const Map& map, const Axis& axis, float radius,
+                                                   SectorId sector, bool floor, Nearest& nearest) {
+    const auto normal = floor ? map.floor_normal(sector) : map.ceiling_normal(sector);
+    // How far a point lies in front of the plane, square to it: its height above the floor or
+    // below the ceiling, shortened by the plane's tilt.
+    const auto in_front = [&](const Vector3& point) {
+        const Location at{.sector = sector, .point = point};
+        const auto gap = floor ? point.z - map.floor_height(at) : map.ceiling_height(at) - point.z;
+        return gap * std::abs(normal.z);
+    };
+    const auto bottom = in_front(axis.bottom);
+    const auto top = in_front(axis.top);
+    const auto& end = bottom <= top ? axis.bottom : axis.top;
+    const auto distance = std::min(bottom, top);
+    if (radius - distance <= -skin) {
+        return std::nullopt;
+    }
+    nearest = {.on_axis = end, .on_other = end - (normal * distance)};
+    return Contact{
+        .surface = floor ? SurfaceRef{SectorFloor{sector}} : SurfaceRef{SectorCeiling{sector}},
+        .normal = normal,
+        .depth = radius - distance,
+    };
 }
 
 /// Returns every surface that a body overlaps or touches: those of its centre's sector, and those
@@ -509,6 +556,17 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
     // Each sector is tested once, through the first openings it is reached through.
     for (std::size_t next = 0; next < reached.size(); ++next) {
         const auto reach = reached.at(next);
+        // A floor or ceiling beyond an opening touches the body only where the body comes through
+        // to it, which a flat one's point nearest the body, straight above or below it, never is.
+        // The point a slope rising away from the opening comes nearest the body may be.
+        if (next > 0) {
+            for (const auto floor : {true, false}) {
+                Nearest nearest;
+                const auto contact =
+                    plane_contact(map, reach.share, shape.radius, reach.sector, floor, nearest);
+                add_contact(map, reach, contact, nearest, contacts);
+            }
+        }
         for (const auto& loop : map.sector(reach.sector).loops) {
             for (const auto id : loop) {
                 const auto& wall = map.wall(id);
@@ -524,21 +582,12 @@ void reach_through(const Map& map, const BodyShape& shape, const Pose& pose, con
         }
     }
 
-    const auto floor = map.floor_height(pose.centre) + shape.radius;
-    if (const auto depth = floor - std::min(axis.bottom.z, axis.top.z); depth > -skin) {
-        contacts.push_back({
-            .surface = SectorFloor{pose.centre.sector},
-            .normal = {.z = 1.0F},
-            .depth = depth,
-        });
-    }
-    const auto ceiling = map.ceiling_height(pose.centre) - shape.radius;
-    if (const auto depth = std::max(axis.bottom.z, axis.top.z) - ceiling; depth > -skin) {
-        contacts.push_back({
-            .surface = SectorCeiling{pose.centre.sector},
-            .normal = {.z = -1.0F},
-            .depth = depth,
-        });
+    for (const auto floor : {true, false}) {
+        Nearest nearest;
+        if (const auto contact =
+                plane_contact(map, axis, shape.radius, pose.centre.sector, floor, nearest)) {
+            contacts.push_back(*contact);
+        }
     }
     return contacts;
 }
@@ -548,16 +597,41 @@ void move_centre(const Map& map, Pose& pose, const Vector3& motion) {
     pose.centre = map.trace(pose.centre, motion).end;
 }
 
+/// Turns the contacts of a grounded body with surfaces too steep to be its ground, which face up
+/// along its gravity, into walls upright to its gravity, so that walking into such a slope stops
+/// the body, as a wall does, rather than lifting it off its ground or carrying it up the slope.
+///
+/// Each such contact's depth grows to what pushing the body out along its new normal takes: no more
+/// than the move across gravity that carried the body into it.
+void as_walls(std::vector<Contact>& contacts, const BodyShape& shape, const Pose& pose) {
+    for (auto& contact : contacts) {
+        const auto up = dot(contact.normal, pose.gravity_up);
+        const auto level = contact.normal - (pose.gravity_up * up);
+        const auto across = length(level);
+        if (up > 0.0F && across > 0.0F &&
+            angle_between(contact.normal, pose.gravity_up) >
+                shape.steepest_slope + slope_tolerance) {
+            contact.normal = level / across;
+            contact.depth /= across;
+        }
+    }
+}
+
 /// Pushes a body out of the surfaces it overlaps, as far as the overlaps allow, returning the
-/// contacts it pushed the body out of.
+/// contacts it pushed the body out of. A grounded body is pushed out of slopes too steep for it as
+/// out of walls.
 ///
 /// The body may end a little clear of a contact it was pushed out of. A contact's plane stands in
 /// for a surface at the body as it was, and pushing the body off the edge of one turns the edge's
 /// normal as it goes, so the push runs past the point where it touches.
-[[nodiscard]] std::vector<Contact> push_out(const Map& map, const BodyShape& shape, Pose& pose) {
+[[nodiscard]] std::vector<Contact> push_out(const Map& map, const BodyShape& shape, Pose& pose,
+                                            bool grounded) {
     std::vector<Contact> pushed;
     for (std::size_t pass = 0; pass < push_out_passes; ++pass) {
-        const auto contacts = contacts_of(map, shape, pose);
+        auto contacts = contacts_of(map, shape, pose);
+        if (grounded) {
+            as_walls(contacts, shape, pose);
+        }
         std::ranges::copy_if(contacts, std::back_inserter(pushed),
                              [](const Contact& contact) { return contact.depth > 0.0F; });
         // Each overlap is a plane the centre must lie in front of. Sweeping over them, each
@@ -602,7 +676,7 @@ void move_centre(const Map& map, Pose& pose, const Vector3& motion) {
 [[nodiscard]] std::optional<float> snap_down(const Map& map, const BodyShape& shape, Pose& pose) {
     auto lowered = pose;
     move_centre(map, lowered, pose.gravity_up * -shape.step_height);
-    std::ignore = push_out(map, shape, lowered);
+    std::ignore = push_out(map, shape, lowered, true);
     if (lowered.centre.sector != pose.centre.sector ||
         !ground_among(contacts_of(map, shape, lowered), shape, lowered)) {
         return std::nullopt;
@@ -671,7 +745,7 @@ Movement move(const Map& map, const BodyShape& shape, const Pose& pose, const Ve
         const auto from = movement.pose.centre.sector;
         move_centre(map, movement.pose, movement.velocity * substep_seconds);
         const auto crossed_to = movement.pose.centre;
-        const auto pushed = push_out(map, shape, movement.pose);
+        const auto pushed = push_out(map, shape, movement.pose, grounded);
         // The floor under the centre decides the body's height, so a grounded body whose centre
         // crosses onto a higher floor is lifted onto it by the push-out, which is the step.
         if (grounded && crossed_to.sector != from &&
@@ -696,6 +770,9 @@ Movement move(const Map& map, const BodyShape& shape, const Pose& pose, const Ve
         }
         // What the body was pushed out of clips its velocity too, though it may now be clear of it.
         contacts.insert(contacts.end(), pushed.begin(), pushed.end());
+        if (grounded || movement.ground) {
+            as_walls(contacts, shape, movement.pose);
+        }
         movement.velocity = clip(movement.velocity, contacts);
     }
     return movement;
@@ -704,7 +781,7 @@ Movement move(const Map& map, const BodyShape& shape, const Pose& pose, const Ve
 std::optional<Pose> settle(const Map& map, const BodyShape& shape, const Pose& pose) {
     check_body(shape, pose);
     auto settled = pose;
-    std::ignore = push_out(map, shape, settled);
+    std::ignore = push_out(map, shape, settled, false);
     const auto overlaps =
         std::ranges::any_of(contacts_of(map, shape, settled),
                             [](const Contact& contact) { return contact.depth > fit_tolerance; });

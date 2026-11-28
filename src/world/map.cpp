@@ -1,10 +1,12 @@
 #include <wulfhilde/world/map.hpp>
 
+#include "height_plane.hpp"
 #include "map_checks.hpp"
 #include "overlap.hpp"
 #include "plan_geometry.hpp"
 #include <wulfhilde/core/assertion.hpp>
 #include <wulfhilde/core/narrow.hpp>
+#include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/ids.hpp>
@@ -20,11 +22,14 @@
 #include <wulfhilde/world/surface_ref.hpp>
 #include <wulfhilde/world/trace.hpp>
 #include <wulfhilde/world/wall.hpp>
+#include <wulfhilde/world/wall_face.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <iterator>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -72,13 +77,33 @@ using BackdropInterner = Interner<BackdropId>;
     };
 }
 
-/// Returns a floor or ceiling as a map holds it.
-[[nodiscard]] FloorOrCeiling make_floor_or_ceiling(MaterialInterner& materials,
-                                                   BackdropInterner& backdrops,
-                                                   FloorOrCeilingDescription description) {
+/// Returns the ID a wall of a sector's loops will have, by its id, given the ID of the sector's
+/// first wall. The checks have made sure that the loops have it.
+[[nodiscard]] WallId wall_of_loops(const std::vector<std::vector<WallDescription>>& loops,
+                                   std::size_t first, const std::string& id) {
+    const auto walls = loops | std::views::join;
+    const auto found = std::ranges::find(walls, std::optional(id), &WallDescription::id);
+    return WallId{narrow<std::uint32_t>(
+        first + static_cast<std::size_t>(std::ranges::distance(walls.begin(), found)))};
+}
+
+/// Returns a floor or ceiling of a sector as a map holds it, given the sector's loops and the ID
+/// of its first wall.
+[[nodiscard]] FloorOrCeiling
+make_floor_or_ceiling(MaterialInterner& materials, BackdropInterner& backdrops,
+                      const std::vector<std::vector<WallDescription>>& loops,
+                      std::size_t first_wall, FloorOrCeilingDescription description) {
+    std::optional<Slope> slope;
+    if (description.slope) {
+        slope = Slope{
+            .hinge = wall_of_loops(loops, first_wall, description.slope->hinge),
+            .gradient = description.slope->gradient,
+        };
+    }
     if (description.sky) {
         return {
             .height = description.height,
+            .slope = slope,
             .cover =
                 Sky{
                     .backdrop = backdrops.intern(std::move(description.sky->backdrop)),
@@ -88,6 +113,7 @@ using BackdropInterner = Interner<BackdropId>;
     }
     return {
         .height = description.height,
+        .slope = slope,
         .cover = make_surface(materials,
                               {
                                   .material = std::move(description.material),
@@ -97,6 +123,99 @@ using BackdropInterner = Interner<BackdropId>;
                                   .nits = description.nits,
                               }),
     };
+}
+
+/// Returns a floor or ceiling of a map as heights over the plan.
+[[nodiscard]] detail::HeightPlane plane_of(const Map& map, const FloorOrCeiling& floor_or_ceiling) {
+    return detail::plane_of(floor_or_ceiling, floor_or_ceiling.slope
+                                                  ? &map.wall(floor_or_ceiling.slope->hinge)
+                                                  : nullptr);
+}
+
+/// Returns the direction a floor or ceiling faces, of unit length: up for a floor and down for a
+/// ceiling, tilted by its slope.
+[[nodiscard]] Vector3 normal_of(const detail::HeightPlane& plane, double up) {
+    const auto x = -up * plane.gradient * plane.inward.x;
+    const auto y = -up * plane.gradient * plane.inward.y;
+    const auto length = std::sqrt((x * x) + (y * y) + 1.0);
+    return {
+        .x = static_cast<float>(x / length),
+        .y = static_cast<float>(y / length),
+        .z = static_cast<float>(up / length),
+    };
+}
+
+/// A point of a wall's upright plane: how far along the wall, from 0 at its start to 1 at its end,
+/// and its height.
+struct FacePoint {
+    double along = 0.0; ///< How far along the wall.
+    double z = 0.0;     ///< The height.
+};
+
+/// A floor or ceiling along a wall, as heights that run straight from the wall's start to its end.
+struct FaceLine {
+    double start = 0.0; ///< The height at the wall's start.
+    double end = 0.0;   ///< The height at the wall's end.
+
+    /// Returns how far a point lies above the line.
+    [[nodiscard]] double above(const FacePoint& point) const noexcept {
+        return point.z - (start + ((end - start) * point.along));
+    }
+};
+
+/// Returns the part of a convex polygon of a wall's plane above a line, or below it, keeping the
+/// order of its corners.
+[[nodiscard]] std::vector<FacePoint> clip_face(const std::vector<FacePoint>& polygon,
+                                               const FaceLine& line, bool keep_above) {
+    std::vector<FacePoint> kept;
+    const auto side = [&](const FacePoint& point) {
+        return keep_above ? line.above(point) : -line.above(point);
+    };
+    for (std::size_t i = 0; i < polygon.size(); ++i) {
+        const auto& from = polygon.at(i);
+        const auto& to = polygon.at((i + 1) % polygon.size());
+        const auto from_side = side(from);
+        const auto to_side = side(to);
+        if (from_side >= 0.0) {
+            kept.push_back(from);
+        }
+        if ((from_side > 0.0 && to_side < 0.0) || (from_side < 0.0 && to_side > 0.0)) {
+            const auto t = from_side / (from_side - to_side);
+            kept.push_back({
+                .along = from.along + ((to.along - from.along) * t),
+                .z = from.z + ((to.z - from.z) * t),
+            });
+        }
+    }
+    return kept;
+}
+
+/// Returns a polygon of a wall's plane as corners in its sector's coordinates, or none if it has
+/// no area.
+[[nodiscard]] std::vector<Vector3> face_corners(const std::vector<FacePoint>& polygon,
+                                                const detail::PlanPoint& start,
+                                                const detail::PlanPoint& end) {
+    auto twice_area = 0.0;
+    for (std::size_t i = 0; i < polygon.size(); ++i) {
+        const auto& a = polygon.at(i);
+        const auto& b = polygon.at((i + 1) % polygon.size());
+        twice_area += (a.along * b.z) - (b.along * a.z);
+    }
+    // The corners run clockwise as along and z run, which is anticlockwise seen from the sector,
+    // where the wall's start is on the right.
+    if (polygon.size() < 3 || twice_area >= 0.0) {
+        return {};
+    }
+    std::vector<Vector3> corners;
+    corners.reserve(polygon.size());
+    for (const auto& point : polygon) {
+        corners.push_back({
+            .x = static_cast<float>(start.x + ((end.x - start.x) * point.along)),
+            .y = static_cast<float>(start.y + ((end.y - start.y) * point.along)),
+            .z = static_cast<float>(point.z),
+        });
+    }
+    return corners;
 }
 
 /// The straight line a trace runs along, in double. Ordinary portals keep every sector in the same
@@ -133,12 +252,21 @@ struct TraceLine {
     return start_side / (start_side - finish_side);
 }
 
-/// Returns the sector beyond a wall that a trace reaching it at a height crosses into: the far
-/// sector of a side of a portal, if the height is within its opening, its edges included.
-[[nodiscard]] std::optional<SectorId> beyond_opening(const Map& map, WallId id, double height) {
+/// Returns the sector beyond a wall that a trace reaching it at a point of its line crosses into:
+/// the far sector of a side of a portal, if the point is within its opening, its edges included.
+[[nodiscard]] std::optional<SectorId> beyond_opening(const Map& map, WallId id,
+                                                     const TraceLine& line, double at) {
     const auto& link = map.wall(id).link;
-    const auto opening = map.opening(id);
-    if (!link || !opening || height < static_cast<double>(opening->bottom) ||
+    if (!link) {
+        return std::nullopt;
+    }
+    const Vector2 reached{
+        .x = static_cast<float>(line.start.x + ((line.finish.x - line.start.x) * at)),
+        .y = static_cast<float>(line.start.y + ((line.finish.y - line.start.y) * at)),
+    };
+    const auto opening = map.opening(id, reached);
+    const auto height = line.z + (line.rise * at);
+    if (!opening || height < static_cast<double>(opening->bottom) ||
         height > static_cast<double>(opening->top)) {
         return std::nullopt;
     }
@@ -172,15 +300,20 @@ struct SectorTrace {
             stop.surface = met;
         }
     };
-    const auto floor = static_cast<double>(here.floor.height);
-    const auto ceiling = static_cast<double>(here.ceiling.height);
-    const auto z_entered = line.z + (line.rise * entered);
-    if (line.rise < 0.0 && z_entered >= floor) {
-        meet((floor - line.z) / line.rise, SectorFloor{id});
-    }
-    if (line.rise > 0.0 && z_entered <= ceiling) {
-        meet((ceiling - line.z) / line.rise, SectorCeiling{id});
-    }
+    // Along the line, a floor's or a ceiling's height runs straight too, and the trace meets it
+    // where the gap between them, closing, reaches nothing.
+    const auto meet_plane = [&](const FloorOrCeiling& floor_or_ceiling, double up,
+                                const SurfaceRef& met) {
+        const auto plane = plane_of(map, floor_or_ceiling);
+        const auto at_start = plane.at(line.start);
+        const auto gap = up * (line.z - at_start);
+        const auto widening = up * (line.rise - (plane.at(line.finish) - at_start));
+        if (widening < 0.0 && gap + (widening * entered) >= 0.0) {
+            meet(-gap / widening, met);
+        }
+    };
+    meet_plane(here.floor, 1.0, SectorFloor{id});
+    meet_plane(here.ceiling, -1.0, SectorCeiling{id});
 
     const detail::PlanPoint entry{
         .x = line.start.x + ((line.finish.x - line.start.x) * entered),
@@ -195,7 +328,7 @@ struct SectorTrace {
             if (!at) {
                 continue;
             }
-            const auto beyond = beyond_opening(map, wall_id, line.z + (line.rise * *at));
+            const auto beyond = beyond_opening(map, wall_id, line, *at);
             if (!beyond) {
                 meet(*at, wall_id);
             } else if (!crossing || *at < crossing->at) {
@@ -236,8 +369,10 @@ std::expected<Map, MapLoadError> Map::create(MapDescription description) {
     std::unordered_map<std::string, WallId> walls_by_name;
     for (auto& sector : description.sectors) {
         const SectorId id{narrow<std::uint32_t>(map.sectors_.size())};
-        const auto floor = make_floor_or_ceiling(materials, backdrops, std::move(sector.floor));
-        const auto ceiling = make_floor_or_ceiling(materials, backdrops, std::move(sector.ceiling));
+        const auto floor = make_floor_or_ceiling(materials, backdrops, sector.loops,
+                                                 map.walls_.size(), std::move(sector.floor));
+        const auto ceiling = make_floor_or_ceiling(materials, backdrops, sector.loops,
+                                                   map.walls_.size(), std::move(sector.ceiling));
 
         std::vector<std::vector<WallId>> loops;
         for (auto& walls : sector.loops) {
@@ -329,26 +464,76 @@ std::span<const SectorId> Map::overlapping(SectorId sector) const {
     return overlapping_[sector.index()];
 }
 
-std::optional<Opening> Map::opening(WallId wall) const {
+std::optional<Opening> Map::opening(WallId wall, const Vector2& point) const {
     const auto& near_wall = this->wall(wall);
     if (!near_wall.link) {
         return std::nullopt;
     }
     const auto& near = sector(near_wall.sector);
     const auto& far = sector(this->wall(near_wall.link->wall).sector);
+    const auto start = detail::to_plan(near_wall.start);
+    const auto end = detail::to_plan(near_wall.end);
+    const auto p = detail::to_plan(point);
+    const auto run_x = end.x - start.x;
+    const auto run_y = end.y - start.y;
+    const auto along = std::clamp((((p.x - start.x) * run_x) + ((p.y - start.y) * run_y)) /
+                                      ((run_x * run_x) + (run_y * run_y)),
+                                  0.0, 1.0);
+    const detail::PlanPoint on_wall{.x = start.x + (run_x * along), .y = start.y + (run_y * along)};
+    const auto near_floor = plane_of(*this, near.floor).at(on_wall);
+    const auto near_ceiling = plane_of(*this, near.ceiling).at(on_wall);
+    const auto far_floor = plane_of(*this, far.floor).at(on_wall);
+    const auto far_ceiling = plane_of(*this, far.ceiling).at(on_wall);
     // Written with min and max rather than clamp, a sector whose floor is above its ceiling gives
     // an opening that means nothing rather than breaking clamp's precondition.
-    const auto bottom =
-        std::min(std::max(near.floor.height, far.floor.height), near.ceiling.height);
-    const auto top = std::max(std::min(near.ceiling.height, far.ceiling.height), bottom);
-    return Opening{.bottom = bottom, .top = top};
+    const auto bottom = std::min(std::max(near_floor, far_floor), near_ceiling);
+    const auto top = std::max(std::min(near_ceiling, far_ceiling), bottom);
+    return Opening{.bottom = static_cast<float>(bottom), .top = static_cast<float>(top)};
+}
+
+WallFace Map::face(WallId wall) const {
+    const auto& near_wall = this->wall(wall);
+    const auto start = detail::to_plan(near_wall.start);
+    const auto end = detail::to_plan(near_wall.end);
+    const auto line_of = [&](const FloorOrCeiling& floor_or_ceiling) {
+        const auto plane = plane_of(*this, floor_or_ceiling);
+        return FaceLine{.start = plane.at(start), .end = plane.at(end)};
+    };
+    const auto& near = sector(near_wall.sector);
+    const auto floor = line_of(near.floor);
+    const auto ceiling = line_of(near.ceiling);
+
+    // A box taller than the wall, cut down to the whole wall and then into its parts.
+    const auto low = std::min({floor.start, floor.end, ceiling.start, ceiling.end}) - 1.0;
+    const auto high = std::max({floor.start, floor.end, ceiling.start, ceiling.end}) + 1.0;
+    const auto whole = clip_face(clip_face(
+                                     {
+                                         {.along = 0.0, .z = low},
+                                         {.along = 0.0, .z = high},
+                                         {.along = 1.0, .z = high},
+                                         {.along = 1.0, .z = low},
+                                     },
+                                     floor, true),
+                                 ceiling, false);
+    WallFace face{.whole = face_corners(whole, start, end)};
+    if (!near_wall.link) {
+        return face;
+    }
+    const auto& far = sector(this->wall(near_wall.link->wall).sector);
+    const auto far_floor = line_of(far.floor);
+    const auto far_ceiling = line_of(far.ceiling);
+    const auto above_far_floor = clip_face(whole, far_floor, true);
+    face.lower = face_corners(clip_face(whole, far_floor, false), start, end);
+    face.opening = face_corners(clip_face(above_far_floor, far_ceiling, false), start, end);
+    face.upper = face_corners(clip_face(above_far_floor, far_ceiling, true), start, end);
+    return face;
 }
 
 bool Map::contains(const Location& location) const {
     const auto& here = sector(location.sector);
     const auto& point = location.point;
     // So written, a height that isn't a number is between neither.
-    const auto between = here.floor.height <= point.z && point.z <= here.ceiling.height;
+    const auto between = floor_height(location) <= point.z && point.z <= ceiling_height(location);
     if (!between) {
         return false;
     }
@@ -376,11 +561,21 @@ bool Map::contains(const Location& location) const {
 }
 
 float Map::floor_height(const Location& location) const {
-    return sector(location.sector).floor.height;
+    const auto point = detail::to_plan({.x = location.point.x, .y = location.point.y});
+    return static_cast<float>(plane_of(*this, sector(location.sector).floor).at(point));
 }
 
 float Map::ceiling_height(const Location& location) const {
-    return sector(location.sector).ceiling.height;
+    const auto point = detail::to_plan({.x = location.point.x, .y = location.point.y});
+    return static_cast<float>(plane_of(*this, sector(location.sector).ceiling).at(point));
+}
+
+Vector3 Map::floor_normal(SectorId sector) const {
+    return normal_of(plane_of(*this, this->sector(sector).floor), 1.0);
+}
+
+Vector3 Map::ceiling_normal(SectorId sector) const {
+    return normal_of(plane_of(*this, this->sector(sector).ceiling), -1.0);
 }
 
 Trace Map::trace(const Location& from, const Vector3& motion) const {

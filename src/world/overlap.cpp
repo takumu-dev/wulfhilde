@@ -1,5 +1,6 @@
 #include "overlap.hpp"
 
+#include "height_plane.hpp"
 #include "plan_geometry.hpp"
 #include <wulfhilde/core/narrow.hpp>
 #include <wulfhilde/world/ids.hpp>
@@ -14,6 +15,7 @@
 #include <numeric>
 #include <ranges>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace wulfhilde::detail {
@@ -32,14 +34,20 @@ struct Volume {
         .x = -std::numeric_limits<double>::infinity(),
         .y = -std::numeric_limits<double>::infinity(),
     };
-    double floor = 0.0;
-    double ceiling = 0.0;
+    HeightPlane floor{};
+    HeightPlane ceiling{};
 };
 
 Volume volume_of(const Sector& sector, std::span<const Wall> walls) {
+    const auto hinge = [&walls](const FloorOrCeiling& floor_or_ceiling) -> const Wall* {
+        if (!floor_or_ceiling.slope) {
+            return nullptr;
+        }
+        return &walls.subspan(floor_or_ceiling.slope->hinge.index(), 1).front();
+    };
     Volume volume{
-        .floor = static_cast<double>(sector.floor.height),
-        .ceiling = static_cast<double>(sector.ceiling.height),
+        .floor = plane_of(sector.floor, hinge(sector.floor)),
+        .ceiling = plane_of(sector.ceiling, hinge(sector.ceiling)),
     };
     for (const auto& loop : sector.loops) {
         for (const auto id : loop) {
@@ -166,19 +174,65 @@ bool reaches_inside(std::span<const PlanSegment> walls, std::span<const PlanSegm
     return false;
 }
 
-// Whether two sectors share space: some height, and some area within their walls seen from above.
-bool overlap(const Volume& a, const Volume& b) {
-    if (a.floor >= b.ceiling || b.floor >= a.ceiling) {
-        return false;
+// Whether a point is inside a sector's walls seen from above, or on one of them.
+bool inside_or_on(std::span<const PlanSegment> walls, const PlanPoint& point) {
+    return strictly_inside(walls, point) ||
+           std::ranges::any_of(walls, [&point](const PlanSegment& wall) {
+               return turn(wall.start, wall.end, point) == 0.0 &&
+                      within(wall.start, wall.end, point);
+           });
+}
+
+// Whether two sectors, whose areas within their walls seen from above meet, share some height
+// over the area they share: each one's floor below the other's ceiling there.
+//
+// How far each floor lies below the other's ceiling changes in a straight line across the area,
+// floors and ceilings being planes, so it is greatest at one of the area's corners: a corner of
+// either sector on or inside the other, or a point where their walls cross. Each is taken at its
+// greatest, perhaps at different corners, so sectors may be found sharing height that only come
+// near to it, but never the other way round. Flat floors and ceilings are simply compared.
+bool share_height(const Volume& a, const Volume& b) {
+    std::vector<PlanPoint> corners;
+    for (const auto& [walls, other] :
+         {std::pair{&a.walls, &b.walls}, std::pair{&b.walls, &a.walls}}) {
+        for (const auto& wall : *walls) {
+            if (inside_or_on(*other, wall.start)) {
+                corners.push_back(wall.start);
+            }
+        }
     }
     for (const auto& wall : a.walls) {
         for (const auto& other : b.walls) {
             if (cross(wall, other)) {
-                return true;
+                const auto start_side = turn(other.start, other.end, wall.start);
+                const auto t = start_side / (start_side - turn(other.start, other.end, wall.end));
+                corners.push_back({
+                    .x = wall.start.x + ((wall.end.x - wall.start.x) * t),
+                    .y = wall.start.y + ((wall.end.y - wall.start.y) * t),
+                });
             }
         }
     }
-    return reaches_inside(a.walls, b.walls) || reaches_inside(b.walls, a.walls);
+    auto a_below_b = -std::numeric_limits<double>::infinity();
+    auto b_below_a = -std::numeric_limits<double>::infinity();
+    for (const auto& corner : corners) {
+        a_below_b = std::max(a_below_b, b.ceiling.at(corner) - a.floor.at(corner));
+        b_below_a = std::max(b_below_a, a.ceiling.at(corner) - b.floor.at(corner));
+    }
+    return a_below_b > 0.0 && b_below_a > 0.0;
+}
+
+// Whether two sectors share space: some area within their walls seen from above, and some height
+// over it.
+bool overlap(const Volume& a, const Volume& b) {
+    const auto walls_cross = std::ranges::any_of(a.walls, [&b](const PlanSegment& wall) {
+        return std::ranges::any_of(
+            b.walls, [&wall](const PlanSegment& other) { return cross(wall, other); });
+    });
+    if (!walls_cross && !reaches_inside(a.walls, b.walls) && !reaches_inside(b.walls, a.walls)) {
+        return false;
+    }
+    return share_height(a, b);
 }
 
 } // namespace

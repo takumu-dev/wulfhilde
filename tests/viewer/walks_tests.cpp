@@ -318,3 +318,101 @@ TEST_CASE("overlap: from the yard, the body walks through the hut's door into th
 
     check_walk(walked, {.sectors = {"yard", "hall", "yard"}});
 }
+
+namespace {
+
+// How far the player turns from the start's facing, along +X, to face a point of the slopes map
+// from the start at (6, 4).
+wulfhilde::Angle turn_in_slopes_toward(float x, float y) {
+    return wulfhilde::Angle::radians(std::atan2(y - 4.0F, x - 6.0F));
+}
+
+} // namespace
+
+TEST_CASE("slopes: the body walks up the ramp onto the landing, and back down into the hall",
+          "[viewer]") {
+    const auto map = load_test_map("slopes");
+
+    // To the middle of the ramp's foot, then straight up it, north-east, and back.
+    const auto toward_ramp = turn_in_slopes_toward(11.0F, 7.0F);
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = toward_ramp,
+                                          .until = "ramp",
+                                          .timeout = 3.0F,
+                                      },
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(45.0F) - toward_ramp,
+                                          .until = "landing",
+                                          .timeout = 2.0F,
+                                      },
+                                      {.actions = {.forward = 1.0F}, .timeout = 0.25F},
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(180.0F),
+                                          .until = "hall",
+                                          .timeout = 3.0F,
+                                      },
+                                      {.actions = {.forward = 1.0F}, .timeout = 0.25F},
+                                  });
+
+    check_walk(walked, {.sectors = {"hall", "ramp", "landing", "ramp", "hall"}});
+    // Standing on the hall's floor again.
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(std::abs(end.z - 0.9F) < 1e-3F);
+}
+
+TEST_CASE("slopes: the body walks up the gentle slope to its far wall", "[viewer]") {
+    const auto map = load_test_map("slopes");
+
+    // To the middle of the slope's foot, then up it, south, to its far wall at y = -1.5.
+    const auto toward_slope = turn_in_slopes_toward(3.5F, 0.0F);
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = toward_slope,
+                                          .until = "gentle",
+                                          .timeout = 3.0F,
+                                      },
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(-90.0F) - toward_slope,
+                                          .timeout = 1.5F,
+                                      },
+                                  });
+
+    check_walk(walked, {.sectors = {"hall", "gentle"}});
+    // Against the far wall, a radius from it, standing on the slope, which rises 0.577 m a metre:
+    // the lower cap's centre is a radius from the slope, square to it, 0.3464 m above it.
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(std::abs(end.y - -1.2F) < 1e-3F);
+    CHECK(std::abs(end.z - ((0.57735027F * 1.2F) + 0.34641016F + 0.6F)) < 1e-3F);
+}
+
+TEST_CASE("slopes: walking at the steep slope, the body can't climb it, and ends below it",
+          "[viewer]") {
+    const auto map = load_test_map("slopes");
+
+    // Straight at the steep slope, south of a point of the start's row in front of it.
+    const auto toward_slope = turn_in_slopes_toward(8.5F, 0.0F);
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = toward_slope,
+                                          .timeout = 3.0F,
+                                      },
+                                      {.timeout = 1.0F},
+                                  });
+
+    check_walk(walked, {.sectors = {"hall"}});
+    // On the hall's floor, short of the slope's foot at y = 0.
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(end.y > 0.0F);
+    CHECK(end.y < 0.5F);
+    CHECK(std::abs(end.z - 0.9F) < 1e-3F);
+}
