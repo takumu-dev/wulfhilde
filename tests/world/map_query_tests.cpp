@@ -62,6 +62,17 @@ TEST_CASE("a point in the notch of a concave sector isn't in the sector", "[worl
     CHECK(!map.contains({.sector = hall, .point = {.x = 4.0F, .y = 4.0F, .z = 1.0F}}));
 }
 
+TEST_CASE("a point in a sector's hole isn't in the sector, but one on the hole's walls is",
+          "[world]") {
+    const auto map = make_map(pillared_hall_map());
+    CHECK(map.contains({.sector = hall, .point = {.x = 0.5F, .y = 1.5F, .z = 1.0F}}));
+    CHECK(map.contains({.sector = hall, .point = {.x = 2.5F, .y = 1.5F, .z = 1.0F}}));
+    CHECK(map.contains({.sector = hall, .point = {.x = 1.0F, .y = 1.5F, .z = 1.0F}}));
+    CHECK(map.contains({.sector = hall, .point = {.x = 2.0F, .y = 2.0F, .z = 1.0F}}));
+    CHECK(!map.contains({.sector = hall, .point = {.x = 1.5F, .y = 1.5F, .z = 1.0F}}));
+    CHECK(!map.contains({.sector = hall, .point = {.x = 1.01F, .y = 1.99F, .z = 1.0F}}));
+}
+
 TEST_CASE("one point can be in two overlapping sectors, so a location names its sector",
           "[world]") {
     auto description = hall_map();

@@ -102,7 +102,8 @@ struct FloorOrCeilingDescription {
     std::optional<SkyDescription> sky{};
 };
 
-/// A sector: a region bounded by a loop of walls, with a floor below and a ceiling above.
+/// A sector: a region bounded by an outer loop of walls and any inner loops around holes in it,
+/// with a floor below and a ceiling above.
 struct SectorDescription {
     /// The sector's name, unique in the map, by which the start position refers to it.
     std::string id{};
@@ -116,8 +117,12 @@ struct SectorDescription {
     /// The sector's ambient light, or nothing to take the map's.
     std::optional<AmbientLight> ambient{};
 
-    /// The sector's loops, each a list of walls in order. A sector has one, its outer loop, which
-    /// runs anticlockwise seen from above and doesn't cross itself. It may be concave.
+    /// The sector's loops, each a list of walls in order: first its outer loop, which runs
+    /// anticlockwise seen from above, then any inner loops, each around a hole in the sector and
+    /// running clockwise, so that every wall has the sector to its left. No loop crosses or touches
+    /// itself or another, each inner loop lies inside the outer loop, and none lies inside another.
+    /// Any loop may be concave. An inner loop of solid walls is a pillar, and one whose walls are
+    /// sides of portals leads into the sector inside it.
     std::vector<std::vector<WallDescription>> loops{};
 
     /// Game-defined data that the engine keeps and ignores: the JSON text of an object, or empty

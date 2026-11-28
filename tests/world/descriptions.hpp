@@ -11,6 +11,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_tostring.hpp>
 
+#include <array>
+#include <cstddef>
 #include <format>
 #include <initializer_list>
 #include <string>
@@ -114,6 +116,51 @@ inline wulfhilde::MapDescription doorway_map() {
         .a = {.id = "hall-door"},
         .b = {.id = "gallery-door"},
     });
+    return description;
+}
+
+// The hall with a pillar: an inner loop round a square hole 1 m on a side from (1, 1) to (2, 2),
+// whose walls, #4 to #7, run clockwise from its corner nearest the origin: west, north, east and
+// south, each facing out of the hole. The player starts at (0.5, 0.5).
+inline wulfhilde::MapDescription pillared_hall_map() {
+    auto description = hall_map();
+    description.sectors.at(0).loops.push_back(walls_through({
+        {.x = 1.0F, .y = 1.0F},
+        {.x = 1.0F, .y = 2.0F},
+        {.x = 2.0F, .y = 2.0F},
+        {.x = 2.0F, .y = 1.0F},
+    }));
+    description.start.point = {.x = 0.5F, .y = 0.5F};
+    return description;
+}
+
+// The hall with a dais: the pillared hall's inner loop instead the sides of four portals into the
+// dais, a square sector from (1, 1) to (2, 2) with its floor at 0.5 m and its ceiling at 3 m.
+//
+// The hall's inner loop, its walls #4 to #7, runs clockwise from the corner nearest the origin:
+// west, north, east and south. The dais's loop, its walls #8 to #11, runs anticlockwise from the
+// same corner: south, east, north and west.
+inline wulfhilde::MapDescription dais_map() {
+    auto description = pillared_hall_map();
+    auto dais = sector_through("dais", {
+                                           {.x = 1.0F, .y = 1.0F},
+                                           {.x = 2.0F, .y = 1.0F},
+                                           {.x = 2.0F, .y = 2.0F},
+                                           {.x = 1.0F, .y = 2.0F},
+                                       });
+    dais.floor.height = 0.5F;
+    description.sectors.push_back(std::move(dais));
+    constexpr std::array sides{"west", "north", "east", "south"};
+    for (std::size_t i = 0; const auto* side : sides) {
+        description.sectors.at(0).loops.at(1).at(i).id = std::format("hall-{}", side);
+        // The dais's walls run the other way round, from its south wall.
+        description.sectors.at(1).loops.at(0).at(3 - i).id = std::format("dais-{}", side);
+        description.portals.push_back({
+            .a = {.id = std::format("hall-{}", side)},
+            .b = {.id = std::format("dais-{}", side)},
+        });
+        ++i;
+    }
     return description;
 }
 

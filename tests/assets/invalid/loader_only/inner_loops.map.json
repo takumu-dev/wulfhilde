@@ -14,9 +14,15 @@
           { "start": [0, 4], "surface": { "material": "test/wall" } }
         ],
         [
+          { "start": [3, 1], "surface": { "material": "test/wall" } },
+          { "start": [3, 2], "surface": { "material": "test/wall" } },
+          { "start": [5, 2], "surface": { "material": "test/wall" } },
+          { "start": [5, 1], "surface": { "material": "test/wall" } }
+        ],
+        [
           { "start": [1, 1], "surface": { "material": "test/wall" } },
-          { "start": [1, 2], "surface": { "material": "test/wall" } },
-          { "start": [2, 2], "surface": { "material": "test/wall" } }
+          { "start": [2, 2], "surface": { "material": "test/wall" } },
+          { "start": [1, 2], "surface": { "material": "test/wall" } }
         ]
       ]
     }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "wulfhilde map",
-  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, portals that link them, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, sector and wall ids that repeat, references to sectors and walls that don't exist, a portal's walls that don't run between the same corners in opposite directions, a wall that is a side of two portals, and an exposure range whose minimum is above its maximum.",
+  "description": "A map of the wulfhilde engine, in a file ending .map.json: sectors bounded by loops of walls, portals that link them, and where the player starts. Units are metres, in right-handed coordinates with Z up, and every coordinate lies within 4,096 m of the origin on each axis. The engine checks the same rules when it loads a map, and more that a schema can't state: a key written twice, a number too near zero to read, the winding and crossing of loops, inner loops outside the outer loop or inside each other, sector and wall ids that repeat, references to sectors and walls that don't exist, a portal's walls that don't run between the same corners in opposite directions, a wall that is a side of two portals, and an exposure range whose minimum is above its maximum.",
   "type": "object",
   "required": ["format", "version", "sectors", "start"],
   "additionalProperties": false,
@@ -228,7 +228,7 @@
       }
     },
     "sector": {
-      "description": "A region bounded by a loop of walls, with a floor below and a ceiling above. Sectors may share the same space.",
+      "description": "A region bounded by an outer loop of walls and any number of inner loops around holes in it, with a floor below and a ceiling above. Sectors may share the same space.",
       "type": "object",
       "required": ["id", "floor", "ceiling", "loops"],
       "additionalProperties": false,
@@ -244,15 +244,14 @@
           "$ref": "#/$defs/ambientLight"
         },
         "loops": {
-          "description": "The sector's loops of walls. This version of the engine takes one, the outer loop, which runs anticlockwise seen from above and doesn't cross itself. It may be concave.",
+          "description": "The sector's loops of walls: the outer loop first, which runs anticlockwise seen from above, then any inner loops, each around a hole in the sector and running clockwise. No loop crosses or touches itself or another, each inner loop lies inside the outer loop, and none lies inside another. Any loop may be concave. Each wall faces into the sector, which lies to its left.",
           "type": "array",
           "items": {
             "type": "array",
             "items": { "$ref": "#/$defs/wall" },
             "minItems": 3
           },
-          "minItems": 1,
-          "maxItems": 1
+          "minItems": 1
         },
         "properties": { "$ref": "#/$defs/properties" }
       }

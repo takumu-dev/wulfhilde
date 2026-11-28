@@ -19,21 +19,23 @@ namespace wulfhilde {
 /// `Map::create` finds problems in a map's description. The assets module, reading a map's file
 /// into a description, finds those that only a file can have, from `missing_file` on.
 enum class MapProblemCode : std::uint8_t {
-    duplicate_sector_id,     ///< A sector has the id of an earlier one.
-    unknown_sector,          ///< A reference names a sector that no sector has the id of.
-    coordinate_out_of_range, ///< A coordinate is more than 4,096 m from the origin, or not a
-                             ///< number.
-    invalid_asset_path,      ///< An asset path breaks the syntax of one.
-    missing_outer_loop,      ///< A sector has no loops, so no outer loop.
-    unsupported_inner_loop,  ///< A sector has an inner loop, which this version of the engine can't
-                             ///< make.
-    too_few_walls,           ///< A loop has fewer than three walls.
-    zero_length_wall,        ///< A wall starts where the next wall in its loop starts.
-    self_intersecting_loop,  ///< Two walls of a loop cross or touch, other than where one ends and
-                             ///< the next starts.
-    wrong_winding,           ///< An outer loop runs clockwise seen from above.
-    color_out_of_range,      ///< A component of a light's colour is outside 0 to 1, or not a
-                             ///< number.
+    duplicate_sector_id,      ///< A sector has the id of an earlier one.
+    unknown_sector,           ///< A reference names a sector that no sector has the id of.
+    coordinate_out_of_range,  ///< A coordinate is more than 4,096 m from the origin, or not a
+                              ///< number.
+    invalid_asset_path,       ///< An asset path breaks the syntax of one.
+    missing_outer_loop,       ///< A sector has no loops, so no outer loop.
+    too_few_walls,            ///< A loop has fewer than three walls.
+    zero_length_wall,         ///< A wall starts where the next wall in its loop starts.
+    self_intersecting_loop,   ///< Two walls of a loop cross or touch, other than where one ends and
+                              ///< the next starts.
+    wrong_winding,            ///< An outer loop runs clockwise seen from above, or an inner loop
+                              ///< anticlockwise.
+    crossing_loops,           ///< Walls of two loops of a sector cross or touch.
+    misplaced_inner_loop,     ///< An inner loop lies outside its sector's outer loop, or inside
+                              ///< another inner loop.
+    color_out_of_range,       ///< A component of a light's colour is outside 0 to 1, or not a
+                              ///< number.
     light_level_out_of_range, ///< A light level is below 0, or not a finite number.
     exposure_out_of_range,    ///< An exposure isn't a finite number, or an exposure range's
                               ///< minimum is above its maximum.

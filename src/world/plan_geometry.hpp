@@ -99,4 +99,22 @@ struct PlanSegment {
     return sum;
 }
 
+/// Tells whether a loop encloses a point that lies on none of its walls.
+///
+/// \param walls The loop's walls, in order, which run either way round.
+[[nodiscard]] constexpr bool encloses(std::span<const PlanSegment> walls,
+                                      const PlanPoint& point) noexcept {
+    // A ray from the point along +X crosses the loop an odd number of times from inside it. A wall
+    // running up crosses the ray if the point lies to its left, and one running down if the point
+    // lies to its right.
+    auto inside = false;
+    for (const auto& [start, end] : walls) {
+        if ((start.y <= point.y) != (end.y <= point.y) &&
+            (turn(start, end, point) > 0.0) == (end.y > start.y)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
 } // namespace wulfhilde::detail

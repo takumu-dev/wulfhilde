@@ -1,5 +1,6 @@
 wulfhilde_add_tests(collision
     SOURCES
+        inner_loop_tests.cpp
         move_tests.cpp
         portal_tests.cpp
         settle_tests.cpp
