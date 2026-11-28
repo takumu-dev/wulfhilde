@@ -75,24 +75,35 @@ wulfhilde::TextureImage halves(std::string path, Texel left, Texel right) {
     return {
         .path = std::move(path),
         .color_space = wulfhilde::ColorSpace::linear,
-        .levels = {std::move(full),
-                   {.width = 1, .height = 1, .texels = {average.begin(), average.end()}}},
+        .levels =
+            {
+                std::move(full),
+                {.width = 1, .height = 1, .texels = {average.begin(), average.end()}},
+            },
+    };
+}
+
+// A material of a base colour, metalness and roughness, without textures.
+Material material_of(Color color, float metallic, float roughness) {
+    return {
+        .color = {.factor = color},
+        .roughness = {.factor = roughness},
+        .metallic = {.factor = metallic},
     };
 }
 
 // A rough dielectric of a base colour.
-Material plain(Color color) {
-    return {
-        .color = {.factor = color}, .roughness = {.factor = 1.0F}, .metallic = {.factor = 0.0F}};
-}
+Material plain(Color color) { return material_of(color, 0.0F, 1.0F); }
 
 // The box: a square sector 4 m on a side from (0, 0) to (4, 4), 3 m high, under white ambient light
 // of an illuminance. Its floor's material is "floor", its east wall's "east", and every other
 // surface's "rest".
 wulfhilde::MapDescription box_map(float lux = ambient_lux) {
     const auto wall = [](float x, float y, const char* material) {
-        return wulfhilde::WallDescription{.start = {.x = x, .y = y},
-                                          .surface = {.material = material}};
+        return wulfhilde::WallDescription{
+            .start = {.x = x, .y = y},
+            .surface = {.material = material},
+        };
     };
     return {
         .ambient = wulfhilde::AmbientLight{.color = white, .lux = lux},
@@ -102,12 +113,15 @@ wulfhilde::MapDescription box_map(float lux = ambient_lux) {
                     .id = "box",
                     .floor = {.height = 0.0F, .material = "floor"},
                     .ceiling = {.height = 3.0F, .material = "rest"},
-                    .loops = {{
-                        wall(0.0F, 0.0F, "rest"),
-                        wall(4.0F, 0.0F, "east"),
-                        wall(4.0F, 4.0F, "rest"),
-                        wall(0.0F, 4.0F, "rest"),
-                    }},
+                    .loops =
+                        {
+                            {
+                                wall(0.0F, 0.0F, "rest"),
+                                wall(4.0F, 0.0F, "east"),
+                                wall(4.0F, 4.0F, "rest"),
+                                wall(0.0F, 4.0F, "rest"),
+                            },
+                        },
                 },
             },
         .start = {.sector = "box", .point = {.x = 2.0F, .y = 2.0F}},
@@ -246,13 +260,8 @@ TEST_CASE_METHOD(GpuTest,
              std::pair{1.0F, 0.0F},
          }) {
         CAPTURE(metallic, roughness);
-        const auto reflected =
-            floor_from_above(lit, assets_of(lit, {{"floor",
-                                                   {
-                                                       .color = {.factor = white},
-                                                       .roughness = {.factor = roughness},
-                                                       .metallic = {.factor = metallic},
-                                                   }}}));
+        const auto reflected = floor_from_above(
+            lit, assets_of(lit, {{"floor", material_of(white, metallic, roughness)}}));
 
         CAPTURE(describe(reflected), describe(glow));
         CHECK(matches(reflected, glow));
@@ -265,13 +274,9 @@ TEST_CASE_METHOD(GpuTest,
                  "[renderer]") {
     const auto map = make_map(box_map());
     const auto grey_floor = [&map](float metallic, float roughness) {
+        const Color grey{.r = 0.5F, .g = 0.5F, .b = 0.5F};
         return floor_from_above(
-            map, assets_of(map, {{"floor",
-                                  {
-                                      .color = {.factor = {.r = 0.5F, .g = 0.5F, .b = 0.5F}},
-                                      .roughness = {.factor = roughness},
-                                      .metallic = {.factor = metallic},
-                                  }}}));
+            map, assets_of(map, {{"floor", material_of(grey, metallic, roughness)}}));
     };
 
     const auto rough_metal = grey_floor(1.0F, 1.0F);
@@ -305,12 +310,7 @@ TEST_CASE_METHOD(GpuTest,
     const auto smooth_half = seen.at({.x = 3.0F, .y = 2.0F, .z = 0.0F});
 
     const auto rough_metal =
-        floor_from_above(map, assets_of(map, {{"floor",
-                                               {
-                                                   .color = {.factor = grey},
-                                                   .roughness = {.factor = 1.0F},
-                                                   .metallic = {.factor = 1.0F},
-                                               }}}));
+        floor_from_above(map, assets_of(map, {{"floor", material_of(grey, 1.0F, 1.0F)}}));
     // Without metalness, the factor of 0 holds whatever the texture says.
     auto dielectric = textured;
     dielectric.metallic.factor = 0.0F;
@@ -468,8 +468,8 @@ TEST_CASE_METHOD(GpuTest,
         material.size = Vector2{.x = 1.0F, .y = 1.0F};
         return std::pair{material, flat_image("normal", normal, wulfhilde::ColorSpace::linear)};
     };
-    const auto seen = [&map](const std::pair<Material, wulfhilde::TextureImage>& floor,
-                             Angle rotation = Angle::degrees(0.0F)) {
+    const auto seen = [](const std::pair<Material, wulfhilde::TextureImage>& floor,
+                         Angle rotation = Angle::degrees(0.0F)) {
         auto description = box_map();
         description.sectors.at(0).floor.rotation = rotation;
         const auto turned = make_map(std::move(description));

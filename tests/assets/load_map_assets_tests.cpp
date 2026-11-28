@@ -310,52 +310,53 @@ TEST_CASE("a surface's nits on a material that doesn't emit are a problem at the
           "(/sectors/0/loops/0/1/surface/nits)");
 }
 
-TEST_CASE("a surface may set nits on a material that emits", "[assets]") {
-    auto description = wulfhilde::MapDescription{
+namespace {
+
+// A map of one triangular sector whose floor and first wall carry the materials given, at the nits
+// given, and whose ceiling and other walls carry a plain material.
+Map triangle_with(const std::string& floor, std::optional<float> floor_nits,
+                  const std::string& first_wall, std::optional<float> first_wall_nits) {
+    const auto wall = [](float x, float y, const std::string& material,
+                         std::optional<float> nits = std::nullopt) {
+        return wulfhilde::WallDescription{
+            .start = {.x = x, .y = y},
+            .surface = {.material = material, .nits = nits},
+        };
+    };
+    auto map = Map::create({
         .sectors =
             {
                 {
                     .id = "room",
-                    .floor = {.height = 0.0F, .material = "valid/glow", .nits = 40.0F},
+                    .floor = {.height = 0.0F, .material = floor, .nits = floor_nits},
                     .ceiling = {.height = 3.0F, .material = "valid/plain"},
-                    .loops = {{
-                        {.start = {.x = 0.0F, .y = 0.0F},
-                         .surface = {.material = "valid/glow", .nits = 0.0F}},
-                        {.start = {.x = 4.0F, .y = 0.0F}, .surface = {.material = "valid/plain"}},
-                        {.start = {.x = 4.0F, .y = 4.0F}, .surface = {.material = "valid/plain"}},
-                    }},
+                    .loops =
+                        {
+                            {
+                                wall(0.0F, 0.0F, first_wall, first_wall_nits),
+                                wall(4.0F, 0.0F, "valid/plain"),
+                                wall(4.0F, 4.0F, "valid/plain"),
+                            },
+                        },
                 },
             },
         .start = {.sector = "room", .point = {.x = 2.0F, .y = 1.0F, .z = 0.0F}},
-    };
-    const auto map = Map::create(std::move(description));
+    });
     REQUIRE(map.has_value());
+    return std::move(*map);
+}
 
-    CHECK(load_map_assets(materials_root(), *map).has_value());
+} // namespace
+
+TEST_CASE("a surface may set nits on a material that emits", "[assets]") {
+    CHECK(load_map_assets(materials_root(), triangle_with("valid/glow", 40.0F, "valid/glow", 0.0F))
+              .has_value());
 }
 
 TEST_CASE("a surface's nits on a material that can't be loaded add no problem of their own",
           "[assets]") {
-    auto description = wulfhilde::MapDescription{
-        .sectors =
-            {
-                {
-                    .id = "room",
-                    .floor = {.height = 0.0F, .material = "missing/floor", .nits = 40.0F},
-                    .ceiling = {.height = 3.0F, .material = "valid/plain"},
-                    .loops = {{
-                        {.start = {.x = 0.0F, .y = 0.0F}, .surface = {.material = "valid/plain"}},
-                        {.start = {.x = 4.0F, .y = 0.0F}, .surface = {.material = "valid/plain"}},
-                        {.start = {.x = 4.0F, .y = 4.0F}, .surface = {.material = "valid/plain"}},
-                    }},
-                },
-            },
-        .start = {.sector = "room", .point = {.x = 2.0F, .y = 1.0F, .z = 0.0F}},
-    };
-    const auto map = Map::create(std::move(description));
-    REQUIRE(map.has_value());
-
-    const auto loaded = load_map_assets(materials_root(), *map);
+    const auto loaded = load_map_assets(
+        materials_root(), triangle_with("missing/floor", 40.0F, "valid/plain", std::nullopt));
 
     REQUIRE(!loaded.has_value());
     REQUIRE(loaded.error().problems.size() == 1);

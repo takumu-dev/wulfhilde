@@ -122,8 +122,10 @@ void check_surface_nits(const Map& map, const std::vector<std::optional<Material
 void check_nits(const Map& map, const std::vector<std::optional<Material>>& materials,
                 std::vector<AssetProblem>& problems) {
     for (std::size_t sector_index = 0; const auto& sector : map.sectors()) {
-        for (const auto& [cover, member] : {std::pair{&sector.floor.cover, "floor"},
-                                            std::pair{&sector.ceiling.cover, "ceiling"}}) {
+        for (const auto& [cover, member] : {
+                 std::pair{&sector.floor.cover, "floor"},
+                 std::pair{&sector.ceiling.cover, "ceiling"},
+             }) {
             if (const auto* const surface = std::get_if<Surface>(cover)) {
                 check_surface_nits(
                     map, materials, *surface,
