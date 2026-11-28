@@ -163,25 +163,43 @@ create_graphics_pipeline(const Device& device, const GraphicsPipelineDescription
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
         .rasterizationSamples = description.samples,
     };
+    const VkStencilOpState stencil{
+        .failOp = VK_STENCIL_OP_KEEP,
+        .passOp = description.stencil_op,
+        .depthFailOp = VK_STENCIL_OP_KEEP,
+        .compareOp = VK_COMPARE_OP_EQUAL,
+        .compareMask = 0xFF,
+        .writeMask = 0xFF,
+    };
     const VkPipelineDepthStencilStateCreateInfo depth_stencil{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .depthTestEnable = has_depth ? VK_TRUE : VK_FALSE,
-        .depthWriteEnable = has_depth ? VK_TRUE : VK_FALSE,
-        .depthCompareOp = VK_COMPARE_OP_GREATER,
+        .depthWriteEnable = has_depth && description.writes_depth ? VK_TRUE : VK_FALSE,
+        .depthCompareOp = description.ignores_depth ? VK_COMPARE_OP_ALWAYS : VK_COMPARE_OP_GREATER,
+        .stencilTestEnable = has_depth ? VK_TRUE : VK_FALSE,
+        .front = stencil,
+        .back = stencil,
     };
     const VkPipelineColorBlendAttachmentState attachment{
-        .colorWriteMask = flags_of(VK_COLOR_COMPONENT_R_BIT, VK_COLOR_COMPONENT_G_BIT,
-                                   VK_COLOR_COMPONENT_B_BIT, VK_COLOR_COMPONENT_A_BIT),
+        .colorWriteMask = description.writes_color
+                              ? flags_of(VK_COLOR_COMPONENT_R_BIT, VK_COLOR_COMPONENT_G_BIT,
+                                         VK_COLOR_COMPONENT_B_BIT, VK_COLOR_COMPONENT_A_BIT)
+                              : VkColorComponentFlags{0},
     };
     const VkPipelineColorBlendStateCreateInfo blend{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
         .attachmentCount = 1,
         .pAttachments = &attachment,
     };
-    const std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    // The stencil's reference is set while drawing, and only a pipeline with depth tests it.
+    const std::array dynamic_states{
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_STENCIL_REFERENCE,
+    };
     const VkPipelineDynamicStateCreateInfo dynamic{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = narrow<std::uint32_t>(dynamic_states.size()),
+        .dynamicStateCount = narrow<std::uint32_t>(dynamic_states.size() - (has_depth ? 0 : 1)),
         .pDynamicStates = dynamic_states.data(),
     };
     const VkGraphicsPipelineCreateInfo info{

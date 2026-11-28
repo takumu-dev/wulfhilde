@@ -33,6 +33,7 @@ wulfhilde_add_tests(renderer
     SOURCES
         material_tests.cpp
         measure_frame_tests.cpp
+        overlap_tests.cpp
         render_image_tests.cpp
         renderer_tests.cpp
         shader_function_tests.cpp

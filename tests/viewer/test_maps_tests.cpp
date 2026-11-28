@@ -22,6 +22,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -38,6 +39,19 @@ const wulfhilde::Sector& sector_named(const wulfhilde::Map& map, std::string_vie
 std::optional<wulfhilde::Sky> sky_of(const wulfhilde::FloorOrCeiling& floor_or_ceiling) {
     const auto* const sky = std::get_if<wulfhilde::Sky>(&floor_or_ceiling.cover);
     return sky != nullptr ? std::optional(*sky) : std::nullopt;
+}
+
+// Each pair of a sector and another it shares space with, by their ids, in order of the first's
+// ID and then the second's.
+std::vector<std::pair<std::string, std::string>> overlaps_named(const wulfhilde::Map& map) {
+    std::vector<std::pair<std::string, std::string>> named;
+    for (const auto& sector : map.sectors()) {
+        const auto id = map.find_sector(sector.id).value_or(wulfhilde::SectorId{0});
+        for (const auto other : map.overlapping(id)) {
+            named.emplace_back(sector.id, map.sector(other).id);
+        }
+    }
+    return named;
 }
 
 } // namespace
@@ -184,4 +198,24 @@ TEST_CASE("the lights map's lamp material glows at 400 nits of its own", "[viewe
     REQUIRE(assets.has_value());
     const auto emission = assets->materials.at(lamp).emission.value_or(wulfhilde::Emission{});
     CHECK(emission.nits == 400.0F);
+}
+
+TEST_CASE(
+    "the overlap map has a hut whose hall shares the yard's space, and a bridge over a passage "
+    "that shares none",
+    "[viewer]") {
+    const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
+    REQUIRE(root.has_value());
+
+    const auto map = wulfhilde::load_map(*root, "overlap");
+
+    REQUIRE(map.has_value());
+    CHECK(map->sectors().size() == 7);
+    CHECK(map->portals().size() == 11);
+    CHECK(map->sector(map->start().location.sector).id == "yard");
+    CHECK(overlaps_named(*map) ==
+          std::vector<std::pair<std::string, std::string>>{{"yard", "hall"}, {"hall", "yard"}});
+    // The hall is lit as a room is, a tenth as bright as the yard outside.
+    CHECK(sector_named(*map, "hall").ambient.lux == 1'000.0F);
+    CHECK(sector_named(*map, "yard").ambient.lux == 10'000.0F);
 }

@@ -3,8 +3,10 @@
 #include <wulfhilde/core/angle.hpp>
 #include <wulfhilde/core/matrix4.hpp>
 #include <wulfhilde/core/narrow.hpp>
+#include <wulfhilde/core/plane.hpp>
 #include <wulfhilde/core/rigid_transform.hpp>
 #include <wulfhilde/core/vector2.hpp>
+#include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/core/vector4.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/extent.hpp>
@@ -19,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ranges>
 #include <utility>
 #include <vector>
 
@@ -72,6 +75,13 @@ Projection projection_of(const Camera& camera, Extent extent) {
     };
 }
 
+// How much farther from the eye than straight ahead of it a point on the screen can be at most: the
+// distance to a corner of the screen at a distance of 1 ahead.
+float spread_of(const Projection& projection) {
+    return std::sqrt(1.0F + (projection.half_width * projection.half_width) +
+                     (projection.half_height * projection.half_height));
+}
+
 // A polygon in clip space.
 using ClipPolygon = std::vector<Vector4>;
 
@@ -102,10 +112,15 @@ template <typename Distance> ClipPolygon clip(const ClipPolygon& polygon, Distan
 std::optional<ScreenWindow> window_through(const Wall& wall, const Opening& opening,
                                            const ScreenWindow& window, const Camera& camera,
                                            const Projection& projection) {
-    // The wall faces its sector, to its left, which is where the eye is.
+    // The wall faces its sector, to its left, and an eye behind it sees it from the back, through
+    // which nothing is seen.
     const auto along = wall.end - wall.start;
     const Vector2 eye{.x = camera.location.point.x, .y = camera.location.point.y};
-    if (perp_dot(along, eye - wall.start) < near_plane * length(along)) {
+    const auto in_front = perp_dot(along, eye - wall.start);
+    if (in_front < -near_plane * length(along)) {
+        return std::nullopt;
+    }
+    if (in_front < near_plane * length(along)) {
         return window;
     }
 
@@ -123,9 +138,7 @@ std::optional<ScreenWindow> window_through(const Wall& wall, const Opening& open
     // the eye, and the farthest a direction on the screen strays from straight ahead is less than
     // `spread` times its distance ahead. Half that depth keeps every such point, and takes away
     // what is behind the eye, which the planes through the window's edges would otherwise keep.
-    const auto spread = std::sqrt(1.0F + (projection.half_width * projection.half_width) +
-                                  (projection.half_height * projection.half_height));
-    const auto least_depth = 0.5F * near_plane / spread;
+    const auto least_depth = 0.5F * near_plane / spread_of(projection);
     polygon = clip(polygon, [&](const Vector4& p) { return p.w - least_depth; });
     polygon = clip(polygon, [&](const Vector4& p) { return p.x - (window.min.x * p.w); });
     polygon = clip(polygon, [&](const Vector4& p) { return (window.max.x * p.w) - p.x; });
@@ -184,55 +197,191 @@ std::optional<ScreenWindow> take_in(std::optional<ScreenWindow>& window, const S
     return grown;
 }
 
+// Where a view starts: the sector it starts in, seen within a window.
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init): it has no default, as its sector has none
+struct ViewStart {
+    SectorId sector;
+    ScreenWindow window;
+
+    // The wall of the sector that the view entered it through, which leads back into the view it is
+    // seen from, or nothing for the main view.
+    std::optional<WallId> entrance{};
+
+    // The view it is seen from, with its depth, the plane it is clipped at, and the opening it is
+    // seen through, as the view's record has them.
+    std::optional<std::size_t> parent{};
+    std::size_t depth = 0;
+    std::optional<Plane> clip{};
+    std::array<Vector3, 4> opening{};
+    bool opening_at_eye = false;
+};
+
+// An opening seen in a view that starts a view nested in it: the wall it is in, the wall on the
+// portal's other side and the sector beyond, and the window it is seen in.
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init): it has no default, as its IDs have none
+struct NestedStart {
+    WallId wall;
+    WallId entrance;
+    SectorId sector;
+    Opening opening;
+    ScreenWindow window;
+};
+
+// The plane of a wall that is a side of a portal, facing the sector beyond it, moved a millimetre
+// the other way so that rounding never clips what the sector beyond holds on the plane itself.
+Plane plane_beyond(const Wall& wall) {
+    constexpr float margin = 0.001F;
+    const auto along = normalize(wall.end - wall.start);
+    const Vector3 normal{.x = along.y, .y = -along.x};
+    return {
+        .normal = normal,
+        .distance = dot(normal, Vector3{.x = wall.start.x, .y = wall.start.y}) - margin,
+    };
+}
+
+// Whether a wall's plane lies so near the eye that the near plane would take away some of what the
+// screen shows of it: a point on the screen lies less than `spread` times as far from the eye as
+// it does ahead of it.
+bool at_eye(const Wall& wall, const Camera& camera, const Projection& projection) {
+    const auto along = wall.end - wall.start;
+    const Vector2 eye{.x = camera.location.point.x, .y = camera.location.point.y};
+    const auto distance = std::abs(perp_dot(along, eye - wall.start)) / length(along);
+    return distance < near_plane * spread_of(projection);
+}
+
+// The corners of a wall's opening, from its start along its bottom and back along its top.
+std::array<Vector3, 4> corners_of(const Wall& wall, const Opening& opening) {
+    return {
+        Vector3{.x = wall.start.x, .y = wall.start.y, .z = opening.bottom},
+        Vector3{.x = wall.end.x, .y = wall.end.y, .z = opening.bottom},
+        Vector3{.x = wall.end.x, .y = wall.end.y, .z = opening.top},
+        Vector3{.x = wall.start.x, .y = wall.start.y, .z = opening.top},
+    };
+}
+
+// What a walk through one view finds: the window each sector is seen in, by its ID's index, each
+// sector whose window has grown since the walk last went on from it, with the window it grew to,
+// and each opening that starts a view nested in it, in the order the walk first sees them.
+struct ViewWalk {
+    std::vector<std::optional<ScreenWindow>> windows{};
+    std::vector<std::pair<SectorId, ScreenWindow>> grown{};
+    std::vector<NestedStart> starts{};
+};
+
+// Notes an opening that starts a nested view, or grows the window of one noted already to take in
+// the window it is seen in now.
+void note_start(std::vector<NestedStart>& starts, const NestedStart& start) {
+    const auto found = std::ranges::find(starts, start.wall, &NestedStart::wall);
+    if (found == starts.end()) {
+        starts.push_back(start);
+        return;
+    }
+    std::optional<ScreenWindow> window = found->window;
+    take_in(window, start.window);
+    found->window = window.value_or(start.window);
+}
+
+// Goes on through the openings of a sector seen in a view within a window: into the sector beyond
+// each, or to the view nested there if the sector beyond shares space with another.
+void walk_through(const Map& map, const Camera& camera, const Projection& projection,
+                  const ViewStart& start, SectorId sector, const ScreenWindow& window,
+                  ViewWalk& walk) {
+    for (const auto& loop : map.sector(sector).loops) {
+        for (const auto wall_id : loop) {
+            const auto& wall = map.wall(wall_id);
+            const auto opening = map.opening(wall_id);
+            if (!wall.link || !opening || opening->bottom >= opening->top ||
+                wall_id == start.entrance) {
+                continue;
+            }
+            const auto seen = window_through(wall, *opening, window, camera, projection);
+            if (!seen) {
+                continue;
+            }
+            const auto beyond = map.wall(wall.link->wall).sector;
+            if (!map.overlapping(beyond).empty()) {
+                note_start(walk.starts, {
+                                            .wall = wall_id,
+                                            .entrance = wall.link->wall,
+                                            .sector = beyond,
+                                            .opening = *opening,
+                                            .window = *seen,
+                                        });
+            } else if (const auto taken = take_in(walk.windows.at(beyond.index()), *seen)) {
+                walk.grown.emplace_back(beyond, *taken);
+            }
+        }
+    }
+}
+
+// Walks through one view from where it starts.
+ViewWalk walk_view(const Map& map, const Camera& camera, const Projection& projection,
+                   const ViewStart& start) {
+    ViewWalk walk{
+        .windows = std::vector<std::optional<ScreenWindow>>(map.sectors().size()),
+        .grown = {{start.sector, start.window}},
+        .starts = {},
+    };
+    walk.windows.at(start.sector.index()) = start.window;
+    while (!walk.grown.empty()) {
+        const auto [sector, window] = walk.grown.back();
+        walk.grown.pop_back();
+        // A window that has grown again since is taken up from its later place on the list.
+        if (walk.windows.at(sector.index()) == window) {
+            walk_through(map, camera, projection, start, sector, window, walk);
+        }
+    }
+    return walk;
+}
+
 } // namespace
 
 PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent extent) {
     const auto projection = projection_of(camera, extent);
-    // The window each sector is seen in so far, by its ID's index, and each sector whose window has
-    // grown since the walk last went on from it, with the window it grew to.
-    std::vector<std::optional<ScreenWindow>> windows(map.sectors().size());
-    std::vector<std::pair<SectorId, ScreenWindow>> grown{{camera.location.sector, ScreenWindow{}}};
-    windows.at(camera.location.sector.index()) = ScreenWindow{};
-    while (!grown.empty()) {
-        const auto [sector_id, window] = grown.back();
-        grown.pop_back();
-        // A window that has grown again since is taken up from its later place on the list.
-        if (windows.at(sector_id.index()) != window) {
+    PortalTraversal traversal;
+    // The views still to walk through, the next last, so that each view's nested views follow it,
+    // each with the views nested in it, before the next view nested where it is.
+    std::vector<ViewStart> starts{{.sector = camera.location.sector, .window = ScreenWindow{}}};
+    while (!starts.empty() && traversal.views.size() < view_limit) {
+        const auto start = starts.back();
+        starts.pop_back();
+        const auto view = traversal.views.size();
+        traversal.views.push_back({
+            .view_projection = projection.view_projection,
+            .eye = camera.location.point,
+            .parent = start.parent,
+            .depth = start.depth,
+            .clip = start.clip,
+            .opening = start.opening,
+            .opening_at_eye = start.opening_at_eye,
+        });
+        const auto walk = walk_view(map, camera, projection, start);
+        for (std::size_t index = 0; const auto& window : walk.windows) {
+            if (window) {
+                traversal.sectors.push_back({
+                    .view = view,
+                    .sector = SectorId(narrow<std::uint32_t>(index)),
+                    .window = *window,
+                });
+            }
+            ++index;
+        }
+        if (start.depth == nested_view_limit) {
             continue;
         }
-        for (const auto& loop : map.sector(sector_id).loops) {
-            for (const auto wall_id : loop) {
-                const auto& wall = map.wall(wall_id);
-                const auto opening = map.opening(wall_id);
-                if (!wall.link || !opening || opening->bottom >= opening->top) {
-                    continue;
-                }
-                const auto seen = window_through(wall, *opening, window, camera, projection);
-                if (!seen) {
-                    continue;
-                }
-                const auto beyond = map.wall(wall.link->wall).sector;
-                if (const auto taken = take_in(windows.at(beyond.index()), *seen)) {
-                    grown.emplace_back(beyond, *taken);
-                }
-            }
-        }
-    }
-
-    PortalTraversal traversal;
-    traversal.views.push_back({
-        .view_projection = projection.view_projection,
-        .eye = camera.location.point,
-    });
-    for (std::size_t index = 0; const auto& window : windows) {
-        if (window) {
-            traversal.sectors.push_back({
-                .view = 0,
-                .sector = SectorId(narrow<std::uint32_t>(index)),
-                .window = *window,
+        for (const auto& nested : walk.starts | std::views::reverse) {
+            const auto& wall = map.wall(nested.wall);
+            starts.push_back({
+                .sector = nested.sector,
+                .window = nested.window,
+                .entrance = nested.entrance,
+                .parent = view,
+                .depth = start.depth + 1,
+                .clip = plane_beyond(wall),
+                .opening = corners_of(wall, nested.opening),
+                .opening_at_eye = at_eye(wall, camera, projection),
             });
         }
-        ++index;
     }
     return traversal;
 }

@@ -1,11 +1,13 @@
-// Draws the surfaces of sectors into the scene, in linear light: each in its material, read from
-// its factors and textures, reflecting its sector's ambient light, a uniform environment of light
-// from every direction, as glTF's metallic-roughness BRDF does, darkened by its ambient occlusion,
-// and glowing with its emission, which lights nothing else. A sky shows its backdrop instead,
-// infinitely far away, in the direction it is seen in its sector's coordinates.
+// Draws the surfaces of the sectors a view sees into the scene, beyond the plane of the portal it
+// starts at, in linear light: each in its material, read from its factors and textures, reflecting
+// its sector's ambient light, a uniform environment of light from every direction, as glTF's
+// metallic-roughness BRDF does, darkened by its ambient occlusion, and glowing with its emission,
+// which lights nothing else. A sky shows its backdrop instead, infinitely far away, in the
+// direction it is seen in its sector's coordinates.
 #language slang 2026
 import bindless;
 import brdf;
+import views;
 
 // One corner of a triangle of a sector's surface or sky, in the sector's coordinates, with what
 // shades it.
@@ -64,20 +66,16 @@ struct SectorShading {
 };
 
 struct SceneConstants {
-    // From the sector's coordinates into clip space, with depth reversed and no far plane.
-    float4x4 view_projection;
+    // The view the surfaces are seen in, whose eye they reflect toward and skies are seen from.
+    ViewShading* view;
     SectorVertex* vertices;
     MaterialShading* materials;
     SectorShading* sectors;
     // The sampler that every material's texture is read with, by its index among the bindless
     // set's samplers.
     uint2 texture_sampler;
-    // Where the eye is, in the sector's coordinates.
-    float3 eye;
     // The sampler that every backdrop's image is read with, which doesn't repeat it over the top.
     uint2 backdrop_sampler;
-    // Rounds the size up to a whole number of the pointers, as C++ lays the constants out.
-    float unused;
 };
 
 [vk::push_constant] ConstantBuffer<SceneConstants> scene;
@@ -86,6 +84,8 @@ static const float pi = 3.14159265358979;
 
 struct Placed {
     float4 position : SV_Position;
+    // How far the vertex lies beyond the plane of the portal the view starts at.
+    float clip : SV_ClipDistance;
     // Where the fragment is, in the sector's coordinates.
     float3 point : POINT;
     float2 texture_coordinates : TEXCOORD;
@@ -99,7 +99,8 @@ struct Placed {
 Placed place(uint vertex : SV_VulkanVertexID) {
     let corner = scene.vertices[vertex];
     Placed placed;
-    placed.position = mul(scene.view_projection, float4(corner.position, 1.0));
+    placed.position = mul(scene.view.view_projection, float4(corner.position, 1.0));
+    placed.clip = beyond_clip(*scene.view, corner.position);
     placed.point = corner.position;
     placed.texture_coordinates = corner.texture_coordinates;
     placed.normal = corner.normal;
@@ -147,7 +148,8 @@ float4 shade(Placed placed) : SV_Target {
     if (material.sky != 0) {
         let texture = DescriptorHandle<Texture2D<float4>>(material.color_texture);
         let backdrop_sampler = DescriptorHandle<SamplerState>(scene.backdrop_sampler);
-        let texel = backdrop_texel(nonuniform(texture), backdrop_sampler, placed.point - scene.eye);
+        let texel =
+            backdrop_texel(nonuniform(texture), backdrop_sampler, placed.point - scene.view.eye);
         return float4(material.base_color * texel, 1.0);
     }
     let texture_sampler = DescriptorHandle<SamplerState>(scene.texture_sampler);
@@ -168,7 +170,7 @@ float4 shade(Placed placed) : SV_Target {
         material.base_color * texel_of(material.color_texture, texture_sampler, at).rgb,
         saturate(value_of(material.metallic, texture_sampler, at)),
         widened_roughness(roughness, ddx(normal), ddy(normal)));
-    let toward_eye = normalize(scene.eye - placed.point);
+    let toward_eye = normalize(scene.view.eye - placed.point);
     let occlusion = 1.0 + (material.occlusion_strength
                            * (saturate(value_of(material.occlusion, texture_sampler, at)) - 1.0));
     // A uniform environment that gives an illuminance to a surface facing any way has a radiance of

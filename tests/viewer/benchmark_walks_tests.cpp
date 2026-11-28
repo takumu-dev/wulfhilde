@@ -140,3 +140,20 @@ TEST_CASE("the lights tour walks into the annex and back, and stands facing the 
     CHECK(wulfhilde::angle_between(frames.back().eye.facing.forward(), {.y = 1.0F}) <
           Angle::degrees(1.0F));
 }
+
+TEST_CASE(
+    "the overlap tour walks into the hall and back, across the bridge and back, then under it "
+    "through the passage",
+    "[viewer]") {
+    const auto map = load_test_map("overlap");
+    const auto walk = viewer::find_benchmark_walk("overlap", "tour");
+    REQUIRE(walk.has_value());
+
+    const auto frames = viewer::walk_benchmark(map, *walk);
+
+    // The tour lasts 21.4 s.
+    CHECK(frames.size() == 1284);
+    CHECK(sectors_seen_from(map, frames) ==
+          std::vector<std::string>{"yard", "hall", "yard", "bridge", "bank", "bridge", "yard",
+                                   "chasm-west", "passage", "chasm-east"});
+}
