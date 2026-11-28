@@ -26,10 +26,11 @@ namespace wulfhilde::detail {
 
 /// Draws a map on one device: culling, which keeps the surfaces of the sectors that a walk through
 /// the portals finds within what the camera sees, then those surfaces into a multisampled scene in
-/// linear light, textured and filtered anisotropically, with skies showing their backdrops, then
-/// metering, which moves the exposure toward what a histogram of the scene's light meters, then the
-/// AgX pass, which resolves the scene's samples into an sRGB image, or into a window's image to
-/// show. An image is drawn as a frame is.
+/// linear light, each view's confined by the stencil to the opening it is seen through, textured
+/// and filtered anisotropically, with skies showing their backdrops, then metering, which moves the
+/// exposure toward what a histogram of the scene's light meters, then the AgX pass, which resolves
+/// the scene's samples into an sRGB image, or into a window's image to show. An image is drawn as a
+/// frame is.
 class Drawing {
     struct Pipelines;
     struct Metering;
@@ -101,10 +102,10 @@ class Drawing {
     [[nodiscard]] float next_blend();
 
     // Records culling, which writes the draws of the surfaces each view of a traversal sees, then
-    // the scene's pass, a multi-draw for each view, then metering, unless the exposure is pinned,
-    // moving the exposure by a blend toward what it meters, then the AgX pass with a pipeline into
-    // an output image's view, which is in the colour attachment layout and stays so. With
-    // timestamps, it writes one before the passes and one after each.
+    // the scene's pass, a multi-draw for each view within its opening, then metering, unless the
+    // exposure is pinned, moving the exposure by a blend toward what it meters, then the AgX pass
+    // with a pipeline into an output image's view, which is in the colour attachment layout and
+    // stays so. With timestamps, it writes one before the passes and one after each.
     void record_passes(const Device& device, VkCommandBuffer commands,
                        const PortalTraversal& traversal, float blend, VkPipeline resolve,
                        VkImageView output, VkQueryPool timestamps = VK_NULL_HANDLE) const;

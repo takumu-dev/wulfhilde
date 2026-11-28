@@ -32,6 +32,7 @@ wulfhilde_add_tests(renderer
     LABEL gpu
     SOURCES
         measure_frame_tests.cpp
+        overlap_tests.cpp
         render_image_tests.cpp
         renderer_tests.cpp
         shader_function_tests.cpp

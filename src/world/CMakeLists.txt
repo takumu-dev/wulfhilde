@@ -25,6 +25,8 @@ wulfhilde_add_module(world
         map.cpp
         map_checks.cpp
         map_checks.hpp
+        overlap.cpp
+        overlap.hpp
         plan_geometry.hpp
     DEPENDS
         core

@@ -92,6 +92,39 @@ rim. The grids of the walls round each run on from wall to wall, as the hall's d
   whose floor and ceiling meet the hall's grids; the player slides round the pillar without
   snagging, and steps up onto the dais from any side and back down.
 
+### `overlap`
+
+Sectors that share space, and sectors that cross seen from above but share none. The yard, 16 m by
+12 m under the blue compass sky 4 m up, in white ambient light of 10,000 lux, has a hut in a notch
+of its north side, 4 m on a side. The hut's door, 1.2 m wide, opens into the hall, 10 m by 12 m and
+3.5 m high, lit at a tenth of the yard's light: a hall bigger than the hut, which shares the yard's
+space on either side of the hut and runs on north of the yard. The player starts in the yard,
+facing the door.
+
+South of the yard, a chasm 4 m across falls 3 m to a floor. The bridge, 2 m wide, crosses it at the
+yard's height to the bank beyond. Under the bridge's southern half, the passage runs east to west
+from one side of the chasm to the other, its ceiling the bridge's floor, so the two cross seen
+from above without sharing space. The bridge's northern half is open to the chasm on both sides,
+and its southern half walled where the passage runs beneath, since one wall can open onto only one
+sector. The chasm's walls below the yard, the bridge and the bank are their lower strips, and above
+the passage's mouths, their upper strips.
+
+- **Cases**: a sector that shares another's space, seen through an opening into it from either
+  side, confined to the opening and to what lies beyond it, with neither showing through the
+  other; a body in one, held by its own walls alone; and a bridge over a passage, drawn by depth
+  alone in one view.
+- **Cameras**: `bridge`, from the chasm's floor, east at the passage's mouth under the bridge's
+  walled half and the pier under its open half; `hut_outside`, from the yard at the hut's door; `hut_inside`, from the
+  hall's north-west, back at the door.
+- **Benchmark walk**: `tour`, 21.4 s: into the hall, looking all round it, and back out across the
+  yard and the bridge to the bank; back into the yard, then down into the chasm beside the bridge,
+  and east under the bridge through the passage to the chasm beyond.
+- **Needs eyes**: from the yard, the hall shows only through the door, and from the hall, the yard
+  only through the door, with no seam or flicker at the door's edges, and none as the player walks
+  through it or stands in it; in the hall, the yard's walls about the hut stop nothing; from the
+  bridge's open half, the chasm's floor shows below on either side; and from the chasm, the passage
+  shows through its mouth below the bridge's walled half, with the chasm beyond at its far end.
+
 ### `outdoors`
 
 The yard, a square 8 m on a side under a blue compass sky 6 m up, opens east across its whole wall

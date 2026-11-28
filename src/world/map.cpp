@@ -1,6 +1,7 @@
 #include <wulfhilde/world/map.hpp>
 
 #include "map_checks.hpp"
+#include "overlap.hpp"
 #include "plan_geometry.hpp"
 #include <wulfhilde/core/assertion.hpp>
 #include <wulfhilde/core/narrow.hpp>
@@ -26,6 +27,7 @@
 #include <expected>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -286,6 +288,7 @@ std::expected<Map, MapLoadError> Map::create(MapDescription description) {
         map.wall_at(b).link = PortalLink{.portal = id, .wall = a};
         map.portals_.push_back({.a = a, .b = b, .properties = std::move(portal.properties)});
     }
+    map.overlapping_ = detail::find_overlaps(map.sectors_, map.walls_);
     map.materials_ = std::move(materials).take_paths();
     map.backdrops_ = std::move(backdrops).take_paths();
     std::ranges::sort(map.sectors_by_name_, {}, [&map](SectorId sector) -> std::string_view {
@@ -316,6 +319,12 @@ Wall& Map::wall_at(WallId wall) {
     WULFHILDE_DEBUG_ASSERT(wall.index() < walls_.size(), "the wall is one of this map's");
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access): checked above
     return walls_[wall.index()];
+}
+
+std::span<const SectorId> Map::overlapping(SectorId sector) const {
+    WULFHILDE_ASSERT(sector.index() < overlapping_.size(), "the sector is one of this map's");
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access): checked above
+    return overlapping_[sector.index()];
 }
 
 std::optional<Opening> Map::opening(WallId wall) const {

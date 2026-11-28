@@ -1,9 +1,11 @@
-// Draws the surfaces of sectors into the scene, in linear light: each in its material's base colour,
-// its colour texture times its factor, under its sector's ambient light, a Lambertian surface lit
-// equally from every direction. A sky shows its backdrop instead, infinitely far away, in the
-// direction it is seen in its sector's coordinates.
+// Draws the surfaces of the sectors a view sees into the scene, beyond the plane of the portal it
+// starts at, in linear light: each in its material's base colour, its colour texture times its
+// factor, under its sector's ambient light, a Lambertian surface lit equally from every direction.
+// A sky shows its backdrop instead, infinitely far away, in the direction it is seen in its
+// sector's coordinates.
 #language slang 2026
 import bindless;
+import views;
 
 // One corner of a triangle of a sector's surface or sky, in the sector's coordinates, with what
 // shades it.
@@ -34,20 +36,16 @@ struct SectorShading {
 };
 
 struct SceneConstants {
-    // From the sector's coordinates into clip space, with depth reversed and no far plane.
-    float4x4 view_projection;
+    // The view the surfaces are seen in, whose eye skies are seen from.
+    ViewShading* view;
     SectorVertex* vertices;
     MaterialShading* materials;
     SectorShading* sectors;
     // The sampler that every material's texture is read with, by its index among the bindless
     // set's samplers.
     uint2 texture_sampler;
-    // Where the eye is, in the sector's coordinates.
-    float3 eye;
     // The sampler that every backdrop's image is read with, which doesn't repeat it over the top.
     uint2 backdrop_sampler;
-    // Rounds the size up to a whole number of the pointers, as C++ lays the constants out.
-    float unused;
 };
 
 [vk::push_constant] ConstantBuffer<SceneConstants> scene;
@@ -56,6 +54,8 @@ static const float pi = 3.14159265358979;
 
 struct Placed {
     float4 position : SV_Position;
+    // How far the vertex lies beyond the plane of the portal the view starts at.
+    float clip : SV_ClipDistance;
     // Where the fragment is, in the sector's coordinates.
     float3 point : POINT;
     float2 texture_coordinates : TEXCOORD;
@@ -67,7 +67,8 @@ struct Placed {
 Placed place(uint vertex : SV_VulkanVertexID) {
     let corner = scene.vertices[vertex];
     Placed placed;
-    placed.position = mul(scene.view_projection, float4(corner.position, 1.0));
+    placed.position = mul(scene.view.view_projection, float4(corner.position, 1.0));
+    placed.clip = beyond_clip(*scene.view, corner.position);
     placed.point = corner.position;
     placed.texture_coordinates = corner.texture_coordinates;
     placed.material = corner.material;
@@ -103,7 +104,8 @@ float4 shade(Placed placed) : SV_Target {
     // triangle, so they take the same branch and their derivatives hold.
     if (material.sky != 0) {
         let backdrop_sampler = DescriptorHandle<SamplerState>(scene.backdrop_sampler);
-        let texel = backdrop_texel(nonuniform(texture), backdrop_sampler, placed.point - scene.eye);
+        let texel =
+            backdrop_texel(nonuniform(texture), backdrop_sampler, placed.point - scene.view.eye);
         return float4(material.base_color * texel, 1.0);
     }
     let texture_sampler = DescriptorHandle<SamplerState>(scene.texture_sampler);
