@@ -85,6 +85,7 @@ std::expected<Renderer, DeviceError> Renderer::create_for(Window* window,
                      "the exposure adaptation speed is 0 or more");
     WULFHILDE_ASSERT(!settings.pinned_exposure || std::isfinite(*settings.pinned_exposure),
                      "a pinned exposure is a finite number");
+    WULFHILDE_ASSERT(settings.view_limit >= 1, "a frame has room for its camera's own view");
     auto device = detail::Device::create(settings, window);
     if (!device) {
         return std::unexpected(std::move(device).error());

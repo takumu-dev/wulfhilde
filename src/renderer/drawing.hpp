@@ -26,7 +26,8 @@ namespace wulfhilde::detail {
 
 /// Draws a map on one device: culling, which keeps the surfaces of the sectors that a walk through
 /// the portals finds within what the camera sees, then those surfaces into a multisampled scene in
-/// linear light, each view's confined by the stencil to the opening it is seen through, textured
+/// linear light, each view's confined by the stencil to the opening it is seen through, and each
+/// opening past the view limits filled flat with the ambient light beyond it, textured
 /// and filtered anisotropically, shaded as glTF's metallic-roughness materials under their sectors'
 /// ambient light and glowing with their emission, with skies showing their backdrops, then
 /// metering, which moves the exposure toward what a histogram of the scene's light meters, then the
@@ -54,11 +55,12 @@ class Drawing {
            std::optional<WindowFormat> window_format = std::nullopt);
 
     /// Takes the pipelines, the samplers, what metering keeps and the timestamps that `create`
-    /// made, with each sampler's place in the bindless set.
+    /// made, with each sampler's place in the bindless set, and the settings' view limits.
     Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
             SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor,
             SamplerHandle backdrop_sampler, DescriptorHandle backdrop_sampler_descriptor,
-            std::unique_ptr<Metering> metering, QueryPoolHandle timestamps) noexcept;
+            std::unique_ptr<Metering> metering, QueryPoolHandle timestamps,
+            ViewLimits view_limits) noexcept;
 
     Drawing(const Drawing&) = delete;
     Drawing(Drawing&&) = delete;
@@ -112,6 +114,8 @@ class Drawing {
                        VkImageView output, VkQueryPool timestamps = VK_NULL_HANDLE) const;
 
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
+    // How deep a frame's views nest, and how many it has, at most, as the settings say.
+    ViewLimits view_limits_;
     std::unique_ptr<Pipelines> pipelines_;
     SamplerHandle texture_sampler_;
     DescriptorHandle sampler_descriptor_;

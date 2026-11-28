@@ -19,13 +19,16 @@
 
 namespace wulfhilde::detail {
 
-/// How deep views nest within the main view at most: past it, an opening that would start a view
-/// leads nowhere.
-inline constexpr std::size_t nested_view_limit = 4;
+/// How deep views may nest, and how many a frame may have.
+struct ViewLimits {
+    /// How deep views nest within the main view at most: past it, an opening that would start a
+    /// view is filled flat.
+    std::size_t nested = 4;
 
-/// How many views a frame has at most, the main view among them: past it, an opening that would
-/// start a view leads nowhere.
-inline constexpr std::size_t view_limit = 16;
+    /// How many views a frame has at most, the main view among them, 1 or more: past it, an
+    /// opening that would start a view is filled flat.
+    std::size_t views = 16;
+};
 
 /// A rectangle of the screen, in Vulkan's normalised device coordinates: x from -1 at the image's
 /// left edge to 1 at its right, and y from -1 at its top to 1 at its bottom. The whole screen by
@@ -39,7 +42,8 @@ struct ScreenWindow {
 };
 
 /// What one camera sees: the main view, from the frame's own camera in its sector, or a view that
-/// starts at a portal into space that another sector shares, confined to its opening.
+/// starts at a transformed portal, or at a portal into space that another sector shares, confined
+/// to its opening, from the camera of the view it is seen from carried through the portal.
 struct ViewRecord {
     /// From the coordinates of the view's sectors into Vulkan's clip space: x to the right, y down,
     /// and depth from 1 at the near plane to 0 infinitely far away.
@@ -83,11 +87,31 @@ struct SectorRecord {
     ScreenWindow window;
 };
 
+/// An opening that would start a view past the limits, which is filled flat instead.
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init): it has no default, as its sector has none
+struct FillRecord {
+    /// The view it is seen in, by its index among the frame's.
+    std::size_t view = 0;
+
+    /// The sector beyond it, whose ambient light it is filled with.
+    SectorId sector;
+
+    /// Its corners, in order round it, in the coordinates of the view it is seen in, as a view's
+    /// record has an opening's.
+    std::array<Vector3, 6> opening{};
+
+    /// Whether its plane lies so near the eye that the near plane would take away some of what the
+    /// screen shows of it.
+    bool opening_at_eye = false;
+};
+
 /// A frame's views, each after the view it is seen from and the views nested in that view's views
-/// before it, and the sectors seen in each, in order of view and then of sector ID.
+/// before it, the sectors seen in each, in order of view and then of sector ID, and the openings
+/// filled flat, in order of the view they are seen in.
 struct PortalTraversal {
     std::vector<ViewRecord> views;
     std::vector<SectorRecord> sectors;
+    std::vector<FillRecord> fills;
 };
 
 /// Finds what a camera sees of a map: its views, and the sectors seen in each.
@@ -101,15 +125,19 @@ struct PortalTraversal {
 /// opening in a plane nearer the eye than the near plane passes its sector's window on whole,
 /// since the eye may stand in it.
 ///
-/// A sector beyond an opening that shares space with any other sector can't be told apart from it
-/// by depth, so the walk doesn't take it into the view. It starts a view of its own there, nested
-/// in the view the opening is seen in, within the opening's window, which never leads back through
-/// that opening. Each such opening starts one view, after the walk through the view it is seen in
-/// is done, until views nest as deep as the limit or the frame has as many as it may.
+/// A sector beyond a transformed portal lies in coordinates of its own, and one beyond an opening
+/// that shares space with any other sector can't be told apart from it by depth, so the walk
+/// doesn't take either into the view. Each starts a view of its own there, nested in the view the
+/// opening is seen in, within the opening's window, from the camera carried through the portal,
+/// which never leads back through that opening. Each such opening starts one view, after the walk
+/// through the view it is seen in is done, until views nest as deep as the limit or the frame has
+/// as many as it may. Each opening past either limit is filled flat instead.
 ///
 /// \param map The map.
 /// \param camera Where the frame is seen from, in a sector of the map.
 /// \param extent The frame's size, neither side of it zero.
-[[nodiscard]] PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent extent);
+/// \param limits How deep views may nest, and how many the frame may have.
+[[nodiscard]] PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent extent,
+                                               const ViewLimits& limits);
 
 } // namespace wulfhilde::detail

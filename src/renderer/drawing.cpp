@@ -40,6 +40,7 @@
 #include <cstring>
 #include <expected>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -53,6 +54,7 @@ namespace wulfhilde::detail {
 namespace {
 
 #include "culling_spirv.h"
+#include "fills_spirv.h"
 #include "metering_spirv.h"
 #include "openings_spirv.h"
 #include "resolve_spirv.h"
@@ -108,6 +110,19 @@ struct SceneConstants {
 struct OpeningConstants {
     std::uint64_t view = 0;
     std::uint64_t seen_from = 0;
+};
+
+// The C++ twin of the fill shaders' `FillShading`.
+struct FillShading {
+    std::array<Vector3, 6> opening{};
+    Color radiance;
+    std::uint32_t opening_at_eye = 0;
+};
+
+// The C++ twin of the fill shaders' push constants.
+struct FillConstants {
+    std::uint64_t view = 0;
+    std::uint64_t fill = 0;
 };
 
 // The C++ twin of the resolve shaders' push constants.
@@ -174,6 +189,7 @@ struct CullingConstants {
 };
 
 #include "culling_layout.hpp"  // IWYU pragma: keep
+#include "fills_layout.hpp"    // IWYU pragma: keep
 #include "metering_layout.hpp" // IWYU pragma: keep
 #include "openings_layout.hpp" // IWYU pragma: keep
 #include "resolve_layout.hpp"  // IWYU pragma: keep
@@ -407,6 +423,34 @@ void write_view_shading(const PortalTraversal& traversal, const Buffer& buffer) 
     std::memcpy(buffer.memory().data(), views.data(), std::span(views).size_bytes());
 }
 
+// How much of the light arriving from every direction a grey surface reflects, which an opening
+// filled flat gives back of its sector's ambient light, as a photographer's grey card does.
+constexpr float fill_reflectance = 0.18F;
+
+// Writes what the fill shaders read of each opening that a frame fills flat: the ambient light of
+// the sector beyond it, as a grey surface reflects it.
+void write_fill_shading(const PortalTraversal& traversal, const Map& map, const Buffer& buffer) {
+    if (traversal.fills.empty()) {
+        return;
+    }
+    std::vector<FillShading> fills;
+    fills.reserve(traversal.fills.size());
+    for (const auto& fill : traversal.fills) {
+        const auto& ambient = map.sector(fill.sector).ambient;
+        // A uniform environment that gives an illuminance to a surface facing any way has a
+        // radiance of that illuminance over pi, of which the surface reflects its share.
+        fills.push_back({
+            .opening = fill.opening,
+            .radiance =
+                ambient.color * (ambient.lux * fill_reflectance / std::numbers::pi_v<float>),
+            .opening_at_eye = fill.opening_at_eye ? 1U : 0U,
+        });
+    }
+    WULFHILDE_DEBUG_ASSERT(std::span(fills).size_bytes() <= buffer.memory().size(),
+                           "the buffer holds the frame's fills");
+    std::memcpy(buffer.memory().data(), fills.data(), std::span(fills).size_bytes());
+}
+
 // Writes what culling reads for a frame's views and the sectors each sees, given each sector's
 // surfaces, and returns each view's culling, with the room its draws take, one after another.
 std::vector<ViewCulling> write_culling(const PortalTraversal& traversal,
@@ -460,6 +504,8 @@ struct Drawing::Pipelines {
     PipelineHandle mark_opening;
     PipelineHandle clear_opening;
     PipelineHandle close_opening;
+    // Filling an opening past the view limits flat, in the view it is seen in.
+    PipelineHandle fill;
     // Metering: counting the scene's pixels into the histogram, then the exposure it meters.
     PipelineHandle gather;
     PipelineHandle meter;
@@ -515,6 +561,9 @@ struct Drawing::Geometry {
     // What the sector and opening shaders read of a frame's views, which the CPU writes, as many
     // as a frame may have.
     Buffer view_shading;
+    // What the fill shaders read of a frame's openings filled flat, which the CPU writes: as many
+    // as each view may see, one for each side of each portal.
+    Buffer fill_shading;
     // What culling reads and writes for a frame: its views and the sectors each sees, which the CPU
     // writes, then a draw for each surface in sight, and how many draws each view makes. Each holds
     // as many as a frame of as many views as it may have can need.
@@ -735,6 +784,17 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
     if (!close_opening) {
         return std::unexpected(std::move(close_opening).error());
     }
+    auto fill = create_graphics_pipeline(device, {
+                                                     .spirv = fills_spirv,
+                                                     .vertex_entry_point = "place_fill",
+                                                     .fragment_entry_point = "fill_flat",
+                                                     .color_format = scene_color_format,
+                                                     .depth_stencil_format = scene_depth_format,
+                                                     .samples = samples,
+                                                 });
+    if (!fill) {
+        return std::unexpected(std::move(fill).error());
+    }
     auto cull = create_compute_pipeline(device, culling_spirv, "cull");
     if (!cull) {
         return std::unexpected(std::move(cull).error());
@@ -791,17 +851,19 @@ Drawing::create(Device& device, VkSampleCountFlagBits samples, const RendererSet
         Key{}, samples,
         std::make_unique<Pipelines>(std::move(*cull), std::move(*scene), std::move(*mark_opening),
                                     std::move(*clear_opening), std::move(*close_opening),
-                                    std::move(*gather), std::move(*meter), std::move(*resolve),
-                                    std::move(present)),
+                                    std::move(*fill), std::move(*gather), std::move(*meter),
+                                    std::move(*resolve), std::move(present)),
         std::move(*sampler), sampler_descriptor, std::move(*backdrop_sampler),
-        backdrop_sampler_descriptor, std::move(*metering), std::move(timestamps));
+        backdrop_sampler_descriptor, std::move(*metering), std::move(timestamps),
+        ViewLimits{.nested = settings.nested_view_limit, .views = settings.view_limit});
 }
 
 Drawing::Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
                  SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor,
                  SamplerHandle backdrop_sampler, DescriptorHandle backdrop_sampler_descriptor,
-                 std::unique_ptr<Metering> metering, QueryPoolHandle timestamps) noexcept
-    : samples_(samples), pipelines_(std::move(pipelines)),
+                 std::unique_ptr<Metering> metering, QueryPoolHandle timestamps,
+                 ViewLimits view_limits) noexcept
+    : samples_(samples), view_limits_(view_limits), pipelines_(std::move(pipelines)),
       texture_sampler_(std::move(texture_sampler)), sampler_descriptor_(sampler_descriptor),
       backdrop_sampler_(std::move(backdrop_sampler)),
       backdrop_sampler_descriptor_(backdrop_sampler_descriptor), metering_(std::move(metering)),
@@ -876,9 +938,16 @@ std::expected<void, DeviceError> Drawing::set_map(Device& device, const Map& map
     // Each view sees each sector once at most, and draws each of their surfaces once at most.
     constexpr VkBufferUsageFlags indirect_usage =
         shader_buffer_usage | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    const auto view_limit = view_limits_.views;
     auto view_shading = buffer_of<ViewShading>(device, view_limit);
     if (!view_shading) {
         return std::unexpected(std::move(view_shading).error());
+    }
+    // Each view fills each side of each portal flat once at most.
+    auto fill_shading = buffer_of<FillShading>(
+        device, view_limit * std::max(std::size_t{1}, 2 * map.portals().size()));
+    if (!fill_shading) {
+        return std::unexpected(std::move(fill_shading).error());
     }
     auto views = buffer_of<ViewCulling>(device, view_limit);
     if (!views) {
@@ -899,8 +968,8 @@ std::expected<void, DeviceError> Drawing::set_map(Device& device, const Map& map
     geometry_ = std::make_unique<Geometry>(
         &map, std::move(*vertex_buffer), std::move(*material_buffer), std::move(*sector_buffer),
         std::move(*surface_buffer), std::move(triangles.sectors), std::move(*view_shading),
-        std::move(*views), std::move(*sectors_in_view), std::move(*draws), std::move(*draw_counts),
-        std::move(*textures));
+        std::move(*fill_shading), std::move(*views), std::move(*sectors_in_view), std::move(*draws),
+        std::move(*draw_counts), std::move(*textures));
     metering_->exposure = map.exposure();
     metering_->last_frame.reset();
     return {};
@@ -935,6 +1004,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands,
                             const PortalTraversal& traversal, float blend, VkPipeline resolve,
                             VkImageView output, VkQueryPool timestamps) const {
     write_view_shading(traversal, geometry_->view_shading);
+    write_fill_shading(traversal, *geometry_->map, geometry_->fill_shading);
     const auto views = write_culling(traversal, geometry_->sector_surfaces, geometry_->views,
                                      geometry_->sectors_in_view);
     const CullingConstants culling_constants{
@@ -1043,6 +1113,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands,
     // openings marked after it meet it as a surface. Nothing after this pass reads depth or
     // stencil, so the openings still open at its end are left so.
     std::vector<std::size_t> open;
+    std::size_t next_fill = 0;
     for (std::size_t index = 0; const auto& view : views) {
         const auto& record = traversal.views.at(index);
         while (!open.empty() && std::optional(open.back()) != record.parent) {
@@ -1070,6 +1141,18 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands,
                                view.first_draw * sizeof(DrawCommand), geometry_->draw_counts.get(),
                                index * sizeof(std::uint32_t), view.candidate_count,
                                sizeof(DrawCommand));
+        // The view's openings past the limits are filled flat where they show in it, in front of
+        // what it holds behind them, and the openings marked after meet them as surfaces.
+        for (; next_fill < traversal.fills.size() && traversal.fills.at(next_fill).view == index;
+             ++next_fill) {
+            const FillConstants fill_constants{
+                .view = view_address(index),
+                .fill = geometry_->fill_shading.address() + (next_fill * sizeof(FillShading)),
+            };
+            device.record_binding(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_->fill.get(),
+                                  std::as_bytes(std::span(&fill_constants, 1)));
+            vkCmdDraw(commands, 12, 1, 0, 0);
+        }
         open.push_back(index);
         ++index;
     }
@@ -1140,7 +1223,7 @@ std::expected<Image, DeviceError> Drawing::render_image(Device& device, const Ca
     }
     const auto size = vulkan_extent(extent);
     const auto blend = next_blend();
-    const auto traversal = traverse_portals(*geometry_->map, camera, extent);
+    const auto traversal = traverse_portals(*geometry_->map, camera, extent, view_limits_);
     const auto executed = device.execute([&](VkCommandBuffer commands) {
         record_image_barrier(commands, targets_->output.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
@@ -1180,7 +1263,7 @@ Drawing::measure_frame(Device& device, const Camera& camera, Extent extent) {
         return std::unexpected(std::move(fitted).error());
     }
     const auto blend = next_blend();
-    const auto traversal = traverse_portals(*geometry_->map, camera, extent);
+    const auto traversal = traverse_portals(*geometry_->map, camera, extent, view_limits_);
     const auto submitted = device.submit([&](VkCommandBuffer commands) {
         record_image_barrier(commands, targets_->output.get(), VK_IMAGE_LAYOUT_UNDEFINED,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, no_earlier_work,
@@ -1235,7 +1318,7 @@ std::expected<void, DeviceError> Drawing::draw(Device& device, const Camera& cam
         return fitted;
     }
     const auto blend = next_blend();
-    const auto traversal = traverse_portals(*geometry_->map, camera, frame.extent);
+    const auto traversal = traverse_portals(*geometry_->map, camera, frame.extent, view_limits_);
     return device.execute(
         [&](VkCommandBuffer commands) {
             // The image is written once the semaphore that the submission waits for at this stage

@@ -26,6 +26,10 @@ wulfhilde_add_precondition_test(renderer "a pinned exposure that isn't a finite 
     SOURCE programs/infinite_pinned_exposure.cpp
     LIBRARIES wulfhilde::renderer
 )
+wulfhilde_add_precondition_test(renderer "a view limit of 0 fires its precondition"
+    SOURCE programs/view_limit_of_0.cpp
+    LIBRARIES wulfhilde::renderer
+)
 
 # Each runs under validation, which fails it on any message, in every configuration.
 wulfhilde_add_tests(renderer
@@ -40,6 +44,7 @@ wulfhilde_add_tests(renderer
         sky_tests.cpp
         test_pattern_tests.cpp
         textured_surface_tests.cpp
+        transformed_portal_tests.cpp
         window_tests.cpp
     LIBRARIES
         wulfhilde_renderer_testing
