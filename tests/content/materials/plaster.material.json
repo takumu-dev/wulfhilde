@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../schema/material.schema.json",
+  "format": "wulfhilde-material",
+  "version": 1,
+  "color": { "texture": "materials/plaster/color" },
+  "roughness": { "texture": "materials/plaster/roughness" },
+  "metallic": { "factor": 0 },
+  "normal": { "texture": "materials/plaster/normal" },
+  "size": [2, 2]
+}

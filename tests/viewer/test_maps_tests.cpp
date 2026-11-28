@@ -4,6 +4,7 @@
 #include <wulfhilde/assets/content_root.hpp>
 #include <wulfhilde/assets/load_map.hpp>
 #include <wulfhilde/assets/load_map_assets.hpp>
+#include <wulfhilde/world/ambient_light.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
 #include <wulfhilde/world/sector.hpp>
@@ -12,6 +13,7 @@
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <format>
@@ -119,4 +121,39 @@ TEST_CASE("the outdoors map has two neighbouring skies of different backdrops, o
     REQUIRE(assets->backdrops.size() == 2);
     CHECK(assets->backdrops.at(0).nits == 2'000.0F);
     CHECK(assets->backdrops.at(1).nits == 2'000.0F);
+}
+
+TEST_CASE("the lights map has one lamp material at its own nits and at a surface's, and an annex "
+          "under ambient light of its own beyond a doorway",
+          "[viewer]") {
+    const auto root = wulfhilde::ContentRoot::open(WULFHILDE_TEST_CONTENT);
+    REQUIRE(root.has_value());
+
+    const auto map = wulfhilde::load_map(*root, "lights");
+
+    REQUIRE(map.has_value());
+    const auto& hall = map->sector(map->start().location.sector);
+    CHECK(hall.id == "hall");
+    CHECK(map->portals().size() == 1);
+    const auto lamp = std::ranges::find(map->materials(), "materials/lamp");
+    REQUIRE(lamp != map->materials().end());
+    std::vector<std::optional<float>> lamps;
+    for (const auto wall : hall.loops.front()) {
+        const auto& surface = map->wall(wall).surface;
+        if (map->materials()[surface.material.index()] == "materials/lamp") {
+            lamps.push_back(surface.nits);
+        }
+    }
+    CHECK(lamps == std::vector<std::optional<float>>{std::nullopt, 80.0F});
+    const wulfhilde::AmbientLight white{.color = {.r = 1.0F, .g = 1.0F, .b = 1.0F}, .lux = 300.0F};
+    CHECK(hall.ambient == white);
+    CHECK(sector_named(*map, "annex").ambient ==
+          wulfhilde::AmbientLight{.color = {.r = 1.0F, .g = 0.85F, .b = 0.7F}, .lux = 75.0F});
+
+    const auto assets = wulfhilde::load_map_assets(*root, *map);
+    REQUIRE(assets.has_value());
+    const auto& emission =
+        assets->materials.at(static_cast<std::size_t>(lamp - map->materials().begin())).emission;
+    REQUIRE(emission.has_value());
+    CHECK(emission->nits == 400.0F);
 }

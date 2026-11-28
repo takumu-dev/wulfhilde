@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schema/material.schema.json",
+  "format": "wulfhilde-material",
+  "version": 1,
+  "color": { "factor": [0.05, 0.05, 0.05] },
+  "roughness": { "factor": 0.5 },
+  "metallic": { "factor": 0 },
+  "emission": { "nits": 400, "temperature": 3000 }
+}

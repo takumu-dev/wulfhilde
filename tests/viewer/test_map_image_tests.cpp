@@ -65,6 +65,31 @@ const std::vector<TestMapCameras>& test_map_cameras() {
                 },
         },
         {
+            .map = "lights",
+            .cameras =
+                {
+                    // Across the hall at its north wall, where the same lamp material glows at its
+                    // own 400 nits on the right and at the surface's 80 on the left, above a floor
+                    // that they leave unlit.
+                    {
+                        .name = "emission",
+                        .sector = "hall",
+                        .point = {.x = 4.0F, .y = 2.0F, .z = 1.65F},
+                        .yaw = Angle::degrees(90.0F),
+                        .pitch = Angle::degrees(-5.0F),
+                    },
+                    // From the hall, under the map's ambient light, through the doorway into the
+                    // annex under its own dim, warm light, which steps down at the opening.
+                    {
+                        .name = "ambient",
+                        .sector = "hall",
+                        .point = {.x = 5.5F, .y = 3.25F, .z = 1.65F},
+                        .yaw = Angle::degrees(0.0F),
+                        .pitch = Angle::degrees(-15.0F),
+                    },
+                },
+        },
+        {
             .map = "outdoors",
             .cameras =
                 {

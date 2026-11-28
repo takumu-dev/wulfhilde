@@ -87,3 +87,15 @@ TEST_CASE("outdoors: stepping off the bridge, the body falls into the abyss and 
     CAPTURE(end);
     CHECK(std::abs(end.z - -7.1F) < 1e-3F);
 }
+
+TEST_CASE("lights: from the hall, the body walks east through the doorway into the annex",
+          "[viewer]") {
+    const auto map = load_test_map("lights");
+
+    const auto walked =
+        walk(map, {
+                      {.actions = {.forward = 1.0F}, .until = "annex", .timeout = 4.0F},
+                  });
+
+    check_walk(walked, {.sectors = {"hall", "annex"}});
+}
