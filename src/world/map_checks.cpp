@@ -160,10 +160,16 @@ void check_floor_or_ceiling(Problems& problems, std::string_view pointer,
 }
 
 /// Checks that a sector's loop of at least three walls is a shape it can be bounded by: its walls
-/// each of some length, not crossing or touching each other, and running anticlockwise.
-void check_loop_shape(Problems& problems, std::string_view pointer,
-                      std::span<const Vector2> starts) {
-    const auto walls = loop_segments(starts);
+/// each of some length, not crossing or touching each other, and running anticlockwise for the
+/// outer loop or clockwise for an inner loop.
+///
+/// \return The loop's walls, unless they are of no length or cross or touch, so that the loop's
+///         shape means nothing.
+std::optional<std::vector<PlanSegment>> check_loop_shape(Problems& problems,
+                                                         std::string_view pointer,
+                                                         std::span<const Vector2> starts,
+                                                         bool outer) {
+    auto walls = loop_segments(starts);
     auto simple = true;
     for (std::size_t i = 0; const auto& wall : walls) {
         if (wall.start.x == wall.end.x && wall.start.y == wall.end.y) {
@@ -175,7 +181,7 @@ void check_loop_shape(Problems& problems, std::string_view pointer,
     }
     // Walls of no length would meet both their neighbours.
     if (!simple) {
-        return;
+        return std::nullopt;
     }
 
     // Each wall shares a corner with the walls on either side of it, which it meets only by
@@ -206,10 +212,17 @@ void check_loop_shape(Problems& problems, std::string_view pointer,
         ++j;
     }
     // A loop that crosses itself runs both ways at once.
-    if (simple && twice_signed_area(walls) < 0.0) {
+    if (!simple) {
+        return std::nullopt;
+    }
+    if (outer && twice_signed_area(walls) < 0.0) {
         problems.add(MapProblemCode::wrong_winding, std::string{pointer},
                      "the outer loop runs clockwise seen from above, but must run anticlockwise");
+    } else if (!outer && twice_signed_area(walls) > 0.0) {
+        problems.add(MapProblemCode::wrong_winding, std::string{pointer},
+                     "the inner loop runs anticlockwise seen from above, but must run clockwise");
     }
+    return walls;
 }
 
 /// A wall that has an id, as the checks of portals look it up by it.
@@ -228,8 +241,13 @@ struct NamedWall {
 /// The walls that have ids, by their ids. Of walls with the same id, the first is kept.
 using NamedWalls = std::unordered_map<std::string_view, NamedWall>;
 
-void check_loop(Problems& problems, std::string_view pointer,
-                const std::vector<WallDescription>& walls, NamedWalls& named_walls) {
+/// Checks a sector's loop: its walls' ids, points and surfaces, and its shape.
+///
+/// \param outer Whether it is the sector's outer loop, rather than an inner loop.
+/// \return The loop's walls, if its shape means something.
+std::optional<std::vector<PlanSegment>> check_loop(Problems& problems, std::string_view pointer,
+                                                   const std::vector<WallDescription>& walls,
+                                                   bool outer, NamedWalls& named_walls) {
     auto in_bounds = true;
     std::vector<Vector2> starts;
     std::vector<bool> starts_in_bounds;
@@ -280,9 +298,100 @@ void check_loop(Problems& problems, std::string_view pointer,
         problems.add(MapProblemCode::too_few_walls, std::string{pointer},
                      std::format("the loop has {} wall{}, but a loop needs at least 3",
                                  walls.size(), walls.size() == 1 ? "" : "s"));
-    } else if (in_bounds) {
-        // A point beyond the bounds may not be a number, so its shape would mean nothing.
-        check_loop_shape(problems, pointer, starts);
+        return std::nullopt;
+    }
+    // A point beyond the bounds may not be a number, so its shape would mean nothing.
+    if (!in_bounds) {
+        return std::nullopt;
+    }
+    return check_loop_shape(problems, pointer, starts, outer);
+}
+
+/// The walls of each of a sector's loops, by its index, or nothing for a loop whose shape means
+/// nothing.
+using LoopWalls = std::vector<std::optional<std::vector<PlanSegment>>>;
+
+/// Checks that no wall of a sector's loop crosses or touches a wall of an earlier loop.
+///
+/// \param later The loop's index.
+/// \param later_walls The loop's walls.
+/// \return Whether the loop crosses or touches each earlier loop, by its index.
+std::vector<bool> check_loop_crossings(Problems& problems, std::string_view pointer,
+                                       const LoopWalls& loops, std::size_t later,
+                                       const std::vector<PlanSegment>& later_walls) {
+    const auto later_pointer = child(pointer, later);
+    std::vector<bool> crossed(later, false);
+    for (std::size_t j = 0; const auto& wall : later_walls) {
+        for (std::size_t earlier = 0; earlier < later; ++earlier) {
+            const auto& earlier_walls = loops.at(earlier);
+            if (!earlier_walls) {
+                continue;
+            }
+            for (std::size_t i = 0; const auto& other : *earlier_walls) {
+                if (segments_meet(wall.start, wall.end, other.start, other.end)) {
+                    problems.add(MapProblemCode::crossing_loops, child(later_pointer, j),
+                                 std::format("the wall crosses or touches {}, a wall of another "
+                                             "loop of its sector",
+                                             child(child(pointer, earlier), i)));
+                    crossed.at(earlier) = true;
+                }
+                ++i;
+            }
+        }
+        ++j;
+    }
+    return crossed;
+}
+
+/// Checks that an inner loop lies inside its sector's outer loop, or that of two inner loops,
+/// neither lies inside the other, given that they neither cross nor touch.
+///
+/// Loops that neither cross nor touch lie each wholly inside or outside the other, so one corner of
+/// each tells which.
+///
+/// \param earlier The index of the earlier loop.
+/// \param earlier_walls The earlier loop's walls.
+/// \param later The index of the later loop, an inner loop.
+/// \param later_walls The later loop's walls.
+void check_loop_placement(Problems& problems, std::string_view pointer, std::size_t earlier,
+                          const std::vector<PlanSegment>& earlier_walls, std::size_t later,
+                          const std::vector<PlanSegment>& later_walls) {
+    const auto earlier_pointer = child(pointer, earlier);
+    const auto later_pointer = child(pointer, later);
+    const auto inside = [&problems](const std::string& inner, const std::string& outer) {
+        problems.add(
+            MapProblemCode::misplaced_inner_loop, inner,
+            std::format("the inner loop lies inside {}, another inner loop of its sector", outer));
+    };
+    if (earlier == 0) {
+        if (!encloses(earlier_walls, later_walls.front().start)) {
+            problems.add(MapProblemCode::misplaced_inner_loop, later_pointer,
+                         std::format("the inner loop lies outside {}, its sector's outer loop",
+                                     earlier_pointer));
+        }
+    } else if (encloses(earlier_walls, later_walls.front().start)) {
+        inside(later_pointer, earlier_pointer);
+    } else if (encloses(later_walls, earlier_walls.front().start)) {
+        inside(earlier_pointer, later_pointer);
+    }
+}
+
+/// Checks that no two of a sector's loops cross or touch, that each inner loop lies inside the
+/// outer loop, and that none lies inside another. A loop whose shape means nothing is left out.
+void check_loops_apart(Problems& problems, std::string_view pointer, const LoopWalls& loops) {
+    for (std::size_t later = 1; later < loops.size(); ++later) {
+        const auto& later_walls = loops.at(later);
+        if (!later_walls) {
+            continue;
+        }
+        const auto crossed = check_loop_crossings(problems, pointer, loops, later, *later_walls);
+        for (std::size_t earlier = 0; earlier < later; ++earlier) {
+            const auto& earlier_walls = loops.at(earlier);
+            if (earlier_walls && !crossed.at(earlier)) {
+                check_loop_placement(problems, pointer, earlier, *earlier_walls, later,
+                                     *later_walls);
+            }
+        }
     }
 }
 
@@ -297,11 +406,12 @@ void check_sector(Problems& problems, std::string_view pointer, const SectorDesc
                      "the sector has no loops, but needs its outer loop");
         return;
     }
-    check_loop(problems, child(loops_pointer, 0), sector.loops.front(), named_walls);
-    for (const auto i : std::views::iota(std::size_t{1}, sector.loops.size())) {
-        problems.add(MapProblemCode::unsupported_inner_loop, child(loops_pointer, i),
-                     "the loop is an inner loop, which this version of the engine doesn't support");
+    LoopWalls loops;
+    for (std::size_t i = 0; const auto& loop : sector.loops) {
+        loops.push_back(check_loop(problems, child(loops_pointer, i), loop, i == 0, named_walls));
+        ++i;
     }
+    check_loops_apart(problems, loops_pointer, loops);
 }
 
 /// Returns the name of a kind of portal side, as the file writes it.

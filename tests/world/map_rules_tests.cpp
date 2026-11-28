@@ -275,17 +275,142 @@ TEST_CASE("a sector without a loop is a problem at its loops", "[world]") {
           std::vector<Problem>{{MapProblemCode::missing_outer_loop, "/sectors/0/loops"}});
 }
 
-TEST_CASE("a sector with an inner loop is a problem at the inner loop, until they are supported",
+TEST_CASE("a sector with inner loops that run clockwise, each apart inside its outer loop, is a "
+          "valid one",
           "[world]") {
-    auto description = hall_map();
+    auto description = pillared_hall_map();
     description.sectors.at(0).loops.push_back(
-        walls_through({{.x = 1.0F, .y = 1.0F}, {.x = 1.0F, .y = 2.0F}, {.x = 2.0F, .y = 2.0F}}));
-    description.sectors.at(0).loops.push_back(description.sectors.at(0).loops.at(1));
+        walls_through({{.x = 3.0F, .y = 3.0F}, {.x = 3.0F, .y = 3.5F}, {.x = 3.5F, .y = 3.0F}}));
+    CHECK(problems_in(description).empty());
+    CHECK(problems_in(dais_map()).empty());
+}
+
+TEST_CASE("an inner loop that runs anticlockwise seen from above is a problem at the loop",
+          "[world]") {
+    auto description = pillared_hall_map();
+    std::ranges::reverse(description.sectors.at(0).loops.at(1));
     CHECK(problems_in(description) ==
-          std::vector<Problem>{
-              {MapProblemCode::unsupported_inner_loop, "/sectors/0/loops/1"},
-              {MapProblemCode::unsupported_inner_loop, "/sectors/0/loops/2"},
-          });
+          std::vector<Problem>{{MapProblemCode::wrong_winding, "/sectors/0/loops/1"}});
+    CHECK(only_problem_in(description).message ==
+          "the inner loop runs anticlockwise seen from above, but must run clockwise");
+}
+
+TEST_CASE("an inner loop's walls are checked as an outer loop's are", "[world]") {
+    auto description = pillared_hall_map();
+    description.sectors.at(0).loops.at(1) =
+        walls_through({{.x = 1.0F, .y = 1.0F}, {.x = 1.0F, .y = 2.0F}});
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{{MapProblemCode::too_few_walls, "/sectors/0/loops/1"}});
+
+    description.sectors.at(0).loops.at(1) = walls_through({
+        {.x = 1.0F, .y = 1.0F},
+        {.x = 1.0F, .y = 2.0F},
+        {.x = 1.0F, .y = 2.0F},
+        {.x = 2.0F, .y = 1.0F},
+    });
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{{MapProblemCode::zero_length_wall, "/sectors/0/loops/1/1"}});
+
+    // A bow tie, whose second and fourth walls cross at (1.5, 1.5).
+    description.sectors.at(0).loops.at(1) = walls_through({
+        {.x = 1.0F, .y = 1.0F},
+        {.x = 1.0F, .y = 2.0F},
+        {.x = 2.0F, .y = 1.0F},
+        {.x = 2.0F, .y = 2.0F},
+    });
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{{MapProblemCode::self_intersecting_loop, "/sectors/0/loops/1/3"}});
+}
+
+TEST_CASE("loops of a sector that cross or touch are a problem at the later loop's wall of each "
+          "pair",
+          "[world]") {
+    // The pillar pushed through the hall's east wall, at x = 4, which its north and south walls
+    // cross.
+    auto description = pillared_hall_map();
+    description.sectors.at(0).loops.at(1) = walls_through({
+        {.x = 3.0F, .y = 1.0F},
+        {.x = 3.0F, .y = 2.0F},
+        {.x = 5.0F, .y = 2.0F},
+        {.x = 5.0F, .y = 1.0F},
+    });
+    CHECK(problems_in(description) == std::vector<Problem>{
+                                          {MapProblemCode::crossing_loops, "/sectors/0/loops/1/1"},
+                                          {MapProblemCode::crossing_loops, "/sectors/0/loops/1/3"},
+                                      });
+    const auto map = wulfhilde::Map::create(description);
+    REQUIRE(!map.has_value());
+    CHECK(map.error().problems.front().message ==
+          "the wall crosses or touches /sectors/0/loops/0/1, a wall of another loop of its sector");
+
+    // A second pillar overlapping the first's north-east corner, whose west wall crosses the
+    // first's north wall, and its south wall the first's east wall.
+    description = pillared_hall_map();
+    description.sectors.at(0).loops.push_back(walls_through({
+        {.x = 1.5F, .y = 1.5F},
+        {.x = 1.5F, .y = 2.5F},
+        {.x = 2.5F, .y = 2.5F},
+        {.x = 2.5F, .y = 1.5F},
+    }));
+    CHECK(problems_in(description) == std::vector<Problem>{
+                                          {MapProblemCode::crossing_loops, "/sectors/0/loops/2/0"},
+                                          {MapProblemCode::crossing_loops, "/sectors/0/loops/2/3"},
+                                      });
+
+    // A triangular pillar whose east corner lies on the hall's east wall.
+    description = pillared_hall_map();
+    description.sectors.at(0).loops.at(1) =
+        walls_through({{.x = 3.0F, .y = 1.0F}, {.x = 3.0F, .y = 2.0F}, {.x = 4.0F, .y = 1.5F}});
+    CHECK(problems_in(description) == std::vector<Problem>{
+                                          {MapProblemCode::crossing_loops, "/sectors/0/loops/1/1"},
+                                          {MapProblemCode::crossing_loops, "/sectors/0/loops/1/2"},
+                                      });
+}
+
+TEST_CASE("an inner loop outside its sector's outer loop, or inside another inner loop, is a "
+          "problem at the inner loop",
+          "[world]") {
+    auto description = pillared_hall_map();
+    description.sectors.at(0).loops.at(1) = walls_through({
+        {.x = 5.0F, .y = 1.0F},
+        {.x = 5.0F, .y = 2.0F},
+        {.x = 6.0F, .y = 2.0F},
+        {.x = 6.0F, .y = 1.0F},
+    });
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{{MapProblemCode::misplaced_inner_loop, "/sectors/0/loops/1"}});
+    CHECK(only_problem_in(description).message ==
+          "the inner loop lies outside /sectors/0/loops/0, its sector's outer loop");
+
+    // A hole in the pillar's hole, after the pillar and then before it.
+    description = pillared_hall_map();
+    description.sectors.at(0).loops.push_back(walls_through({
+        {.x = 1.25F, .y = 1.25F},
+        {.x = 1.25F, .y = 1.75F},
+        {.x = 1.75F, .y = 1.75F},
+        {.x = 1.75F, .y = 1.25F},
+    }));
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{{MapProblemCode::misplaced_inner_loop, "/sectors/0/loops/2"}});
+    CHECK(only_problem_in(description).message ==
+          "the inner loop lies inside /sectors/0/loops/1, another inner loop of its sector");
+    std::swap(description.sectors.at(0).loops.at(1), description.sectors.at(0).loops.at(2));
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{{MapProblemCode::misplaced_inner_loop, "/sectors/0/loops/1"}});
+}
+
+TEST_CASE("a loop whose own shape is a problem isn't also checked against its sector's other loops",
+          "[world]") {
+    // A bow tie through the hall's east wall.
+    auto description = pillared_hall_map();
+    description.sectors.at(0).loops.at(1) = walls_through({
+        {.x = 3.0F, .y = 1.0F},
+        {.x = 3.0F, .y = 2.0F},
+        {.x = 5.0F, .y = 1.0F},
+        {.x = 5.0F, .y = 2.0F},
+    });
+    CHECK(problems_in(description) ==
+          std::vector<Problem>{{MapProblemCode::self_intersecting_loop, "/sectors/0/loops/1/3"}});
 }
 
 TEST_CASE("a loop of fewer than three walls is a problem at the loop", "[world]") {

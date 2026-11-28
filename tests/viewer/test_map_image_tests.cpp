@@ -71,6 +71,15 @@ const std::vector<TestMapCameras>& test_map_cameras() {
                         .yaw = Angle::degrees(105.0F),
                         .pitch = Angle::degrees(-8.0F),
                     },
+                    // From the foot of the arm along Y, up it to the dais on the left and the
+                    // pillar on the right, with the gallery's doorway between.
+                    {
+                        .name = "holes",
+                        .sector = "hall",
+                        .point = {.x = 2.0F, .y = 4.2F, .z = 1.65F},
+                        .yaw = Angle::degrees(85.0F),
+                        .pitch = Angle::degrees(-12.0F),
+                    },
                 },
         },
         {
