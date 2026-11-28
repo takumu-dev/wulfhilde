@@ -8,12 +8,13 @@
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/core/vector4.hpp>
 #include <wulfhilde/world/ids.hpp>
+#include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map.hpp>
-#include <wulfhilde/world/opening.hpp>
 #include <wulfhilde/world/sector.hpp>
 #include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/surface.hpp>
 #include <wulfhilde/world/wall.hpp>
+#include <wulfhilde/world/wall_face.hpp>
 
 // GCC's optimiser takes earcut's sorting of a list that it never calls empty for one that might be,
 // and warns of a null dereference there, in a header no other warning reaches.
@@ -190,71 +191,104 @@ std::uint32_t surface_shading(SectorGeometry& geometry, const Surface& surface,
 
 // A wall faces its sector, to its left as it runs from its start to its end, so seen from there
 // its start is on the right, and u, which runs to the right from the start, is negative across it.
-// Each part of a wall is a band of it between two heights.
-void add_wall_band(SectorGeometry& geometry, const Wall& wall, const Surface& surface, float low,
-                   float high, std::span<const Material> materials) {
-    const Vector3 start_low{.x = wall.start.x, .y = wall.start.y, .z = low};
-    const Vector3 start_high{.x = wall.start.x, .y = wall.start.y, .z = high};
-    const Vector3 end_low{.x = wall.end.x, .y = wall.end.y, .z = low};
-    const Vector3 end_high{.x = wall.end.x, .y = wall.end.y, .z = high};
-
-    const MaterialPlacement placement(surface, materials, {.x = 0.0F, .y = low});
-    const auto end_u = -distance(wall.start, wall.end);
-    const auto at_start_low = placement({.x = 0.0F, .y = low});
-    const auto at_start_high = placement({.x = 0.0F, .y = high});
-    const auto at_end_low = placement({.x = end_u, .y = low});
-    const auto at_end_high = placement({.x = end_u, .y = high});
+// Each part of a wall is a convex polygon whose corners run anticlockwise seen from the sector, so
+// a fan of triangles from its first corner covers it.
+void add_wall_part(SectorGeometry& geometry, const Wall& wall, const Surface& surface,
+                   const std::vector<Vector3>& corners, std::span<const Material> materials) {
+    if (corners.empty()) {
+        return;
+    }
+    const auto along = normalize(wall.end - wall.start);
+    const auto u_v = [&](const Vector3& corner) {
+        return Vector2{
+            .x = -dot(Vector2{.x = corner.x, .y = corner.y} - wall.start, along),
+            .y = corner.z,
+        };
+    };
+    const MaterialPlacement placement(surface, materials, u_v(corners.front()));
 
     const auto shading = surface_shading(geometry, surface, materials);
     const auto first = geometry.vertices.size();
-    add_triangle(geometry.vertices, {start_low, start_high, end_high},
-                 {at_start_low, at_start_high, at_end_high}, shading, wall.sector);
-    add_triangle(geometry.vertices, {start_low, end_high, end_low},
-                 {at_start_low, at_end_high, at_end_low}, shading, wall.sector);
+    for (std::size_t next = 1; next + 1 < corners.size(); ++next) {
+        const std::array triangle{corners.front(), corners.at(next), corners.at(next + 1)};
+        add_triangle(geometry.vertices, triangle,
+                     {
+                         placement(u_v(triangle.at(0))),
+                         placement(u_v(triangle.at(1))),
+                         placement(u_v(triangle.at(2))),
+                     },
+                     shading, wall.sector);
+    }
     end_surface(geometry, first);
 }
 
 // A solid wall stands from the floor to the ceiling. A side of a portal is open between, and only
 // its strips below and above the opening are drawn.
-void add_wall(SectorGeometry& geometry, const Map& map, WallId id, const Sector& sector,
+void add_wall(SectorGeometry& geometry, const Map& map, WallId id,
               std::span<const Material> materials) {
     const auto& wall = map.wall(id);
-    const auto low = sector.floor.height;
-    const auto high = sector.ceiling.height;
-    const auto opening = map.opening(id);
-    if (!opening) {
-        add_wall_band(geometry, wall, wall.surface, low, high, materials);
+    const auto face = map.face(id);
+    if (!wall.link) {
+        add_wall_part(geometry, wall, wall.surface, face.whole, materials);
         return;
     }
-    if (low < opening->bottom) {
-        add_wall_band(geometry, wall, wall.lower, low, opening->bottom, materials);
+    add_wall_part(geometry, wall, wall.lower, face.lower, materials);
+    add_wall_part(geometry, wall, wall.upper, face.upper, materials);
+}
+
+// Returns where a point of a floor or ceiling lies in its surface's u and v, before its material
+// is placed: along X and Y on a flat one, and on a sloped one from its hinge wall's start, along
+// the hinge and square to it, into the sector, measured along the slope.
+Vector2 floor_or_ceiling_u_v(const Map& map, const FloorOrCeiling& floor_or_ceiling,
+                             const Vector2& point) {
+    if (!floor_or_ceiling.slope) {
+        return point;
     }
-    if (opening->top < high) {
-        add_wall_band(geometry, wall, wall.upper, opening->top, high, materials);
-    }
+    const auto& hinge = map.wall(floor_or_ceiling.slope->hinge);
+    const auto run_x = static_cast<double>(hinge.end.x) - static_cast<double>(hinge.start.x);
+    const auto run_y = static_cast<double>(hinge.end.y) - static_cast<double>(hinge.start.y);
+    const auto length = std::hypot(run_x, run_y);
+    const auto x = static_cast<double>(point.x) - static_cast<double>(hinge.start.x);
+    const auto y = static_cast<double>(point.y) - static_cast<double>(hinge.start.y);
+    const auto gradient = static_cast<double>(floor_or_ceiling.slope->gradient);
+    const auto stretch = std::sqrt(1.0 + (gradient * gradient));
+    return {
+        .x = static_cast<float>(((x * run_x) + (y * run_y)) / length),
+        .y = static_cast<float>(((y * run_x) - (x * run_y)) / length * stretch),
+    };
 }
 
 // The floor faces up and the ceiling down, so the floor's triangles run anticlockwise seen from
 // above and the ceiling's clockwise. Each triangle is three indices into the sector's corners. A
 // sky samples its backdrop by direction, not by texture coordinates, so it has none.
-void add_floor_or_ceiling(SectorGeometry& geometry, SectorId sector,
+void add_floor_or_ceiling(SectorGeometry& geometry, const Map& map, SectorId sector,
                           const std::vector<Vector2>& corners,
-                          const std::vector<std::uint32_t>& triangles,
-                          const FloorOrCeiling& floor_or_ceiling, bool faces_up,
+                          const std::vector<std::uint32_t>& triangles, bool faces_up,
                           std::span<const Material> materials) {
+    const auto& floor_or_ceiling = faces_up ? map.sector(sector).floor : map.sector(sector).ceiling;
     std::vector<Vector2> coordinates(corners.size());
     std::uint32_t shading = 0;
     if (const auto* const sky = std::get_if<Sky>(&floor_or_ceiling.cover)) {
         shading = shading_index(geometry, *sky, materials);
     } else {
         const auto& surface = std::get<Surface>(floor_or_ceiling.cover);
-        const MaterialPlacement placement(surface, materials, corners.front());
-        std::ranges::transform(corners, coordinates.begin(), placement);
+        const auto u_v = [&](const Vector2& point) {
+            return floor_or_ceiling_u_v(map, floor_or_ceiling, point);
+        };
+        const MaterialPlacement placement(surface, materials, u_v(corners.front()));
+        std::ranges::transform(corners, coordinates.begin(),
+                               [&](const Vector2& point) { return placement(u_v(point)); });
         shading = surface_shading(geometry, surface, materials);
     }
 
-    const auto lift = [&floor_or_ceiling](const Vector2& point) {
-        return Vector3{.x = point.x, .y = point.y, .z = floor_or_ceiling.height};
+    // A sloped floor or ceiling lies on its plane, so each corner is lifted to its height there.
+    const auto lift = [&](const Vector2& point) {
+        const Location at{.sector = sector, .point = {.x = point.x, .y = point.y}};
+        return Vector3{
+            .x = point.x,
+            .y = point.y,
+            .z = faces_up ? map.floor_height(at) : map.ceiling_height(at),
+        };
     };
     const auto first_vertex = geometry.vertices.size();
     for (std::size_t first = 0; first + 2 < triangles.size(); first += 3) {
@@ -287,15 +321,14 @@ SectorGeometry triangulate(const Map& map, std::span<const Material> materials) 
             auto& outline = loops.emplace_back();
             for (const auto wall_id : loop) {
                 const auto& wall = map.wall(wall_id);
-                add_wall(geometry, map, wall_id, sector, materials);
+                add_wall(geometry, map, wall_id, materials);
                 outline.push_back({wall.start.x, wall.start.y});
                 corners.push_back(wall.start);
             }
         }
         const auto flat_triangles = mapbox::earcut<std::uint32_t>(loops);
-        add_floor_or_ceiling(geometry, id, corners, flat_triangles, sector.floor, true, materials);
-        add_floor_or_ceiling(geometry, id, corners, flat_triangles, sector.ceiling, false,
-                             materials);
+        add_floor_or_ceiling(geometry, map, id, corners, flat_triangles, true, materials);
+        add_floor_or_ceiling(geometry, map, id, corners, flat_triangles, false, materials);
 
         geometry.sectors.push_back({.first = first, .count = geometry.surfaces.size() - first});
         ++index;

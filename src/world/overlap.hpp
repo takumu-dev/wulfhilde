@@ -12,8 +12,10 @@
 namespace wulfhilde::detail {
 
 /// Finds the sectors whose volumes overlap each sector's: those within whose walls, seen from
-/// above, it shares some area, between heights that it shares some of too. Sectors that only meet
-/// at a wall, a corner, a floor or a ceiling share no space.
+/// above, it shares some area, over which each one's floor lies below the other's ceiling. Sectors
+/// that only meet at a wall, a corner, a floor or a ceiling share no space. Where floors or
+/// ceilings slope, two sectors that come near to sharing height without sharing any may be found
+/// overlapping, but two that share space are never missed.
 ///
 /// Only the sectors whose bounding boxes overlap are compared, wall by wall, so a map of many
 /// sectors that each touch a few others takes little longer than reading their walls.

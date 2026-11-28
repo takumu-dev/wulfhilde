@@ -157,3 +157,18 @@ TEST_CASE(
           std::vector<std::string>{"yard", "hall", "yard", "bridge", "bank", "bridge", "yard",
                                    "chasm-west", "passage", "chasm-east"});
 }
+
+TEST_CASE("the slopes tour walks up the ramp onto the landing and back down, then into the sector "
+          "whose floor and ceiling slope different ways",
+          "[viewer]") {
+    const auto map = load_test_map("slopes");
+    const auto walk = viewer::find_benchmark_walk("slopes", "tour");
+    REQUIRE(walk.has_value());
+
+    const auto frames = viewer::walk_benchmark(map, *walk);
+
+    // The tour lasts 10.5 s.
+    CHECK(frames.size() == 630);
+    CHECK(sectors_seen_from(map, frames) ==
+          std::vector<std::string>{"hall", "ramp", "landing", "ramp", "hall", "opposed"});
+}

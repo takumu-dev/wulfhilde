@@ -18,8 +18,9 @@ struct Placed {
     float clip : SV_ClipDistance;
 };
 
-// The opening's two triangles, by its corners.
-static const uint corners[6] = {0, 1, 2, 0, 2, 3};
+// The opening's triangles, a fan from its first corner, by its corners. Those past its last
+// corner have no area.
+static const uint corners[12] = {0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5};
 
 // One corner of the opening's triangles, clipped by the plane of the view it is seen from. An eye
 // that stands in the opening sees it nearer than the near plane, which would take away what it

@@ -60,8 +60,9 @@ struct ViewRecord {
     std::optional<Plane> clip{};
 
     /// The corners of the opening it is seen through, in order round it, in the coordinates of the
-    /// view it is seen from: none for the main view.
-    std::array<Vector3, 4> opening{};
+    /// view it is seen from: none for the main view. An opening beside a slope may have as many as
+    /// six, and one with fewer repeats its last corner after them.
+    std::array<Vector3, 6> opening{};
 
     /// Whether the opening's plane lies so near the eye that the near plane would take away some
     /// of what the screen shows of it, as when the eye stands in it.

@@ -33,6 +33,12 @@ namespace wulfhilde {
 /// off it, rather than leaving it upward, snaps down onto ground up to its step height below. Both
 /// are reported as instant steps.
 ///
+/// A sloped floor or ceiling is a plane the body meets square to it. A slope no steeper than the
+/// body's steepest slope, measured from its gravity up, is ground, and one steeper isn't: a body
+/// on it slides down it as it falls. A grounded body that walks into a slope too steep for it is
+/// stopped as by a wall, rather than carried up it. A slope rising away beyond an opening touches
+/// the part of the body that comes through, so the body meets it before its centre crosses.
+///
 /// \param map The map.
 /// \param shape The body's shape.
 /// \param pose Where the body starts, whose sector `map` issued.

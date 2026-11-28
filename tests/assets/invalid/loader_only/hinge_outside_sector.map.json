@@ -1,0 +1,40 @@
+{
+  "format": "wulfhilde-map",
+  "version": 1,
+  "sectors": [
+    {
+      "id": "hall",
+      "floor": { "height": 0, "material": "test/floor", "slope": { "hinge": "gallery-door", "gradient": 0.25 } },
+      "ceiling": { "height": 3, "material": "test/ceiling" },
+      "loops": [
+        [
+          { "start": [0, 0], "surface": { "material": "test/wall" } },
+          { "start": [4, 0], "surface": { "material": "test/wall" } },
+          { "start": [4, 4], "surface": { "material": "test/wall" } },
+          { "id": "hall-door", "start": [3, 4], "surface": { "material": "test/wall" } },
+          { "start": [1, 4], "surface": { "material": "test/wall" } },
+          { "start": [0, 4], "surface": { "material": "test/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "gallery",
+      "floor": { "height": 0, "material": "test/floor" },
+      "ceiling": { "height": 3, "material": "test/ceiling" },
+      "loops": [
+        [
+          { "start": [0, 4], "surface": { "material": "test/wall" } },
+          { "id": "gallery-door", "start": [1, 4], "surface": { "material": "test/wall" } },
+          { "start": [3, 4], "surface": { "material": "test/wall" } },
+          { "start": [4, 4], "surface": { "material": "test/wall" } },
+          { "start": [4, 8], "surface": { "material": "test/wall" } },
+          { "start": [0, 8], "surface": { "material": "test/wall" } }
+        ]
+      ]
+    }
+  ],
+  "portals": [
+    { "a": { "wall": "hall-door" }, "b": { "wall": "gallery-door" } }
+  ],
+  "start": { "sector": "hall", "point": [2, 2, 0], "yaw": 0 }
+}

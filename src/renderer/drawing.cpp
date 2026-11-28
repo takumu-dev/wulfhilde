@@ -90,7 +90,7 @@ struct ViewShading {
     Matrix4 view_projection;
     Vector3 eye;
     Plane clip;
-    std::array<Vector3, 4> opening{};
+    std::array<Vector3, 6> opening{};
     std::uint32_t opening_at_eye = 0;
 };
 
@@ -1034,7 +1034,7 @@ void Drawing::record_passes(const Device& device, VkCommandBuffer commands,
                               std::as_bytes(std::span(&opening_constants, 1)));
         vkCmdSetStencilReference(commands, VK_STENCIL_FACE_FRONT_AND_BACK,
                                  narrow<std::uint32_t>(level));
-        vkCmdDraw(commands, 6, 1, 0, 0);
+        vkCmdDraw(commands, 12, 1, 0, 0);
     };
     // Each view comes after the one it is seen from. Its opening is marked in the stencil a level
     // deeper than that view's, where it shows, and the depth there is taken away, so that the view
