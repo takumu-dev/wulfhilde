@@ -7,7 +7,6 @@
 #include <wulfhilde/assets/material.hpp>
 #include <wulfhilde/core/color.hpp>
 #include <wulfhilde/core/vector2.hpp>
-#include <wulfhilde/world/asset_path.hpp>
 
 #include <pedantjson/pedantjson.hpp>
 
@@ -37,27 +36,6 @@ constexpr std::array textured_properties{"color", "roughness", "metallic", "occl
 /// The coolest and hottest temperatures an emission may have, in kelvin.
 constexpr float coolest_temperature = 1'000.0F;
 constexpr float hottest_temperature = 40'000.0F;
-
-/// Returns a number's text, as the file writes it.
-std::string_view number_text(const Field& field) {
-    return field.value.as_number().transform(&pedantjson::Number::text).value_or("");
-}
-
-/// Reads a number that must lie in a range, reporting one outside it at the number.
-///
-/// \param in_range Whether a value lies in the range.
-/// \param code The kind of problem a value outside it is.
-/// \param describe What is wrong with a value outside it, given its text.
-template <typename InRange, typename Describe>
-std::optional<float> read_number_in(const Field& field, JsonFile& file, InRange in_range,
-                                    AssetProblemCode code, Describe describe) {
-    const auto value = read_number(field, file);
-    if (value && !in_range(*value)) {
-        report_at(field, code, describe(number_text(field)), file);
-        return std::nullopt;
-    }
-    return value;
-}
 
 /// Reads a number from 0 to 1.
 struct ReadFraction {
@@ -93,16 +71,6 @@ std::optional<float> read_length(const Field& field, JsonFile& file) {
         });
 }
 
-/// Reads a light level in nits, which is 0 or more.
-std::optional<float> read_nits(const Field& field, JsonFile& file) {
-    return read_number_in(
-        field, file, [](float value) { return value >= 0.0F; },
-        AssetProblemCode::light_level_out_of_range,
-        [](std::string_view text) {
-            return std::format("{} nits isn't a light level, which is 0 or more", text);
-        });
-}
-
 /// Reads a temperature in kelvin, from the coolest to the hottest an emission may have.
 std::optional<float> read_temperature(const Field& field, JsonFile& file) {
     return read_number_in(
@@ -128,24 +96,6 @@ std::optional<Vector2> read_size(const Field& field, JsonFile& file) {
         const auto [u, v] = numbers;
         return Vector2{.x = u, .y = v};
     });
-}
-
-/// Reads a texture's asset path, reporting one that breaks the syntax of an asset path.
-std::optional<TextureReference> read_texture(const Field& field, JsonFile& file) {
-    auto path = read_string(field, file);
-    if (!path) {
-        return std::nullopt;
-    }
-    // A path that isn't an asset path may lead out of the content root.
-    if (!is_asset_path(*path)) {
-        report_at(field, AssetProblemCode::invalid_asset_path,
-                  std::format(R"("{}" isn't an asset path, which is segments of a-z, 0-9, _ and - )"
-                              "separated by / and without an extension",
-                              *path),
-                  file);
-        return std::nullopt;
-    }
-    return TextureReference{.path = std::move(*path), .field = field};
 }
 
 /// Reads the channel of a texture that a single-value property reads.
@@ -209,7 +159,7 @@ ValueDescription read_value_members(ObjectReader& object, std::string_view noun)
     const auto textured = object.has("texture");
     ValueDescription description{
         .factor = read_factor(object, noun, textured, ReadFraction{.noun = "factor"}, 1.0F),
-        .texture = object.optional("texture", read_texture),
+        .texture = object.optional("texture", read_image_reference),
     };
     if (textured) {
         description.channel = object.optional("channel", read_channel);
@@ -229,7 +179,7 @@ std::optional<ColorDescription> read_color_property(const Field& field, JsonFile
     constexpr Color white{.r = 1.0F, .g = 1.0F, .b = 1.0F};
     ColorDescription description{
         .factor = read_factor(*object, noun, object->has("texture"), read_unit_color, white),
-        .texture = object->optional("texture", read_texture),
+        .texture = object->optional("texture", read_image_reference),
     };
     object->finish();
     return description;
@@ -256,7 +206,7 @@ std::optional<NormalDescription> read_normal(const Field& field, JsonFile& file)
     if (!object) {
         return std::nullopt;
     }
-    auto texture = object->required("texture", read_texture);
+    auto texture = object->required("texture", read_image_reference);
     const auto scale = object->optional("scale", read_number).value_or(1.0F);
     object->finish();
     if (!texture) {
@@ -287,7 +237,7 @@ std::optional<EmissionDescription> read_emission(const Field& field, JsonFile& f
     }
     EmissionDescription description{
         .nits = object->required("nits", read_nits).value_or(0.0F),
-        .texture = object->optional("texture", read_texture),
+        .texture = object->optional("texture", read_image_reference),
     };
     if (object->has("color")) {
         description.color = object->required("color", read_unit_color).value_or(description.color);

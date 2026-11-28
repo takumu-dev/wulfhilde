@@ -1,0 +1,7 @@
+{
+  "$schema": "../../../schema/backdrop.schema.json",
+  "format": "wulfhilde-backdrop",
+  "version": 1,
+  "image": "backdrops/compass_amber",
+  "nits": 2000
+}

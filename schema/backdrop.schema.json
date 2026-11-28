@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wulfhilde backdrop",
+  "description": "A backdrop of the wulfhilde engine, in a file ending .backdrop.json: an image of everything infinitely far away in every direction, with its own brightness, which skies show. The engine checks the same rules when it loads a backdrop, and more that a schema can't state: a key written twice, a number too near zero to read, and whether its image is there and is a PNG of at most 4,096 pixels on a side.",
+  "type": "object",
+  "required": ["format", "version", "image", "nits"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "description": "The schema that an editor checks the file against. The engine ignores it.",
+      "type": "string"
+    },
+    "format": {
+      "description": "What the file is: a wulfhilde backdrop.",
+      "const": "wulfhilde-backdrop"
+    },
+    "version": {
+      "description": "The version of the backdrop format the file is written in. This version of the engine reads version 1 only.",
+      "const": 1
+    },
+    "image": {
+      "description": "The asset path of the image, a PNG file ending .png under the content root, in /-separated segments of a-z, 0-9, _ and -, without the extension. It is read as a colour, in sRGB, whatever the PNG says. It is equirectangular, twice as wide as it is high: its centre column faces +X, moving left in it turns anticlockwise toward +Y, and its top row is straight up.",
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+(/[a-z0-9_-]+)*$"
+    },
+    "nits": {
+      "description": "The luminance of white, in nits, unless a sky gives its own.",
+      "type": "number",
+      "minimum": 0,
+      "exclusiveMaximum": 3.4028235677973366e38
+    }
+  }
+}

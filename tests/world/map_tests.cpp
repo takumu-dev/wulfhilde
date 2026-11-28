@@ -8,8 +8,11 @@
 #include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
+#include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/portal.hpp>
 #include <wulfhilde/world/portal_link.hpp>
+#include <wulfhilde/world/sector.hpp>
+#include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/surface.hpp>
 #include <wulfhilde/world/surface_ref.hpp>
 
@@ -25,12 +28,16 @@
 
 using wulfhilde::AmbientLight;
 using wulfhilde::Angle;
+using wulfhilde::BackdropId;
+using wulfhilde::Cover;
 using wulfhilde::Exposure;
 using wulfhilde::Location;
 using wulfhilde::MaterialId;
 using wulfhilde::PortalId;
 using wulfhilde::PortalLink;
 using wulfhilde::SectorId;
+using wulfhilde::Sky;
+using wulfhilde::SkyDescription;
 using wulfhilde::Surface;
 using wulfhilde::SurfaceRef;
 using wulfhilde::Vector2;
@@ -63,14 +70,14 @@ TEST_CASE("a sector keeps its floor and its ceiling, each with its height and su
 
     const auto& hall = map.sector(SectorId{0});
     CHECK(hall.floor.height == -0.5F);
-    CHECK(hall.floor.surface == Surface{
-                                    .material = MaterialId{0},
-                                    .offset = {.x = 0.25F, .y = 0.5F},
-                                    .scale = {.x = 2.0F, .y = 0.5F},
-                                    .rotation = Angle::degrees(30.0F),
-                                });
+    CHECK(hall.floor.cover == Cover{Surface{
+                                  .material = MaterialId{0},
+                                  .offset = {.x = 0.25F, .y = 0.5F},
+                                  .scale = {.x = 2.0F, .y = 0.5F},
+                                  .rotation = Angle::degrees(30.0F),
+                              }});
     CHECK(hall.ceiling.height == 2.5F);
-    CHECK(hall.ceiling.surface == Surface{.material = MaterialId{1}});
+    CHECK(hall.ceiling.cover == Cover{Surface{.material = MaterialId{1}}});
 }
 
 TEST_CASE("each distinct material gets one ID, in the order the description first names it",
@@ -84,8 +91,48 @@ TEST_CASE("each distinct material gets one ID, in the order the description firs
     const auto materials = map.materials();
     CHECK(std::vector<std::string>(materials.begin(), materials.end()) ==
           std::vector<std::string>{"test/floor", "test/ceiling", "test/wall", "test/stone"});
-    CHECK(map.sector(SectorId{1}).floor.surface.material == MaterialId{1});
-    CHECK(map.sector(SectorId{1}).ceiling.surface.material == MaterialId{3});
+    CHECK(map.sector(SectorId{1}).floor.cover == Cover{Surface{.material = MaterialId{1}}});
+    CHECK(map.sector(SectorId{1}).ceiling.cover == Cover{Surface{.material = MaterialId{3}}});
+}
+
+TEST_CASE("a floor or a ceiling may be a sky, which shows a backdrop at its own brightness or the "
+          "backdrop's",
+          "[world]") {
+    auto description = hall_map();
+    description.sectors.at(0).floor.sky = SkyDescription{.backdrop = "test/abyss"};
+    description.sectors.at(0).ceiling.sky = SkyDescription{.backdrop = "test/day", .nits = 250.0F};
+    const auto map = make_map(description);
+
+    const auto& hall = map.sector(SectorId{0});
+    CHECK(hall.floor.height == 0.0F);
+    CHECK(hall.floor.cover == Cover{Sky{.backdrop = BackdropId{0}}});
+    CHECK(hall.ceiling.height == 3.0F);
+    CHECK(hall.ceiling.cover == Cover{Sky{.backdrop = BackdropId{1}, .nits = 250.0F}});
+    // A sky carries no material, so the floor's and the ceiling's materials go unnamed.
+    const auto materials = map.materials();
+    CHECK(std::vector<std::string>(materials.begin(), materials.end()) ==
+          std::vector<std::string>{"test/wall"});
+}
+
+TEST_CASE("each distinct backdrop gets one ID, in the order the description first names it",
+          "[world]") {
+    auto description = hall_map();
+    description.sectors.push_back(closet_sector());
+    description.sectors.at(0).ceiling.sky = SkyDescription{.backdrop = "test/day"};
+    description.sectors.at(1).floor.sky = SkyDescription{.backdrop = "test/abyss"};
+    description.sectors.at(1).ceiling.sky = SkyDescription{.backdrop = "test/day", .nits = 5.0F};
+    const auto map = make_map(description);
+
+    const auto backdrops = map.backdrops();
+    CHECK(std::vector<std::string>(backdrops.begin(), backdrops.end()) ==
+          std::vector<std::string>{"test/day", "test/abyss"});
+    CHECK(map.sector(SectorId{1}).floor.cover == Cover{Sky{.backdrop = BackdropId{1}}});
+    CHECK(map.sector(SectorId{1}).ceiling.cover ==
+          Cover{Sky{.backdrop = BackdropId{0}, .nits = 5.0F}});
+}
+
+TEST_CASE("a map without skies has no backdrops", "[world]") {
+    CHECK(make_map(hall_map()).backdrops().empty());
 }
 
 TEST_CASE("each wall runs to the start of the next one in its loop, and knows its sector",

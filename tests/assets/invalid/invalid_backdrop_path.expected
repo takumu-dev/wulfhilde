@@ -1,0 +1,1 @@
+invalid_backdrop_path.map.json:8:54: "Test/Day.png" isn't an asset path, which is segments of a-z, 0-9, _ and - separated by / and without an extension (/sectors/0/ceiling/sky/backdrop)

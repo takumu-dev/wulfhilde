@@ -5,6 +5,7 @@ wulfhilde_add_module(assets
     HEADERS
         include/wulfhilde/assets/asset_error.hpp
         include/wulfhilde/assets/asset_problem.hpp
+        include/wulfhilde/assets/backdrop.hpp
         include/wulfhilde/assets/content_root.hpp
         include/wulfhilde/assets/load_map.hpp
         include/wulfhilde/assets/load_map_assets.hpp
@@ -12,6 +13,8 @@ wulfhilde_add_module(assets
         include/wulfhilde/assets/material.hpp
         include/wulfhilde/assets/texture_image.hpp
     SOURCES
+        backdrop_decoding.cpp
+        backdrop_decoding.hpp
         content_root.cpp
         file_format.cpp
         file_format.hpp

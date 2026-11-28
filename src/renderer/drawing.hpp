@@ -26,10 +26,10 @@ namespace wulfhilde::detail {
 
 /// Draws a map on one device: culling, which keeps the surfaces of the sectors that a walk through
 /// the portals finds within what the camera sees, then those surfaces into a multisampled scene in
-/// linear light, textured and filtered anisotropically, then metering, which moves the exposure
-/// toward what a histogram of the scene's light meters, then the AgX pass, which resolves the
-/// scene's samples into an sRGB image, or into a window's image to show. An image is drawn as a
-/// frame is.
+/// linear light, textured and filtered anisotropically, with skies showing their backdrops, then
+/// metering, which moves the exposure toward what a histogram of the scene's light meters, then the
+/// AgX pass, which resolves the scene's samples into an sRGB image, or into a window's image to
+/// show. An image is drawn as a frame is.
 class Drawing {
     struct Pipelines;
     struct Metering;
@@ -43,17 +43,19 @@ class Drawing {
 
   public:
     /// Makes every pipeline for a sample count that the device takes for its scene targets, and
-    /// for the format of a window's images if there is a window, the sampler that reads every
-    /// texture, with the settings' anisotropic filtering, what metering keeps between frames, to
-    /// expose as the settings say, and the timestamps that measure a frame if the settings ask.
+    /// for the format of a window's images if there is a window, the samplers that read the
+    /// materials' textures and the backdrops' images, with the settings' anisotropic filtering,
+    /// what metering keeps between frames, to expose as the settings say, and the timestamps that
+    /// measure a frame if the settings ask.
     [[nodiscard]] static std::expected<std::unique_ptr<Drawing>, DeviceError>
     create(Device& device, VkSampleCountFlagBits samples, const RendererSettings& settings,
            std::optional<WindowFormat> window_format = std::nullopt);
 
-    /// Takes the pipelines, the sampler, what metering keeps and the timestamps that `create`
-    /// made, with the sampler's place in the bindless set.
+    /// Takes the pipelines, the samplers, what metering keeps and the timestamps that `create`
+    /// made, with each sampler's place in the bindless set.
     Drawing(Key /*key*/, VkSampleCountFlagBits samples, std::unique_ptr<Pipelines> pipelines,
             SamplerHandle texture_sampler, DescriptorHandle sampler_descriptor,
+            SamplerHandle backdrop_sampler, DescriptorHandle backdrop_sampler_descriptor,
             std::unique_ptr<Metering> metering, QueryPoolHandle timestamps) noexcept;
 
     Drawing(const Drawing&) = delete;
@@ -111,6 +113,9 @@ class Drawing {
     std::unique_ptr<Pipelines> pipelines_;
     SamplerHandle texture_sampler_;
     DescriptorHandle sampler_descriptor_;
+    // Reads a backdrop's image, which repeats once around but not over the top.
+    SamplerHandle backdrop_sampler_;
+    DescriptorHandle backdrop_sampler_descriptor_;
     std::unique_ptr<Metering> metering_;
     // The timestamps a measured frame writes, or none when this doesn't measure frames.
     QueryPoolHandle timestamps_;

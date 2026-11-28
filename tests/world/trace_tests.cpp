@@ -9,6 +9,7 @@
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/location.hpp>
 #include <wulfhilde/world/map.hpp>
+#include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/surface_ref.hpp>
 
 #include <catch2/catch_message.hpp>
@@ -23,6 +24,7 @@ using wulfhilde::RigidTransform;
 using wulfhilde::SectorCeiling;
 using wulfhilde::SectorFloor;
 using wulfhilde::SectorId;
+using wulfhilde::SkyDescription;
 using wulfhilde::SurfaceRef;
 using wulfhilde::Trace;
 using wulfhilde::Vector3;
@@ -70,6 +72,22 @@ TEST_CASE("a trace stops at the wall it meets", "[world]") {
 
 TEST_CASE("a trace stops at the floor moving down, and at the ceiling moving up", "[world]") {
     const auto map = make_map(hall_map());
+    auto trace =
+        trace_in_hall(map, {.x = 2.0F, .y = 2.0F, .z = 1.0F}, {.x = 0.0F, .y = 0.0F, .z = -5.0F});
+    CHECK(trace.end.point == Vector3{.x = 2.0F, .y = 2.0F, .z = 0.0F});
+    CHECK(trace.surface == SurfaceRef{SectorFloor{hall}});
+
+    trace =
+        trace_in_hall(map, {.x = 2.0F, .y = 2.0F, .z = 1.0F}, {.x = 1.0F, .y = 0.0F, .z = 5.0F});
+    CHECK(approx_equal(trace.end.point, {.x = 2.4F, .y = 2.0F, .z = 3.0F}, 1e-6F));
+    CHECK(trace.surface == SurfaceRef{SectorCeiling{hall}});
+}
+
+TEST_CASE("a trace stops at a sky below moving down, and at a sky above moving up", "[world]") {
+    auto description = hall_map();
+    description.sectors.at(0).floor.sky = SkyDescription{.backdrop = "test/below"};
+    description.sectors.at(0).ceiling.sky = SkyDescription{.backdrop = "test/above"};
+    const auto map = make_map(description);
     auto trace =
         trace_in_hall(map, {.x = 2.0F, .y = 2.0F, .z = 1.0F}, {.x = 0.0F, .y = 0.0F, .z = -5.0F});
     CHECK(trace.end.point == Vector3{.x = 2.0F, .y = 2.0F, .z = 0.0F});

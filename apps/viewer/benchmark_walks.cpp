@@ -43,8 +43,20 @@ constexpr std::array sectors_tour{
     BenchmarkStep{.turn = wulfhilde::Angle::degrees(90.0F), .ticks = ticks(0.75)},
 };
 
+/// The tour of `outdoors`, 11.25 s long: south from the yard across the bridge over the abyss to
+/// the ledge, back into the yard, and east into the field under its own sky, turning to look back.
+constexpr std::array outdoors_tour{
+    BenchmarkStep{.actions = forward, .ticks = ticks(3.0)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.5)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.0)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(-90.0F), .ticks = ticks(0.75)},
+    BenchmarkStep{.actions = forward, .ticks = ticks(2.5)},
+    BenchmarkStep{.turn = wulfhilde::Angle::degrees(180.0F), .ticks = ticks(1.5)},
+};
+
 /// Every benchmark walk, by its map, in the order of the maps and then of their walks.
 constexpr std::array walks{
+    BenchmarkWalk{.map = "outdoors", .name = "tour", .steps = outdoors_tour},
     BenchmarkWalk{.map = "sectors", .name = "tour", .steps = sectors_tour},
 };
 

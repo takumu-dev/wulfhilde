@@ -111,3 +111,17 @@ TEST_CASE("the sectors tour walks both arms of the hall, past the mapping camera
     CHECK(distance_across(end, {.x = 2.0F, .y = 2.0F}) < 1.0F);
     CHECK(wulfhilde::angle_between(end.facing.forward(), {.x = 1.0F}) < Angle::degrees(1.0F));
 }
+
+TEST_CASE("the outdoors tour crosses the bridge to the ledge and back, then walks into the field",
+          "[viewer]") {
+    const auto map = load_test_map("outdoors");
+    const auto walk = viewer::find_benchmark_walk("outdoors", "tour");
+    REQUIRE(walk.has_value());
+
+    const auto frames = viewer::walk_benchmark(map, *walk);
+
+    // The tour lasts 11.25 s.
+    CHECK(frames.size() == 675);
+    CHECK(sectors_seen_from(map, frames) ==
+          std::vector<std::string>{"yard", "bridge", "ledge", "bridge", "yard", "field"});
+}

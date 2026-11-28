@@ -12,6 +12,8 @@
 #include <wulfhilde/world/map_problem.hpp>
 #include <wulfhilde/world/portal.hpp>
 #include <wulfhilde/world/portal_link.hpp>
+#include <wulfhilde/world/sector.hpp>
+#include <wulfhilde/world/sky.hpp>
 #include <wulfhilde/world/surface.hpp>
 #include <wulfhilde/world/surface_ref.hpp>
 
@@ -30,7 +32,9 @@
 
 using wulfhilde::AmbientLight;
 using wulfhilde::Angle;
+using wulfhilde::BackdropId;
 using wulfhilde::ContentRoot;
+using wulfhilde::Cover;
 using wulfhilde::Exposure;
 using wulfhilde::load_map;
 using wulfhilde::Map;
@@ -39,6 +43,7 @@ using wulfhilde::MaterialId;
 using wulfhilde::PortalId;
 using wulfhilde::PortalLink;
 using wulfhilde::SectorId;
+using wulfhilde::Sky;
 using wulfhilde::Surface;
 using wulfhilde::WallId;
 
@@ -81,14 +86,14 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     const auto& hall = map.sector(SectorId{0});
     CHECK(hall.id == "hall");
     CHECK(hall.floor.height == -0.5F);
-    CHECK(hall.floor.surface == Surface{
-                                    .material = MaterialId{0},
-                                    .offset = {.x = 0.25F, .y = 0.5F},
-                                    .scale = {.x = 2.0F, .y = 3.0F},
-                                    .rotation = Angle::degrees(90.0F),
-                                });
+    CHECK(hall.floor.cover == Cover{Surface{
+                                  .material = MaterialId{0},
+                                  .offset = {.x = 0.25F, .y = 0.5F},
+                                  .scale = {.x = 2.0F, .y = 3.0F},
+                                  .rotation = Angle::degrees(90.0F),
+                              }});
     CHECK(hall.ceiling.height == 3.0F);
-    CHECK(hall.ceiling.surface == Surface{.material = MaterialId{1}});
+    CHECK(hall.ceiling.cover == Cover{Surface{.material = MaterialId{1}}});
     CHECK(hall.ambient == AmbientLight{.color = {.r = 1.0F, .g = 0.5F, .b = 0.25F}, .lux = 5.0F});
     CHECK(hall.loops == std::vector<std::vector<WallId>>{
                             {WallId{0}, WallId{1}, WallId{2}, WallId{3}},
@@ -129,8 +134,15 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     CHECK(map.portal(PortalId{0}).b == wulfhilde::SurfaceRef{WallId{6}});
     CHECK(map.portal(PortalId{0}).properties == R"({ "sound": "creak" })");
 
+    const auto backdrops = map.backdrops();
+    CHECK(std::vector<std::string>(backdrops.begin(), backdrops.end()) ==
+          std::vector<std::string>{"sky/abyss", "sky/dusk"});
     const auto& closet = map.sector(SectorId{1});
     CHECK(closet.id == "closet");
+    CHECK(closet.floor.height == 0.0F);
+    CHECK(closet.floor.cover == Cover{Sky{.backdrop = BackdropId{0}}});
+    CHECK(closet.ceiling.height == 2.5F);
+    CHECK(closet.ceiling.cover == Cover{Sky{.backdrop = BackdropId{1}, .nits = 50.0F}});
     CHECK(closet.ambient ==
           AmbientLight{.color = {.r = 0.5F, .g = 0.75F, .b = 1.0F}, .lux = 20.0F});
     CHECK(closet.properties.empty());
