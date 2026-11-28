@@ -1,0 +1,1 @@
+loader_only/slope_beyond_bounds.map.json:8:107: the slope takes the ceiling to 4403 m at the corner (4, 4), beyond the map's bounds, 4,096 m either side of the origin (/sectors/0/ceiling/slope/gradient)

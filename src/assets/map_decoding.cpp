@@ -91,11 +91,25 @@ std::optional<SkyDescription> read_sky(const Field& field, JsonFile& file) {
     return description;
 }
 
+std::optional<SlopeDescription> read_slope(const Field& field, JsonFile& file) {
+    auto slope = ReadObject{.noun = "slope"}(field, file);
+    if (!slope) {
+        return std::nullopt;
+    }
+    SlopeDescription description{
+        .hinge = slope->required("hinge", read_string).value_or(""),
+        .gradient = slope->required("gradient", read_number).value_or(0.0F),
+    };
+    slope->finish();
+    return description;
+}
+
 /// The members of a floor or a ceiling that say which material covers it and how, none of which
 /// a sky may have.
 constexpr std::array surface_members{"material", "offset", "scale", "rotation"};
 
-/// Reads a floor or a ceiling, whose surface's members, or else its sky, sit beside its height.
+/// Reads a floor or a ceiling, whose surface's members, or else its sky, sit beside its height and
+/// its slope.
 struct ReadFloorOrCeiling {
     /// Which of the two it is, for messages.
     std::string_view noun;
@@ -107,6 +121,7 @@ struct ReadFloorOrCeiling {
         }
         FloorOrCeilingDescription description{
             .height = object->required("height", read_number).value_or(0.0F),
+            .slope = object->optional("slope", read_slope),
         };
         if (object->has("sky")) {
             description.sky = object->required("sky", read_sky).value_or(SkyDescription{});

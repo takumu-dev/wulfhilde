@@ -1,0 +1,146 @@
+{
+  "$schema": "../../schema/map.schema.json",
+  "format": "wulfhilde-map",
+  "version": 1,
+  "ambient": { "color": [1, 1, 1], "lux": 250 },
+  "sectors": [
+    {
+      "id": "hall",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "start": [0, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hall-gentle", "start": [2, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [5, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hall-steep", "start": [7, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [10, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [12, 0], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hall-ramp", "start": [12, 6], "surface": { "material": "materials/grid/wall" } },
+          { "start": [10, 8], "surface": { "material": "materials/grid/wall" } },
+          { "id": "hall-attic", "start": [8, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, 8], "surface": { "material": "materials/grid/wall" } },
+          {
+            "id": "hall-opposed",
+            "start": [0, 6],
+            "surface": { "material": "materials/grid/wall" },
+            "upper": { "material": "materials/grid/upper_strip" }
+          },
+          { "start": [0, 2], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "gentle",
+      "floor": {
+        "height": 0,
+        "material": "materials/grid/floor",
+        "slope": { "hinge": "gentle-door", "gradient": 0.57735027 }
+      },
+      "ceiling": { "height": 4, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "id": "gentle-door", "start": [5, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [2, -1.5], "surface": { "material": "materials/grid/wall" } },
+          { "start": [5, -1.5], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "steep",
+      "floor": {
+        "height": 0,
+        "material": "materials/grid/floor",
+        "slope": { "hinge": "steep-door", "gradient": 1.7320508 }
+      },
+      "ceiling": { "height": 4, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "id": "steep-door", "start": [10, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [7, 0], "surface": { "material": "materials/grid/wall" } },
+          { "start": [7, -1.5], "surface": { "material": "materials/grid/wall" } },
+          { "start": [10, -1.5], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "ramp",
+      "floor": {
+        "height": 0,
+        "material": "materials/grid/floor",
+        "slope": { "hinge": "ramp-foot", "gradient": 0.42426407 }
+      },
+      "ceiling": { "height": 4, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "id": "ramp-foot", "start": [10, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [12, 6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "ramp-head", "start": [14, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [12, 10], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "landing",
+      "floor": { "height": 1.2, "material": "materials/grid/floor" },
+      "ceiling": { "height": 4, "material": "materials/grid/ceiling" },
+      "loops": [
+        [
+          { "id": "landing-door", "start": [12, 10], "surface": { "material": "materials/grid/wall" } },
+          { "start": [14, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [16, 10], "surface": { "material": "materials/grid/wall" } },
+          { "start": [14, 12], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "attic",
+      "floor": { "height": 0, "material": "materials/grid/floor" },
+      "ceiling": {
+        "height": 4,
+        "material": "materials/grid/ceiling",
+        "slope": { "hinge": "attic-door", "gradient": -0.375 }
+      },
+      "loops": [
+        [
+          { "id": "attic-door", "start": [4, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [8, 8], "surface": { "material": "materials/grid/wall" } },
+          { "start": [8, 12], "surface": { "material": "materials/grid/wall" } },
+          { "start": [4, 12], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    },
+    {
+      "id": "opposed",
+      "floor": {
+        "height": 0,
+        "material": "materials/grid/floor",
+        "slope": { "hinge": "opposed-door", "gradient": 0.2 }
+      },
+      "ceiling": {
+        "height": 4,
+        "material": "materials/grid/ceiling",
+        "slope": { "hinge": "opposed-south", "gradient": -0.25 }
+      },
+      "loops": [
+        [
+          { "id": "opposed-door", "start": [0, 2], "surface": { "material": "materials/grid/wall" } },
+          { "start": [0, 6], "surface": { "material": "materials/grid/wall" } },
+          { "start": [-4, 6], "surface": { "material": "materials/grid/wall" } },
+          { "id": "opposed-south", "start": [-4, 2], "surface": { "material": "materials/grid/wall" } }
+        ]
+      ]
+    }
+  ],
+  "portals": [
+    { "a": { "wall": "hall-gentle" }, "b": { "wall": "gentle-door" } },
+    { "a": { "wall": "hall-steep" }, "b": { "wall": "steep-door" } },
+    { "a": { "wall": "hall-ramp" }, "b": { "wall": "ramp-foot" } },
+    { "a": { "wall": "ramp-head" }, "b": { "wall": "landing-door" } },
+    { "a": { "wall": "hall-attic" }, "b": { "wall": "attic-door" } },
+    { "a": { "wall": "hall-opposed" }, "b": { "wall": "opposed-door" } }
+  ],
+  "start": { "sector": "hall", "point": [6, 4, 0], "yaw": 0 }
+}

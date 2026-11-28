@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <wulfhilde/core/vector2.hpp>
 #include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/world/exposure.hpp>
 #include <wulfhilde/world/ids.hpp>
@@ -15,6 +16,7 @@
 #include <wulfhilde/world/start_position.hpp>
 #include <wulfhilde/world/trace.hpp>
 #include <wulfhilde/world/wall.hpp>
+#include <wulfhilde/world/wall_face.hpp>
 
 #include <expected>
 #include <optional>
@@ -84,6 +86,8 @@ class Map {
 
     /// Returns the height of a sector's floor below or above a location's point.
     ///
+    /// A sloped floor is a plane, which carries on beyond its sector's walls.
+    ///
     /// \param location The location, whose sector this map issued. Its point needn't lie in the
     ///                 sector, and its height doesn't matter.
     /// \return The height of the floor at the point's X and Y, in metres.
@@ -91,28 +95,54 @@ class Map {
 
     /// Returns the height of a sector's ceiling below or above a location's point.
     ///
+    /// A sloped ceiling is a plane, which carries on beyond its sector's walls.
+    ///
     /// \param location The location, whose sector this map issued. Its point needn't lie in the
     ///                 sector, and its height doesn't matter.
     /// \return The height of the ceiling at the point's X and Y, in metres.
     [[nodiscard]] float ceiling_height(const Location& location) const;
 
-    /// Returns the opening of a wall that is a side of a portal, through which the sector beyond is
-    /// seen and reached.
+    /// Returns the direction a sector's floor faces: up, into the sector, and tilted away from the
+    /// rise of its slope, if it slopes.
+    ///
+    /// \param sector The sector's ID, which this map issued.
+    /// \return The direction, of unit length.
+    [[nodiscard]] Vector3 floor_normal(SectorId sector) const;
+
+    /// Returns the direction a sector's ceiling faces: down, into the sector, and tilted toward the
+    /// rise of its slope, if it slopes.
+    ///
+    /// \param sector The sector's ID, which this map issued.
+    /// \return The direction, of unit length.
+    [[nodiscard]] Vector3 ceiling_normal(SectorId sector) const;
+
+    /// Returns the opening of a wall that is a side of a portal at a point of the wall, through
+    /// which the sector beyond is seen and reached there.
     ///
     /// \param wall The wall's ID, which this map issued.
-    /// \return The opening, from the higher of the two sectors' floors to the lower of their
+    /// \param point A point seen from above, which stands for the point of the wall nearest it,
+    ///              the wall's ends included.
+    /// \return The opening there, from the higher of the two sectors' floors to the lower of their
     ///         ceilings, or nothing for a solid wall.
-    [[nodiscard]] std::optional<Opening> opening(WallId wall) const;
+    [[nodiscard]] std::optional<Opening> opening(WallId wall, const Vector2& point) const;
+
+    /// Returns the face of a wall: the whole wall, from its sector's floor to its ceiling, and for
+    /// a side of a portal, its strips and its opening.
+    ///
+    /// \param wall The wall's ID, which this map issued.
+    /// \return The wall's face.
+    [[nodiscard]] WallFace face(WallId wall) const;
 
     /// Moves a location in a straight line through the map, stopping at the first surface or sky it
     /// meets.
     ///
     /// Surfaces and skies are met from the front only: a wall from inside its sector, a floor or a
-    /// sky below moving down and a ceiling or a sky above moving up. A trace that reaches a wall
-    /// portal within its opening, its edges included, carries on into the sector beyond, and one
-    /// that reaches it above or below meets the strip there, which is the wall. A trace that starts
-    /// on a surface and moves into it stops at once, one that ends exactly on a surface has met it,
-    /// and one through a corner stops at one of the corner's walls, a solid one before an opening.
+    /// sky below moving down toward it and a ceiling or a sky above moving up toward it, which
+    /// along a slope may be moving level. A trace that reaches a wall portal within its opening,
+    /// its edges included, carries on into the sector beyond, and one that reaches it above or
+    /// below meets the strip there, which is the wall. A trace that starts on a surface and moves
+    /// into it stops at once, one that ends exactly on a surface has met it, and one through a
+    /// corner stops at one of the corner's walls, a solid one before an opening.
     ///
     /// \param from Where the trace starts, whose sector this map issued.
     /// \param motion How far the trace moves and which way, in the coordinates of the start's

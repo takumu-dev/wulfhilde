@@ -20,8 +20,8 @@ namespace wulfhilde {
 ///
 /// The material's textures repeat at the material's own real-world size, times `scale`. On a wall,
 /// u runs along the wall from its start, to the right as the wall is seen from its sector, and v is
-/// height, so textures line up across neighbouring walls. On a floor or a ceiling, u and v run
-/// along X and Y.
+/// height, so textures line up across neighbouring walls. On a flat floor or ceiling, u and v run
+/// along X and Y, and on a sloped one along its hinge and square to it, on the slope.
 struct SurfaceDescription {
     /// The asset path of the material: `/`-separated segments of lowercase `a`–`z`, `0`–`9`, `_`
     /// and `-`, relative to the content root and without an extension.
@@ -76,24 +76,43 @@ struct SkyDescription {
     std::optional<float> nits{};
 };
 
-/// A sector's floor or ceiling: the height it lies at, and what covers it.
+/// How a floor or a ceiling slopes: from a hinge along one of its sector's walls, where it lies at
+/// its height, it rises square to the wall, into the sector, at a gradient.
+struct SlopeDescription {
+    /// The id of the wall it is hinged on, which is a wall of the same sector.
+    std::string hinge{};
+
+    /// How far it rises for each metre square to the hinge, into the sector, in metres. A negative
+    /// gradient makes it fall.
+    float gradient = 0.0F;
+};
+
+/// A sector's floor or ceiling: the height it lies at, how it slopes, and what covers it.
 ///
 /// Its surface's fields sit beside its height, as the file writes them, and a sky takes the place
 /// of all of them.
 struct FloorOrCeilingDescription {
-    /// The height it lies at, in metres.
+    /// The height it lies at, in metres: everywhere, if it is flat, or along its hinge, if it
+    /// slopes.
     float height = 0.0F;
 
+    /// How it slopes, or nothing for a flat floor or ceiling.
+    std::optional<SlopeDescription> slope{};
+
     /// The asset path of the material that covers it, as in `SurfaceDescription::material`.
+    ///
+    /// On a flat floor or ceiling, u and v run along X and Y. On a sloped one, the material lies on
+    /// the slope from the hinge wall's start: u runs along the hinge toward the wall's end, and v
+    /// square to it, into the sector, in metres along the slope.
     std::string material{};
 
-    /// How far the material is moved along X and Y, in metres.
+    /// How far the material is moved along u and v, in metres.
     Vector2 offset{};
 
-    /// What the material's size is multiplied by, along X and Y.
+    /// What the material's size is multiplied by, along u and v.
     Vector2 scale{.x = 1.0F, .y = 1.0F};
 
-    /// How far the material is turned in the surface's plane, from +X toward +Y, about the point
+    /// How far the material is turned in the surface's plane, from +u toward +v, about the point
     /// `offset` moves its origin to. `scale` applies along the material's own turned axes.
     Angle rotation{};
 

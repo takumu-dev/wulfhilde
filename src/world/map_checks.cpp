@@ -9,6 +9,7 @@
 #include <wulfhilde/world/map_description.hpp>
 #include <wulfhilde/world/map_problem.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -78,6 +79,11 @@ void check_point(Problems& problems, std::string_view pointer, const Vector3& po
     check_coordinate(problems, child(pointer, 0), point.x);
     check_coordinate(problems, child(pointer, 1), point.y);
     check_coordinate(problems, child(pointer, 2), point.z);
+}
+
+/// Returns a point seen from above as a message writes it, `(x, y)`.
+[[nodiscard]] std::string point_text(const Vector2& point) {
+    return std::format("({}, {})", point.x, point.y);
 }
 
 /// Checks that a string is an asset path.
@@ -280,8 +286,95 @@ void check_loop(Problems& problems, std::string_view pointer,
     }
 }
 
-void check_sector(Problems& problems, std::string_view pointer, const SectorDescription& sector,
-                  NamedWalls& named_walls) {
+/// Finds the first wall with an id in any sector, returning its sector's index and its JSON
+/// pointer.
+[[nodiscard]] std::optional<std::pair<std::size_t, std::string>>
+find_wall(const MapDescription& description, std::string_view id) {
+    for (std::size_t s = 0; const auto& sector : description.sectors) {
+        for (std::size_t l = 0; const auto& loop : sector.loops) {
+            for (std::size_t w = 0; const auto& wall : loop) {
+                if (wall.id == id) {
+                    return std::pair{
+                        s,
+                        child(child(child(child("/sectors", s), "loops"), l), w),
+                    };
+                }
+                ++w;
+            }
+            ++l;
+        }
+        ++s;
+    }
+    return std::nullopt;
+}
+
+/// Checks a floor's or ceiling's slope: that its hinge is a wall of its own sector, and that its
+/// gradient keeps it within the map's bounds at each of the sector's corners. Corners beyond the
+/// bounds may not be numbers, so a sector with any isn't checked for the second.
+void check_slope(Problems& problems, std::string_view pointer, std::string_view noun,
+                 const FloorOrCeilingDescription& floor_or_ceiling, std::size_t sector_index,
+                 const MapDescription& description) {
+    if (!floor_or_ceiling.slope) {
+        return;
+    }
+    const auto& slope = *floor_or_ceiling.slope;
+    const auto slope_pointer = child(pointer, "slope");
+    const auto& sector = description.sectors.at(sector_index);
+    std::optional<PlanSegment> hinge;
+    for (const auto& loop : sector.loops) {
+        const auto starts =
+            loop | std::views::transform(&WallDescription::start) | std::ranges::to<std::vector>();
+        for (const auto& [wall, segment] : std::views::zip(loop, loop_segments(starts))) {
+            if (!hinge && wall.id == slope.hinge) {
+                hinge = segment;
+            }
+        }
+    }
+    if (!hinge) {
+        if (const auto found = find_wall(description, slope.hinge)) {
+            problems.add(MapProblemCode::hinge_outside_sector, child(slope_pointer, "hinge"),
+                         std::format("the hinge, wall {}, isn't a wall of this sector, but of {}",
+                                     found->second, child("/sectors", found->first)));
+        } else {
+            problems.add(MapProblemCode::unknown_wall, child(slope_pointer, "hinge"),
+                         std::format(R"(no wall has the id "{}")", slope.hinge));
+        }
+        return;
+    }
+
+    const auto gradient_pointer = child(slope_pointer, "gradient");
+    if (!std::isfinite(slope.gradient)) {
+        problems.add(MapProblemCode::coordinate_out_of_range, gradient_pointer,
+                     std::format("{} isn't a gradient, which is a finite number", slope.gradient));
+        return;
+    }
+    const auto in_bounds = [](float value) { return std::abs(value) <= coordinate_bound; };
+    const auto corners =
+        sector.loops | std::views::join | std::views::transform(&WallDescription::start);
+    const auto length = std::hypot(hinge->end.x - hinge->start.x, hinge->end.y - hinge->start.y);
+    if (!in_bounds(floor_or_ceiling.height) || length == 0.0 ||
+        !std::ranges::all_of(corners, [&](const Vector2& corner) {
+            return in_bounds(corner.x) && in_bounds(corner.y);
+        })) {
+        return;
+    }
+    for (const auto& corner : corners) {
+        const auto rise = static_cast<double>(slope.gradient) *
+                          turn(hinge->start, hinge->end, to_plan(corner)) / length;
+        const auto height = static_cast<double>(floor_or_ceiling.height) + rise;
+        if (std::abs(height) > static_cast<double>(coordinate_bound)) {
+            problems.add(MapProblemCode::coordinate_out_of_range, gradient_pointer,
+                         std::format("the slope takes the {} to {} m at the corner {}, beyond the "
+                                     "map's bounds, 4,096 m either side of the origin",
+                                     noun, height, point_text(corner)));
+            return;
+        }
+    }
+}
+
+void check_sector(Problems& problems, std::string_view pointer, const MapDescription& description,
+                  std::size_t index, NamedWalls& named_walls) {
+    const auto& sector = description.sectors.at(index);
     check_floor_or_ceiling(problems, child(pointer, "floor"), sector.floor);
     check_floor_or_ceiling(problems, child(pointer, "ceiling"), sector.ceiling);
     check_ambient(problems, child(pointer, "ambient"), sector.ambient);
@@ -296,6 +389,8 @@ void check_sector(Problems& problems, std::string_view pointer, const SectorDesc
         problems.add(MapProblemCode::unsupported_inner_loop, child(loops_pointer, i),
                      "the loop is an inner loop, which this version of the engine doesn't support");
     }
+    check_slope(problems, child(pointer, "floor"), "floor", sector.floor, index, description);
+    check_slope(problems, child(pointer, "ceiling"), "ceiling", sector.ceiling, index, description);
 }
 
 /// Returns the name of a kind of portal side, as the file writes it.
@@ -309,11 +404,6 @@ void check_sector(Problems& problems, std::string_view pointer, const SectorDesc
         return "ceiling";
     }
     return "wall";
-}
-
-/// Returns a point seen from above as a message writes it, `(x, y)`.
-[[nodiscard]] std::string point_text(const Vector2& point) {
-    return std::format("({}, {})", point.x, point.y);
 }
 
 /// Checks that each portal's sides name walls or sectors that exist, that it links like with like,
@@ -396,7 +486,7 @@ std::vector<MapProblem> find_problems(const MapDescription& description) {
                          std::format(R"(sector {} already has the id "{}")",
                                      child("/sectors", first->second), sector.id));
         }
-        check_sector(problems, pointer, sector, named_walls);
+        check_sector(problems, pointer, description, i, named_walls);
         ++i;
     }
     check_portals(problems, description.portals, named_walls, sectors_by_id);

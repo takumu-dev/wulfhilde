@@ -97,6 +97,40 @@ const std::vector<TestMapCameras>& test_map_cameras() {
                     },
                 },
         },
+        {
+            .map = "slopes",
+            .cameras =
+                {
+                    // From the hall, north-east up the ramp onto the landing, the floor's grid
+                    // running along the ramp's diagonal hinge and its side walls' bottoms sloping.
+                    {
+                        .name = "ramp",
+                        .sector = "hall",
+                        .point = {.x = 8.0F, .y = 4.5F, .z = 1.65F},
+                        .yaw = Angle::degrees(45.0F),
+                        .pitch = Angle::degrees(-10.0F),
+                    },
+                    // From the hall, north and up into the attic, whose ceiling slopes down from
+                    // the hall's height to its far wall.
+                    {
+                        .name = "ceiling",
+                        .sector = "hall",
+                        .point = {.x = 6.0F, .y = 5.5F, .z = 1.65F},
+                        .yaw = Angle::degrees(90.0F),
+                        .pitch = Angle::degrees(20.0F),
+                    },
+                    // From the hall, west into the sector whose floor rises west and whose
+                    // ceiling falls north, under the triangle of the upper strip that its falling
+                    // ceiling leaves on the hall's side.
+                    {
+                        .name = "opposed",
+                        .sector = "hall",
+                        .point = {.x = 4.0F, .y = 4.0F, .z = 1.65F},
+                        .yaw = Angle::degrees(180.0F),
+                        .pitch = Angle::degrees(0.0F),
+                    },
+                },
+        },
     };
     return maps;
 }

@@ -45,6 +45,7 @@ enum class MapProblemCode : std::uint8_t {
     mismatched_portal_walls, ///< A wall portal's walls don't run between the same corners in
                              ///< opposite directions.
     wall_in_two_portals,     ///< A wall is a side of an earlier portal too.
+    hinge_outside_sector,    ///< A slope's hinge is a wall of another sector.
     missing_file,            ///< No file is at the map's asset path.
     unreadable_file,         ///< The map's file is there, but can't be read.
     syntax_error,            ///< The map's file isn't JSON.

@@ -1,0 +1,1 @@
+loader_only/hinge_outside_sector.map.json:7:77: the hinge, wall /sectors/1/loops/0/1, isn't a wall of this sector, but of /sectors/1 (/sectors/0/floor/slope/hinge)

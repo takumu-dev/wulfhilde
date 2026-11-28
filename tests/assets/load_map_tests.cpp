@@ -44,6 +44,7 @@ using wulfhilde::PortalId;
 using wulfhilde::PortalLink;
 using wulfhilde::SectorId;
 using wulfhilde::Sky;
+using wulfhilde::Slope;
 using wulfhilde::Surface;
 using wulfhilde::WallId;
 
@@ -92,8 +93,10 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
                                   .scale = {.x = 2.0F, .y = 3.0F},
                                   .rotation = Angle::degrees(90.0F),
                               }});
+    CHECK(hall.floor.slope == Slope{.hinge = WallId{1}, .gradient = 0.25F});
     CHECK(hall.ceiling.height == 3.0F);
     CHECK(hall.ceiling.cover == Cover{Surface{.material = MaterialId{1}}});
+    CHECK(hall.ceiling.slope == std::nullopt);
     CHECK(hall.ambient == AmbientLight{.color = {.r = 1.0F, .g = 0.5F, .b = 0.25F}, .lux = 5.0F});
     CHECK(hall.loops == std::vector<std::vector<WallId>>{
                             {WallId{0}, WallId{1}, WallId{2}, WallId{3}},
@@ -143,6 +146,8 @@ TEST_CASE("a map's file loads as the map it describes, with defaults for what it
     CHECK(closet.floor.cover == Cover{Sky{.backdrop = BackdropId{0}}});
     CHECK(closet.ceiling.height == 2.5F);
     CHECK(closet.ceiling.cover == Cover{Sky{.backdrop = BackdropId{1}, .nits = 50.0F}});
+    CHECK(closet.floor.slope == std::nullopt);
+    CHECK(closet.ceiling.slope == Slope{.hinge = WallId{6}, .gradient = -0.5F});
     CHECK(closet.ambient ==
           AmbientLight{.color = {.r = 0.5F, .g = 0.75F, .b = 1.0F}, .lux = 20.0F});
     CHECK(closet.properties.empty());
@@ -162,6 +167,8 @@ TEST_CASE("a map's file may leave out every optional member", "[assets]") {
     CHECK(map.sector(SectorId{0}).ambient == AmbientLight{});
     CHECK(map.exposure() == Exposure{});
     CHECK(map.sector(SectorId{0}).properties.empty());
+    CHECK(map.sector(SectorId{0}).floor.slope == std::nullopt);
+    CHECK(map.sector(SectorId{0}).ceiling.slope == std::nullopt);
     CHECK(map.properties().empty());
     CHECK(map.portals().empty());
     CHECK(map.wall(WallId{0}).id == std::nullopt);

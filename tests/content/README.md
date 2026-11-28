@@ -103,3 +103,34 @@ beyond, and the abyss's walls beside the bridge, the yard and the ledge are thei
   field's, which is dimmer; no line shows down the backdrop's seam behind `-X`; looking down from
   the bridge, the abyss shows the ground's labels and the dark cap; and a player who steps off the
   bridge falls and stands on the abyss's floor.
+
+### `slopes`
+
+The hall, 12 m along X and 8 m along Y under a ceiling 4 m up, in white ambient light of 250 lux,
+has a slope or a sloped sector through each of its sides. The player starts in its middle, facing
++X. Its surfaces are dressed in the debug-grid materials of their roles.
+
+Through the hall's diagonal north-east corner, the ramp rises north-east at a gradient of 0.424
+(23°), hinged on that diagonal wall, from the hall's floor to the landing's, 1.2 m up and 2.83 m
+on. Its side walls stand on the slope. North, the attic's flat floor lies under a ceiling hinged
+on its doorway at the hall's height, which falls to 2.5 m at its far wall. West, the opposed
+sector's floor rises west from its doorway at a gradient of 0.2, while its ceiling, hinged on its
+south wall, falls north at 0.25, so its doorway's top slopes too and leaves a triangle of upper
+strip on the hall's side. South, side by side, the gentle slope rises at 30° and the steep slope
+at 60°, either side of the player's steepest walkable slope, 45°, with clear margins.
+
+- **Cases**: floors and ceilings sloped from a hinge on any wall of their sector, diagonal ones
+  included, and at negative gradients; a floor's grid lying on its slope, along its hinge; walls
+  standing on sloped floors and under sloped ceilings, and strips whose edges slope; slopes the
+  player walks up and down, and one too steep, which stops the player at its foot.
+- **Cameras**: `ramp`, from the hall north-east up the ramp onto the landing; `ceiling`, from the
+  hall north and up into the attic; `opposed`, from the hall west into the opposed sector.
+- **Benchmark walk**: `tour`, 10.5 s: east across the hall in line with the middle of the ramp, up
+  the ramp onto the landing and back down, then west into the opposed sector, turning to look
+  back.
+- **Needs eyes**: the ramp's grid runs along its diagonal hinge, and its lines stay square across
+  the slope; the ramp's side walls meet its slope with no gap; the attic's ceiling meets the
+  hall's at its doorway, and the opposed sector's strip runs to a point at its doorway's south end.
+  The player walks up the ramp and the gentle slope without a hitch, the eye rising smoothly rather
+  than stepping, walks back down them without leaving the slope, and is stopped at the foot of the
+  steep slope without hopping up it.

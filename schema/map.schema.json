@@ -180,8 +180,24 @@
         }
       }
     },
+    "slope": {
+      "description": "How a floor or ceiling slopes: from a hinge along one of its sector's walls, where it lies at its height, it rises square to the wall, into the sector, at a gradient.",
+      "type": "object",
+      "required": ["hinge", "gradient"],
+      "additionalProperties": false,
+      "properties": {
+        "hinge": {
+          "description": "The id of the wall it is hinged on, a wall of the same sector.",
+          "type": "string"
+        },
+        "gradient": {
+          "description": "How far it rises for each metre square to the hinge, into the sector, in metres. A negative gradient makes it fall. At every corner of the sector, the slope must keep it within 4,096 m of the origin.",
+          "$ref": "#/$defs/number"
+        }
+      }
+    },
     "floorOrCeiling": {
-      "description": "A sector's floor or ceiling: the height it lies at, and either the material that covers it, with u and v along X and Y, or a sky, but not both.",
+      "description": "A sector's floor or ceiling: the height it lies at, an optional slope, and either the material that covers it or a sky, but not both. A flat floor's or ceiling's material lies with u and v along X and Y, and a sloped one's on the slope from the hinge wall's start, with u along the hinge toward the wall's end and v square to it, into the sector.",
       "type": "object",
       "required": ["height"],
       "oneOf": [{ "required": ["material"] }, { "required": ["sky"] }],
@@ -191,9 +207,10 @@
       "additionalProperties": false,
       "properties": {
         "height": {
-          "description": "The height it lies at, in metres.",
+          "description": "The height it lies at, in metres: everywhere, if it is flat, or along its hinge, if it slopes.",
           "$ref": "#/$defs/coordinate"
         },
+        "slope": { "$ref": "#/$defs/slope" },
         "material": { "$ref": "#/$defs/materialPath" },
         "offset": { "$ref": "#/$defs/offset" },
         "scale": { "$ref": "#/$defs/scale" },

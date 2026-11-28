@@ -5,16 +5,16 @@
 #include <wulfhilde/core/narrow.hpp>
 #include <wulfhilde/core/rigid_transform.hpp>
 #include <wulfhilde/core/vector2.hpp>
+#include <wulfhilde/core/vector3.hpp>
 #include <wulfhilde/core/vector4.hpp>
 #include <wulfhilde/renderer/camera.hpp>
 #include <wulfhilde/renderer/extent.hpp>
 #include <wulfhilde/world/ids.hpp>
 #include <wulfhilde/world/map.hpp>
-#include <wulfhilde/world/opening.hpp>
 #include <wulfhilde/world/wall.hpp>
+#include <wulfhilde/world/wall_face.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -99,7 +99,7 @@ template <typename Distance> ClipPolygon clip(const ClipPolygon& polygon, Distan
 
 // The window in which a camera sees a wall's opening within the window of the wall's sector, or
 // nothing if it sees none of it.
-std::optional<ScreenWindow> window_through(const Wall& wall, const Opening& opening,
+std::optional<ScreenWindow> window_through(const Wall& wall, const std::vector<Vector3>& opening,
                                            const ScreenWindow& window, const Camera& camera,
                                            const Projection& projection) {
     // The wall faces its sector, to its left, which is where the eye is.
@@ -110,14 +110,9 @@ std::optional<ScreenWindow> window_through(const Wall& wall, const Opening& open
     }
 
     ClipPolygon polygon;
-    for (const auto& [point, height] : std::array{
-             std::pair{wall.start, opening.bottom},
-             std::pair{wall.end, opening.bottom},
-             std::pair{wall.end, opening.top},
-             std::pair{wall.start, opening.top},
-         }) {
+    for (const auto& corner : opening) {
         polygon.push_back(projection.view_projection *
-                          Vector4{.x = point.x, .y = point.y, .z = height, .w = 1.0F});
+                          Vector4{.x = corner.x, .y = corner.y, .z = corner.z, .w = 1.0F});
     }
     // Every point of the opening that the screen shows is at least the near plane's distance from
     // the eye, and the farthest a direction on the screen strays from straight ahead is less than
@@ -203,11 +198,14 @@ PortalTraversal traverse_portals(const Map& map, const Camera& camera, Extent ex
         for (const auto& loop : map.sector(sector_id).loops) {
             for (const auto wall_id : loop) {
                 const auto& wall = map.wall(wall_id);
-                const auto opening = map.opening(wall_id);
-                if (!wall.link || !opening || opening->bottom >= opening->top) {
+                if (!wall.link) {
                     continue;
                 }
-                const auto seen = window_through(wall, *opening, window, camera, projection);
+                const auto opening = map.face(wall_id).opening;
+                if (opening.empty()) {
+                    continue;
+                }
+                const auto seen = window_through(wall, opening, window, camera, projection);
                 if (!seen) {
                     continue;
                 }
