@@ -74,6 +74,40 @@ const std::vector<TestMapCameras>& test_map_cameras() {
                 },
         },
         {
+            .map = "overlap",
+            .cameras =
+                {
+                    // From the floor of the chasm, east at the bridge: the passage's mouth under
+                    // its walled half, the pier under its open half, and the yard above the
+                    // chasm's north wall, seen through an opening into space the hall shares.
+                    {
+                        .name = "bridge",
+                        .sector = "chasm-west",
+                        .point = {.x = 2.0F, .y = -2.5F, .z = -1.35F},
+                        .yaw = Angle::degrees(10.0F),
+                        .pitch = Angle::degrees(15.0F),
+                    },
+                    // From the yard, at the hut's door, through which the hall shows, wider than
+                    // the hut, without showing beside it.
+                    {
+                        .name = "hut_outside",
+                        .sector = "yard",
+                        .point = {.x = 6.5F, .y = 3.0F, .z = 1.65F},
+                        .yaw = Angle::degrees(75.0F),
+                        .pitch = Angle::degrees(5.0F),
+                    },
+                    // From the hall's north-west, back at the door, through which the yard shows,
+                    // with the hall running on past the hut's walls on either side.
+                    {
+                        .name = "hut_inside",
+                        .sector = "hall",
+                        .point = {.x = 5.0F, .y = 16.0F, .z = 1.65F},
+                        .yaw = Angle::degrees(-70.0F),
+                        .pitch = Angle::degrees(-5.0F),
+                    },
+                },
+        },
+        {
             .map = "outdoors",
             .cameras =
                 {

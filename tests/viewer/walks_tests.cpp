@@ -186,3 +186,78 @@ TEST_CASE("outdoors: stepping off the bridge, the body falls into the abyss and 
     CAPTURE(end);
     CHECK(std::abs(end.z - -7.1F) < 1e-3F);
 }
+
+TEST_CASE("overlap: walking south from the start, the body crosses the bridge to the bank, staying "
+          "on it",
+          "[viewer]") {
+    const auto map = load_test_map("overlap");
+
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(180.0F),
+                                          .until = "bank",
+                                          .timeout = 4.0F,
+                                      },
+                                  });
+
+    check_walk(walked, {.sectors = {"yard", "bridge", "bank"}});
+    // The bank's floor is at the bridge's height, and the body's centre stands 0.9 m above it.
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(std::abs(end.z - 0.9F) < 1e-3F);
+}
+
+TEST_CASE("overlap: dropping into the chasm beside the bridge, the body walks under it through the "
+          "passage, staying in the passage, to the chasm beyond",
+          "[viewer]") {
+    const auto map = load_test_map("overlap");
+
+    const auto walked = walk(map, {
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(90.0F),
+                                          .timeout = 1.0F,
+                                      },
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(90.0F),
+                                          .until = "chasm-west",
+                                          .timeout = 2.0F,
+                                      },
+                                      {.actions = {.forward = 1.0F}, .timeout = 0.7F},
+                                      {.timeout = 1.0F},
+                                      {
+                                          .actions = {.forward = 1.0F},
+                                          .turn = wulfhilde::Angle::degrees(90.0F),
+                                          .until = "chasm-east",
+                                          .timeout = 3.0F,
+                                      },
+                                  });
+
+    check_walk(walked, {.sectors = {"yard", "chasm-west", "passage", "chasm-east"}});
+    // The chasm's floor lies 3 m down, as the passage's does.
+    const auto end = walked.end.centre.point;
+    CAPTURE(end);
+    CHECK(std::abs(end.z - -2.1F) < 1e-3F);
+}
+
+TEST_CASE("overlap: from the yard, the body walks through the hut's door into the hall, which "
+          "shares the yard's space, and back out to the yard",
+          "[viewer]") {
+    const auto map = load_test_map("overlap");
+
+    const auto walked =
+        walk(map, {
+                      {.actions = {.forward = 1.0F}, .until = "hall", .timeout = 2.0F},
+                      {.actions = {.forward = 1.0F}, .timeout = 1.0F},
+                      {
+                          .actions = {.forward = 1.0F},
+                          .turn = wulfhilde::Angle::degrees(180.0F),
+                          .until = "yard",
+                          .timeout = 2.0F,
+                      },
+                  });
+
+    check_walk(walked, {.sectors = {"yard", "hall", "yard"}});
+}
